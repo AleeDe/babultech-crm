@@ -4,6 +4,7 @@ import {
   EmptyState, StatTile, Alert,
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize, daysBetween } from "@/lib/utils";
+import { REGISTRATION_EXPIRY_WARNING_DAYS } from "@/lib/partner-policy";
 
 export default async function PortalDealsPage() {
   const deals = await getPortalDeals();
@@ -18,7 +19,7 @@ export default async function PortalDealsPage() {
   const expiringRegistrations = deals.filter((d) => {
     if (!d.registrationExpiresAt) return false;
     const days = daysBetween(new Date(), d.registrationExpiresAt);
-    return days >= 0 && days <= 30;
+    return days >= 0 && days <= REGISTRATION_EXPIRY_WARNING_DAYS;
   });
 
   return (
@@ -35,7 +36,7 @@ export default async function PortalDealsPage() {
         <StatTile
           label="Registrations expiring"
           value={String(expiringRegistrations.length)}
-          sublabel="Within 30 days"
+          sublabel={`Within ${REGISTRATION_EXPIRY_WARNING_DAYS} days`}
           tone={expiringRegistrations.length ? "warning" : "neutral"}
         />
       </div>
@@ -43,7 +44,7 @@ export default async function PortalDealsPage() {
       {expiringRegistrations.length > 0 && (
         <div className="mt-5">
           <Alert tone="warning">
-            {expiringRegistrations.length} deal registration(s) expire within 30 days. Once a
+            {expiringRegistrations.length} deal registration(s) expire within {REGISTRATION_EXPIRY_WARNING_DAYS} days. Once a
             registration lapses, the deal may no longer be credited to you — talk to your partner
             manager before then.
           </Alert>

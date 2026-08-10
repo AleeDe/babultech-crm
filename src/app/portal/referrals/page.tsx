@@ -92,7 +92,14 @@ export default async function PortalReferralsPage() {
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TD>
-                  <TD><Badge tone={statusTone(r.status)}>{humanize(r.status)}</Badge></TD>
+                  <TD>
+                    <Badge tone={statusTone(r.status)}>{humanize(r.status)}</Badge>
+                    {r.status === "DISQUALIFIED" && r.disqualifiedReason && (
+                      <p className="mt-0.5 max-w-[16rem] text-xs text-muted-foreground">
+                        {r.disqualifiedReason}
+                      </p>
+                    )}
+                  </TD>
                 </TR>
               ))}
             </TBody>

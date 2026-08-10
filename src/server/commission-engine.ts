@@ -223,10 +223,37 @@ export async function accrue(ctx: AccrualContext) {
       if (effectiveTrigger !== ctx.trigger) continue;
 
       if (plan && !plan.active) continue;
-      if (link.partner.status !== "ACTIVE") continue;
 
-      // Registration expiry — a lapsed claim earns nothing.
+      // Registration expiry — a lapsed claim earns nothing. Say so out loud:
+      // commission that quietly fails to accrue is far harder to notice than
+      // commission that accrues wrongly, and the partner will eventually ask.
       if (link.registrationExpiresAt && link.registrationExpiresAt < ctx.earnedDate) {
+        await writeAudit(tx, {
+          entityType: "Opportunity",
+          entityId: opportunity.id,
+          fieldName: "commissionSkipped",
+          oldValue: null,
+          newValue:
+            `${link.partner.displayName}: no commission — deal registration lapsed on ` +
+            `${link.registrationExpiresAt.toISOString().slice(0, 10)}, before this was earned on ` +
+            `${ctx.earnedDate.toISOString().slice(0, 10)}.`,
+          changedById: ctx.actorUserId,
+          source: "automation",
+        });
+        continue;
+      }
+
+      // Same for a partnership that has gone inactive since registration.
+      if (link.partner.status !== "ACTIVE") {
+        await writeAudit(tx, {
+          entityType: "Opportunity",
+          entityId: opportunity.id,
+          fieldName: "commissionSkipped",
+          oldValue: null,
+          newValue: `${link.partner.displayName}: no commission — partnership is ${link.partner.status.toLowerCase()}.`,
+          changedById: ctx.actorUserId,
+          source: "automation",
+        });
         continue;
       }
 

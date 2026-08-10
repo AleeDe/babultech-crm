@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { nextNumber, SEQUENCES } from "@/lib/numbering";
 import { requireUser, AuthorizationError } from "@/lib/authz";
+import { REGISTRATION_REVIEW_SLA_DAYS } from "@/lib/partner-policy";
 import type { ActionResult } from "./partners";
 
 /**
@@ -301,6 +302,8 @@ export async function getPortalReferrals() {
       estimatedValue: true,
       createdAt: true,
       convertedAt: true,
+      // A partner is entitled to know why their registration was turned down.
+      disqualifiedReason: true,
       convertedOpportunity: {
         select: { id: true, opportunityNumber: true, name: true, stage: true, amount: true, currencyCode: true },
       },
@@ -453,8 +456,10 @@ export async function submitDealRegistration(
       flags.push(`EXISTING CUSTOMER: ${existingAccount!.name} already has an open opportunity.`);
     }
 
-    const lead = await prisma.$transaction(async (tx) =>
-      tx.lead.create({
+    const contested = contestedByOther || alreadyCustomer;
+
+    const lead = await prisma.$transaction(async (tx) => {
+      const created = await tx.lead.create({
         data: {
           leadNumber: await nextNumber(SEQUENCES.LEAD, tx),
           firstName: data.firstName.trim(),
@@ -481,13 +486,41 @@ export async function submitDealRegistration(
             .filter(Boolean)
             .join("\n"),
         },
-      }),
-    );
+      });
+
+      // There is no email out of this system yet, so "notify" means putting a
+      // dated task in front of the right person. It appears on their
+      // Activities page and links back to the lead. Without this a
+      // registration just sits in a list waiting to be noticed.
+      const due = new Date();
+      due.setDate(due.getDate() + REGISTRATION_REVIEW_SLA_DAYS);
+
+      await tx.activity.create({
+        data: {
+          activityType: "TASK",
+          subject: contested
+            ? `Contested deal registration: ${company}`
+            : `Review deal registration: ${company}`,
+          description:
+            `${partner.displayName} registered ${company} through the partner portal ` +
+            `(${created.leadNumber}).` +
+            (flags.length ? `\n\n${flags.join("\n")}` : "") +
+            `\n\nDecide whether to qualify it. Converting the lead is what credits the partner.`,
+          ownerUserId: ownerId,
+          relatedEntityType: "Lead",
+          relatedEntityId: created.id,
+          dueAt: due,
+          priority: contested ? "HIGH" : "MEDIUM",
+          status: "OPEN",
+        },
+      });
+
+      return created;
+    });
 
     revalidatePath("/portal/referrals");
     revalidatePath("/leads");
 
-    const contested = contestedByOther || alreadyCustomer;
     return {
       ok: true,
       data: {

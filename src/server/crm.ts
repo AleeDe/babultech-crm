@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { nextNumber, SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission, scopedContext } from "@/lib/authz";
 import { auditChanges } from "@/lib/audit";
+import { registrationExpiry } from "@/lib/partner-policy";
 import type { ActionResult } from "./partners";
 
 /** Accounts, Contacts, Leads, Campaigns and Products — the Phase 1 core. */
@@ -539,6 +540,12 @@ export async function convertLead(
 
         // Carry the referral credit onto the deal.
         if (lead.referredByPartnerId) {
+          // Protection runs from when the partner registered the deal, not
+          // from today — a slow internal review must not quietly extend their
+          // claim, and a fast one must not shorten it.
+          const registeredAt = lead.createdAt;
+          const expiresAt = registrationExpiry(registeredAt);
+
           await tx.opportunityPartner.create({
             data: {
               opportunityId: opp.id,
@@ -546,8 +553,9 @@ export async function convertLead(
               role: "SOURCED",
               revenueSharePercent: 100,
               commissionPlanId: lead.referredByPartner?.commissionPlanId ?? null,
-              registeredAt: new Date(),
-              notes: `Auto-attached on conversion of lead ${lead.leadNumber}.`,
+              registeredAt,
+              registrationExpiresAt: expiresAt,
+              notes: `Auto-attached on conversion of lead ${lead.leadNumber}. Registration protected until ${expiresAt.toISOString().slice(0, 10)}.`,
             },
           });
         }

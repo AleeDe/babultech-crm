@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { nextNumber, SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { auditChanges, writeAudit } from "@/lib/audit";
+import { registrationExpiry } from "@/lib/partner-policy";
 
 /**
  * Partner management.
@@ -312,6 +313,7 @@ export async function linkPartnerToOpportunity(
       }
 
       const partner = await tx.partner.findUniqueOrThrow({ where: { id: data.partnerId } });
+      const registeredAt = new Date();
 
       return tx.opportunityPartner.create({
         data: {
@@ -322,8 +324,12 @@ export async function linkPartnerToOpportunity(
           commissionPercentOverride: data.commissionPercentOverride ?? null,
           // Snapshot the plan so later plan edits can't rewrite this deal.
           commissionPlanId: partner.commissionPlanId,
-          registeredAt: new Date(),
-          registrationExpiresAt: data.registrationExpiresAt ?? null,
+          registeredAt,
+          // Left blank, the standard protection window applies. A null expiry
+          // would mean "protected forever", which is not a policy anyone
+          // intends to set by leaving a field empty.
+          registrationExpiresAt:
+            data.registrationExpiresAt ?? registrationExpiry(registeredAt),
           notes: data.notes ?? null,
         },
       });

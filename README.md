@@ -266,6 +266,32 @@ A contested registration is never resolved automatically — refusing it outrigh
 would hide the conflict, so it is recorded and put in front of a human. That is
 what stops the same deal being credited twice.
 
+Every registration also raises a dated **task** for the partner manager (high
+priority when contested), linked to the lead. There is no outbound email from
+this system yet, so a task on someone's Activities page is what "notify"
+honestly means today.
+
+#### Registration protection
+
+`src/lib/partner-policy.ts` holds the commercial numbers — protection window,
+warning threshold, review SLA — in one place rather than scattered as magic
+numbers. The window is **90 days**, and it runs from when the partner
+*registered*, not from when we got round to converting: a slow internal review
+must not quietly extend a claim, and a fast one must not shorten it.
+
+The commission engine already refused to accrue against a lapsed registration;
+what was missing was anything that set the expiry, so the rule never fired.
+Both attach paths now stamp it.
+
+Commission that fails to accrue is far harder to notice than commission that
+accrues wrongly, so a skip is no longer silent — the engine writes an audit
+entry against the opportunity naming the partner and the reason:
+
+> Danish Raza: no commission — deal registration lapsed on 2026-01-01, before
+> this was earned on 2026-08-10.
+
+The same applies when a partnership has gone inactive since registration.
+
 ### Users and roles
 
 A user record is a login, a profile and a role at once. The role is the only
