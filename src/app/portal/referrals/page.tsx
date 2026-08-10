@@ -1,7 +1,9 @@
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { getPortalReferrals } from "@/server/portal";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
-  EmptyState, StatTile,
+  EmptyState, StatTile, Button,
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize } from "@/lib/utils";
 
@@ -21,7 +23,13 @@ export default async function PortalReferralsPage() {
       <PageHeader
         title="Referrals"
         description="Leads you have sent us, and what became of them. A referral that converts attaches you to the resulting deal automatically."
-      />
+      >
+        <Button asChild>
+          <Link href="/portal/register">
+            <Plus className="h-4 w-4" /> Register a deal
+          </Link>
+        </Button>
+      </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Referred" value={String(referrals.length)} />
@@ -39,7 +47,12 @@ export default async function PortalReferralsPage() {
         {referrals.length === 0 ? (
           <EmptyState
             title="No referrals yet"
-            description="When we log a lead against your name, it appears here so you can follow it through to the deal."
+            description="Register a deal you are working and it will appear here so you can follow it through."
+            action={
+              <Button asChild>
+                <Link href="/portal/register">Register your first deal</Link>
+              </Button>
+            }
           />
         ) : (
           <Table>

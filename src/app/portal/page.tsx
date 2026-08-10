@@ -26,6 +26,9 @@ export default async function PortalHomePage() {
       >
         <Badge tone={statusTone(partner.status)}>{humanize(partner.status)}</Badge>
         <Badge tone="neutral">{humanize(partner.tier)}</Badge>
+        <Button asChild>
+          <Link href="/portal/register">Register a deal</Link>
+        </Button>
       </PageHeader>
 
       {partner.status !== "ACTIVE" && (

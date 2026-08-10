@@ -16,7 +16,7 @@ const STATUSES = [
 export default async function LeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string; status?: string }>;
+  searchParams: Promise<{ search?: string; status?: string; source?: string }>;
 }) {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.LEAD_READ)) return <Forbidden what="leads" />;
@@ -26,6 +26,10 @@ export default async function LeadsPage({
 
   const open = leads.filter((l) => !["CONVERTED", "DISQUALIFIED"].includes(l.status));
   const partnerReferred = leads.filter((l) => l.referredByPartnerId).length;
+  // Portal registrations nobody has looked at yet — the queue that matters.
+  const awaitingReview = leads.filter(
+    (l) => l.referredByPartnerId && l.status === "NEW",
+  ).length;
   const pipelineValue = open.reduce((s, l) => s + Number(l.estimatedValue ?? 0), 0);
 
   return (
@@ -44,7 +48,13 @@ export default async function LeadsPage({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Open leads" value={String(open.length)} />
         <StatTile label="Estimated value" value={formatMoney(pipelineValue)} tone="info" />
-        <StatTile label="Partner-referred" value={String(partnerReferred)} sublabel="Credited on conversion" />
+        <StatTile
+          label="Partner registrations"
+          value={String(partnerReferred)}
+          sublabel={awaitingReview > 0 ? `${awaitingReview} awaiting review` : "Credited on conversion"}
+          tone={awaitingReview > 0 ? "warning" : "neutral"}
+          href="/leads?source=partner&status=NEW"
+        />
         <StatTile
           label="Converted"
           value={String(leads.filter((l) => l.status === "CONVERTED").length)}
@@ -57,6 +67,10 @@ export default async function LeadsPage({
           <div className="min-w-[220px] flex-1">
             <Input name="search" placeholder="Search name, company or number…" defaultValue={params.search} />
           </div>
+          <Select name="source" defaultValue={params.source ?? ""} className="w-52">
+            <option value="">All sources</option>
+            <option value="partner">Partner registrations</option>
+          </Select>
           <Select name="status" defaultValue={params.status ?? ""} className="w-52">
             <option value="">All statuses</option>
             {STATUSES.map((s) => (

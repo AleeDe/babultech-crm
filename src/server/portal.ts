@@ -1,8 +1,12 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { nextNumber, SEQUENCES } from "@/lib/numbering";
 import { requireUser, AuthorizationError } from "@/lib/authz";
+import type { ActionResult } from "./partners";
 
 /**
  * The partner portal's data layer.
@@ -303,4 +307,201 @@ export async function getPortalReferrals() {
     },
     orderBy: { createdAt: "desc" },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Deal registration — the one thing a partner can write
+// ---------------------------------------------------------------------------
+
+const registrationSchema = z.object({
+  companyName: z.string().min(2, "Give the customer's company name.").max(200),
+  firstName: z.string().min(1, "Who is your contact there?").max(100),
+  lastName: z.string().min(1).max(100),
+  email: z.string().email("A valid email helps us verify the registration.").optional().or(z.literal("")),
+  phone: z.string().max(50).optional().nullable(),
+  industry: z.string().max(100).optional().nullable(),
+  estimatedValue: z.coerce.number().min(0).optional().nullable(),
+  expectedCloseDate: z.coerce.date().optional().nullable(),
+  description: z.string().min(20, "Tell us what they need — at least a couple of sentences."),
+});
+
+/**
+ * A partner registering a deal they are working.
+ *
+ * This creates a **Lead**, not an Opportunity. A partner cannot conjure a deal
+ * into the pipeline — an internal owner qualifies it first, and converting the
+ * lead is what attaches the partner as SOURCED and starts commission. That
+ * conversion path already exists, so registration plugs into it rather than
+ * inventing a parallel one.
+ *
+ * The important rule here is conflict detection. If the customer is already
+ * registered to another partner, or already ours, the registration is still
+ * accepted — refusing outright would hide the conflict — but it is flagged for
+ * a human, and the partner is told plainly that it is contested. That is what
+ * stops the same deal being credited twice.
+ */
+export async function submitDealRegistration(
+  input: z.infer<typeof registrationSchema>,
+): Promise<ActionResult<{ leadNumber: string; contested: boolean; message: string }>> {
+  let ctx: PortalContext;
+  try {
+    ctx = await requirePartner();
+  } catch {
+    return { ok: false, error: "Your session has ended. Sign in again and retry." };
+  }
+
+  const parsed = registrationSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const data = parsed.data;
+
+  try {
+    const partner = await prisma.partner.findUniqueOrThrow({
+      where: { id: ctx.partnerId },
+      select: {
+        displayName: true, status: true, partnerManagerId: true,
+        agreementExpiryDate: true, commissionPlanId: true,
+      },
+    });
+
+    if (partner.status !== "ACTIVE") {
+      return {
+        ok: false,
+        error: "Only an active partnership can register deals. Please speak to your partner manager.",
+      };
+    }
+    if (partner.agreementExpiryDate && partner.agreementExpiryDate < new Date()) {
+      return {
+        ok: false,
+        error: "Your partner agreement has expired, so new registrations cannot be accepted. Please speak to your partner manager.",
+      };
+    }
+
+    const company = data.companyName.trim();
+
+    // Has this customer already been registered, or are they already ours?
+    const [existingLead, existingAccount] = await Promise.all([
+      prisma.lead.findFirst({
+        where: {
+          deletedAt: null,
+          companyName: { equals: company, mode: "insensitive" },
+          status: { notIn: ["DISQUALIFIED"] },
+        },
+        select: {
+          leadNumber: true,
+          referredByPartnerId: true,
+          referredByPartner: { select: { displayName: true } },
+        },
+      }),
+      prisma.account.findFirst({
+        where: { deletedAt: null, name: { equals: company, mode: "insensitive" } },
+        select: {
+          name: true,
+          opportunities: {
+            where: { deletedAt: null, stage: { notIn: ["CLOSED_WON", "CLOSED_LOST"] } },
+            select: { id: true },
+          },
+        },
+      }),
+    ]);
+
+    const alreadyMine =
+      existingLead?.referredByPartnerId === ctx.partnerId;
+    const contestedByOther =
+      Boolean(existingLead) && !alreadyMine;
+    const alreadyCustomer =
+      Boolean(existingAccount && existingAccount.opportunities.length > 0);
+
+    if (alreadyMine) {
+      return {
+        ok: false,
+        error: `You have already registered ${company} — it is lead ${existingLead!.leadNumber}. Check your referrals page for its progress.`,
+      };
+    }
+
+    // Leads need an internal owner. The partner manager is the right person;
+    // fall back to an administrator so a registration is never orphaned.
+    const ownerId =
+      partner.partnerManagerId ??
+      (
+        await prisma.user.findFirst({
+          where: { status: "ACTIVE", deletedAt: null, role: { permissions: { has: "*" } } },
+          select: { id: true },
+          orderBy: { createdAt: "asc" },
+        })
+      )?.id;
+
+    if (!ownerId) {
+      return { ok: false, error: "We could not route your registration. Please contact your partner manager." };
+    }
+
+    const flags: string[] = [];
+    if (contestedByOther) {
+      flags.push(
+        `CONTESTED: ${company} is already on lead ${existingLead!.leadNumber}` +
+          (existingLead!.referredByPartner
+            ? `, registered by ${existingLead!.referredByPartner.displayName}.`
+            : ", submitted directly."),
+      );
+    }
+    if (alreadyCustomer) {
+      flags.push(`EXISTING CUSTOMER: ${existingAccount!.name} already has an open opportunity.`);
+    }
+
+    const lead = await prisma.$transaction(async (tx) =>
+      tx.lead.create({
+        data: {
+          leadNumber: await nextNumber(SEQUENCES.LEAD, tx),
+          firstName: data.firstName.trim(),
+          lastName: data.lastName.trim(),
+          companyName: company,
+          email: data.email || null,
+          phone: data.phone ?? null,
+          industry: data.industry ?? null,
+          leadSource: "Partner",
+          referredByPartnerId: ctx.partnerId,
+          ownerUserId: ownerId,
+          status: "NEW",
+          estimatedValue: data.estimatedValue ?? null,
+          nextFollowUpAt: data.expectedCloseDate ?? null,
+          description: [
+            `Deal registration submitted by ${partner.displayName} via the partner portal.`,
+            data.expectedCloseDate
+              ? `Partner expects to close around ${data.expectedCloseDate.toISOString().slice(0, 10)}.`
+              : null,
+            "",
+            data.description.trim(),
+            flags.length ? `\n--- Needs review ---\n${flags.join("\n")}` : null,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        },
+      }),
+    );
+
+    revalidatePath("/portal/referrals");
+    revalidatePath("/leads");
+
+    const contested = contestedByOther || alreadyCustomer;
+    return {
+      ok: true,
+      data: {
+        leadNumber: lead.leadNumber,
+        contested,
+        message: contested
+          ? "Registered, but it needs review — we already have a record for this customer. Your partner manager will be in touch about who it belongs to."
+          : "Registered. Your partner manager will review it and come back to you.",
+      },
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "We could not submit your registration.",
+    };
+  }
 }

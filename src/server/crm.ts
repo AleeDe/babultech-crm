@@ -584,13 +584,15 @@ export async function convertLead(
   }
 }
 
-export async function listLeads(filters?: { search?: string; status?: string }) {
+export async function listLeads(filters?: { search?: string; status?: string; source?: string }) {
   const { where } = await scopedContext("ownerUserId");
 
   return prisma.lead.findMany({
     where: {
       deletedAt: null,
       ...where,
+      // Deals partners have registered through the portal, awaiting a decision.
+      ...(filters?.source === "partner" ? { referredByPartnerId: { not: null } } : {}),
       ...(filters?.status ? { status: filters.status as never } : {}),
       ...(filters?.search
         ? {

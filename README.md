@@ -240,6 +240,32 @@ bank details.
 To create one: **Users → New user → Partner role → pick the partner**. A partner
 gets exactly one login.
 
+#### Deal registration
+
+The one thing a partner can write. It creates a **Lead**, never an Opportunity —
+an internal owner qualifies it first, and converting the lead is what attaches
+the partner as SOURCED and starts commission, reusing the conversion path that
+already existed.
+
+Registrations are routed to the partner's manager (falling back to an
+administrator, so one is never orphaned) and appear on the internal leads page
+under the **Partner registrations** filter, with a count of those awaiting
+review.
+
+Conflict handling is the point of the feature:
+
+| Situation | What happens |
+|---|---|
+| New customer | Accepted |
+| Same partner, same customer again | Refused, pointing at their existing lead |
+| **Another partner already registered them** | Accepted but flagged `CONTESTED`, and the partner is told plainly |
+| Already our customer with an open deal | Accepted but flagged `EXISTING CUSTOMER` |
+| Partnership inactive, or agreement expired | Refused, at both the form and the action |
+
+A contested registration is never resolved automatically — refusing it outright
+would hide the conflict, so it is recorded and put in front of a human. That is
+what stops the same deal being credited twice.
+
 ### Users and roles
 
 A user record is a login, a profile and a role at once. The role is the only
