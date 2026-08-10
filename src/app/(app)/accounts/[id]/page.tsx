@@ -36,6 +36,9 @@ export default async function AccountDetailPage({
         <Button asChild variant="outline">
           <Link href={`/cases/new?accountId=${account.id}`}>New case</Link>
         </Button>
+        <Button asChild variant="outline">
+          <Link href={`/projects/new?accountId=${account.id}`}>New project</Link>
+        </Button>
         <Button asChild>
           <Link href={`/accounts/${account.id}/edit`}>Edit</Link>
         </Button>

@@ -1,0 +1,247 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { getProject, getProjectBurn, getProjectFormOptions } from "@/server/projects";
+import { getAuditTrail } from "@/lib/audit";
+import {
+  PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
+  StatTile, Button, Alert,
+} from "@/components/ui";
+import { formatMoney, formatDate, formatPercent, formatNumber, humanize, serialize } from "@/lib/utils";
+import { TaskBoard, TeamPanel, PlanPanel, RaidPanel } from "./project-panels";
+
+export default async function ProjectWorkspacePage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const project = await getProject(id);
+  if (!project) notFound();
+
+  const [burn, options, audit] = await Promise.all([
+    getProjectBurn(id),
+    getProjectFormOptions(),
+    getAuditTrail("Project", id, 10),
+  ]);
+
+  const approvedHours = Number(project.approvedHours ?? 0);
+  const loggedHours = Number(burn.loggedHours);
+  const budgetUsed = approvedHours > 0 ? (loggedHours / approvedHours) * 100 : 0;
+  const overBudget = approvedHours > 0 && loggedHours > approvedHours;
+
+  const openTasks = project.tasks.filter((t) => !["COMPLETED", "CANCELLED"].includes(t.status));
+  const overdueTasks = openTasks.filter((t) => t.dueDate && t.dueDate < new Date());
+  const openRisks = project.risks.filter((r) => r.status === "OPEN");
+  const openIssues = project.issues.filter((i) => i.status === "OPEN");
+  const margin = Number(burn.billableValue) - Number(burn.cost);
+
+  const s = serialize({
+    tasks: project.tasks,
+    phases: project.phases,
+    milestones: project.milestones,
+    members: project.members,
+    risks: project.risks,
+    issues: project.issues,
+    users: options.users,
+  });
+
+  return (
+    <>
+      <PageHeader
+        title={project.name}
+        description={`${project.projectNumber} · ${project.account.name}`}
+      >
+        <Badge tone={statusTone(project.health)}>{humanize(project.health)}</Badge>
+        <Badge tone={statusTone(project.status)}>{humanize(project.status)}</Badge>
+        <Button asChild variant="outline">
+          <Link href={`/projects/${project.id}/edit`}>Edit</Link>
+        </Button>
+      </PageHeader>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatTile
+          label="Progress"
+          value={formatPercent(project.completionPercent, 0)}
+          sublabel={`${project.tasks.length - openTasks.length} of ${project.tasks.length} tasks done`}
+          tone="info"
+        />
+        <StatTile
+          label="Hours logged"
+          value={formatNumber(burn.loggedHours, 1)}
+          sublabel={approvedHours > 0 ? `${formatPercent(budgetUsed, 0)} of ${formatNumber(approvedHours, 0)}h approved` : "No budget set"}
+          tone={overBudget ? "danger" : budgetUsed > 80 ? "warning" : "neutral"}
+        />
+        <StatTile
+          label="Billable value"
+          value={formatMoney(burn.billableValue, project.currencyCode)}
+          sublabel={`Cost ${formatMoney(burn.cost, project.currencyCode)}`}
+        />
+        <StatTile
+          label="Margin to date"
+          value={formatMoney(margin, project.currencyCode)}
+          sublabel="Approved time only"
+          tone={margin >= 0 ? "success" : "danger"}
+        />
+      </div>
+
+      {(overBudget || overdueTasks.length > 0) && (
+        <div className="mt-5 space-y-3">
+          {overBudget && (
+            <Alert tone="danger">
+              {formatNumber(loggedHours - approvedHours, 1)} hours over the approved budget. Raise a
+              change request before logging more time against this engagement.
+            </Alert>
+          )}
+          {overdueTasks.length > 0 && (
+            <Alert tone="warning">
+              {overdueTasks.length} task(s) are past their due date.
+            </Alert>
+          )}
+        </div>
+      )}
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <TaskBoard
+            projectId={project.id}
+            tasks={s.tasks as never}
+            phases={s.phases as never}
+            milestones={s.milestones as never}
+            members={s.members as never}
+          />
+
+          <PlanPanel
+            projectId={project.id}
+            phases={s.phases as never}
+            milestones={s.milestones as never}
+            users={s.users as never}
+            currency={project.currencyCode}
+            contractValue={project.contractValue ? String(project.contractValue) : null}
+          />
+
+          <TeamPanel
+            projectId={project.id}
+            members={s.members as never}
+            users={s.users as never}
+            currency={project.currencyCode}
+          />
+
+          <RaidPanel
+            projectId={project.id}
+            risks={s.risks as never}
+            issues={s.issues as never}
+            users={s.users as never}
+          />
+        </div>
+
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <Row label="Customer">
+                <Link href={`/accounts/${project.account.id}`} className="text-primary hover:underline">
+                  {project.account.name}
+                </Link>
+                <p className="text-xs text-muted-foreground">{project.account.accountNumber}</p>
+              </Row>
+              <Row label="Project manager">{project.projectManager.fullName}</Row>
+              <Row label="Sourced from">
+                {project.opportunity ? (
+                  <Link href={`/opportunities/${project.opportunity.id}`} className="text-primary hover:underline">
+                    {project.opportunity.opportunityNumber} — {project.opportunity.name}
+                  </Link>
+                ) : "—"}
+              </Row>
+              <Row label="Contract">
+                {project.contract ? (
+                  <Link href="/contracts" className="text-primary hover:underline">
+                    {project.contract.contractNumber}
+                  </Link>
+                ) : "—"}
+              </Row>
+              <Row label="Billing">{humanize(project.billingType)}</Row>
+              <Row label="Contract value">{formatMoney(project.contractValue, project.currencyCode)}</Row>
+              <Row label="Schedule">
+                {formatDate(project.startDate)} → {formatDate(project.plannedEndDate)}
+                {project.actualEndDate && (
+                  <p className="text-xs text-muted-foreground">
+                    Actually ended {formatDate(project.actualEndDate)}
+                  </p>
+                )}
+              </Row>
+              <Row label="RAID">
+                {openRisks.length} open risk(s), {openIssues.length} open issue(s)
+              </Row>
+            </CardContent>
+          </Card>
+
+          {project.cases.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Linked support cases</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                {project.cases.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between gap-2 border-b pb-2 last:border-0">
+                    <Link href={`/cases/${c.id}`} className="min-w-0 flex-1 truncate hover:underline">
+                      {c.subject}
+                      <span className="block text-xs text-muted-foreground">{c.caseNumber}</span>
+                    </Link>
+                    <Badge tone={statusTone(c.status)}>{humanize(c.status)}</Badge>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {project.scope && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Scope</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="whitespace-pre-wrap text-sm">{project.scope}</p>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Change history</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {audit.length === 0 ? (
+                <p className="text-muted-foreground">No changes recorded.</p>
+              ) : (
+                audit.map((a) => (
+                  <div key={a.id}>
+                    <p>
+                      <span className="font-medium">{humanize(a.fieldName)}</span>{" "}
+                      <span className="text-muted-foreground">
+                        {a.oldValue ?? "empty"} → {a.newValue ?? "empty"}
+                      </span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {a.changedBy?.fullName ?? "System"} · {formatDate(a.changedAt)}
+                    </p>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="mt-0.5">{children}</div>
+    </div>
+  );
+}
