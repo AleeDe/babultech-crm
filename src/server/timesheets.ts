@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireUser, requirePermission, PERMISSIONS } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission, requireUser } from "@/lib/authz";
 import { auditChanges } from "@/lib/audit";
 import type { ActionResult } from "./partners";
 
@@ -52,7 +52,9 @@ function weekBounds(weekStart: Date): { from: Date; to: Date } {
 export async function logTime(
   input: z.infer<typeof timeLogSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const user = await requireUser();
+  const _auth = await authorize();
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = timeLogSchema.safeParse(input);
   if (!parsed.success) {
@@ -140,7 +142,9 @@ export async function updateTimeLog(
   id: string,
   input: z.infer<typeof timeLogSchema>,
 ): Promise<ActionResult> {
-  const user = await requireUser();
+  const _auth = await authorize();
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = timeLogSchema.safeParse(input);
   if (!parsed.success) {
@@ -175,7 +179,9 @@ export async function updateTimeLog(
 }
 
 export async function deleteTimeLog(id: string): Promise<ActionResult> {
-  const user = await requireUser();
+  const _auth = await authorize();
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   try {
     const existing = await prisma.timeLog.findUniqueOrThrow({ where: { id } });
@@ -199,7 +205,9 @@ export async function deleteTimeLog(id: string): Promise<ActionResult> {
 
 /** Submits a whole week for approval. */
 export async function submitWeek(weekStartISO: string): Promise<ActionResult<{ count: number }>> {
-  const user = await requireUser();
+  const _auth = await authorize();
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
   const { from, to } = weekBounds(new Date(weekStartISO));
 
   try {
@@ -225,7 +233,9 @@ export async function submitWeek(weekStartISO: string): Promise<ActionResult<{ c
 }
 
 export async function approveTimeLogs(ids: string[]): Promise<ActionResult<{ count: number }>> {
-  const user = await requirePermission(PERMISSIONS.TIME_APPROVE);
+  const _auth = await authorize(PERMISSIONS.TIME_APPROVE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
   if (ids.length === 0) return { ok: false, error: "Nothing selected." };
 
   try {
@@ -270,7 +280,9 @@ export async function approveTimeLogs(ids: string[]): Promise<ActionResult<{ cou
 }
 
 export async function rejectTimeLogs(ids: string[], reason: string): Promise<ActionResult<{ count: number }>> {
-  const user = await requirePermission(PERMISSIONS.TIME_APPROVE);
+  const _auth = await authorize(PERMISSIONS.TIME_APPROVE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
   if (ids.length === 0) return { ok: false, error: "Nothing selected." };
   if (!reason.trim()) return { ok: false, error: "Give a reason so the person knows what to fix." };
 

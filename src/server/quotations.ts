@@ -5,7 +5,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { nextNumber, SEQUENCES } from "@/lib/numbering";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { auditChanges } from "@/lib/audit";
 import type { ActionResult } from "./partners";
 
@@ -117,7 +117,8 @@ async function computeTotals(
 export async function createQuotation(
   input: z.infer<typeof quotationSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  await requirePermission(PERMISSIONS.OPPORTUNITY_WRITE);
+  const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = quotationSchema.safeParse(input);
   if (!parsed.success) {
@@ -185,7 +186,9 @@ export async function updateQuotation(
   id: string,
   input: z.infer<typeof quotationSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const user = await requirePermission(PERMISSIONS.OPPORTUNITY_WRITE);
+  const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = quotationSchema.safeParse(input);
   if (!parsed.success) {
@@ -247,7 +250,9 @@ export async function updateQuotation(
  * customer was actually shown survives.
  */
 export async function reviseQuotation(id: string): Promise<ActionResult<{ id: string }>> {
-  const user = await requirePermission(PERMISSIONS.OPPORTUNITY_WRITE);
+  const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   try {
     const revision = await prisma.$transaction(async (tx) => {
@@ -320,7 +325,9 @@ export async function reviseQuotation(id: string): Promise<ActionResult<{ id: st
 
 /** DRAFT/APPROVED → SENT. Also nudges the deal to Quote Submitted. */
 export async function sendQuotation(id: string): Promise<ActionResult> {
-  const user = await requirePermission(PERMISSIONS.OPPORTUNITY_WRITE);
+  const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -382,7 +389,9 @@ export async function decideQuotation(
   id: string,
   decision: "ACCEPTED" | "REJECTED",
 ): Promise<ActionResult> {
-  const user = await requirePermission(PERMISSIONS.OPPORTUNITY_WRITE);
+  const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   try {
     await prisma.$transaction(async (tx) => {

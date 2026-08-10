@@ -5,7 +5,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { nextNumber, SEQUENCES } from "@/lib/numbering";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { writeAudit } from "@/lib/audit";
 import { clawback } from "./commission-engine";
 import type { ActionResult } from "./partners";
@@ -19,7 +19,9 @@ import type { ActionResult } from "./partners";
 const ZERO = new Prisma.Decimal(0);
 
 export async function submitCommissionsForApproval(recordIds: string[]): Promise<ActionResult<{ count: number }>> {
-  const user = await requirePermission(PERMISSIONS.COMMISSION_WRITE);
+  const _auth = await authorize(PERMISSIONS.COMMISSION_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -57,7 +59,9 @@ export async function submitCommissionsForApproval(recordIds: string[]): Promise
 }
 
 export async function approveCommissions(recordIds: string[]): Promise<ActionResult<{ count: number }>> {
-  const user = await requirePermission(PERMISSIONS.COMMISSION_APPROVE);
+  const _auth = await authorize(PERMISSIONS.COMMISSION_APPROVE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   try {
     const count = await prisma.$transaction(async (tx) => {
@@ -112,7 +116,9 @@ const rejectSchema = z.object({
 export async function rejectCommissions(
   input: z.infer<typeof rejectSchema>,
 ): Promise<ActionResult<{ count: number }>> {
-  const user = await requirePermission(PERMISSIONS.COMMISSION_APPROVE);
+  const _auth = await authorize(PERMISSIONS.COMMISSION_APPROVE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = rejectSchema.safeParse(input);
   if (!parsed.success) {
@@ -172,7 +178,8 @@ const payoutSchema = z.object({
 export async function createPayout(
   input: z.infer<typeof payoutSchema>,
 ): Promise<ActionResult<{ id: string; payoutNumber: string }>> {
-  await requirePermission(PERMISSIONS.COMMISSION_WRITE);
+  const _auth = await authorize(PERMISSIONS.COMMISSION_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = payoutSchema.safeParse(input);
   if (!parsed.success) {
@@ -245,7 +252,9 @@ export async function createPayout(
 }
 
 export async function approvePayout(payoutId: string): Promise<ActionResult> {
-  const user = await requirePermission(PERMISSIONS.PAYOUT_APPROVE);
+  const _auth = await authorize(PERMISSIONS.PAYOUT_APPROVE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -292,7 +301,9 @@ const markPaidSchema = z.object({
 export async function markPayoutPaid(
   input: z.infer<typeof markPaidSchema>,
 ): Promise<ActionResult> {
-  const user = await requirePermission(PERMISSIONS.PAYOUT_APPROVE);
+  const _auth = await authorize(PERMISSIONS.PAYOUT_APPROVE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = markPaidSchema.safeParse(input);
   if (!parsed.success) {
@@ -370,7 +381,9 @@ const clawbackSchema = z.object({
 export async function clawbackCommission(
   input: z.infer<typeof clawbackSchema>,
 ): Promise<ActionResult> {
-  const user = await requirePermission(PERMISSIONS.COMMISSION_APPROVE);
+  const _auth = await authorize(PERMISSIONS.COMMISSION_APPROVE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = clawbackSchema.safeParse(input);
   if (!parsed.success) {

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { nextNumber, SEQUENCES } from "@/lib/numbering";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { auditChanges } from "@/lib/audit";
 import type { ActionResult } from "./partners";
 
@@ -106,7 +106,8 @@ const projectSchema = z.object({
 export async function createProject(
   input: z.infer<typeof projectSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  await requirePermission(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = projectSchema.safeParse(input);
   if (!parsed.success) {
@@ -167,7 +168,9 @@ export async function updateProject(
   id: string,
   input: z.infer<typeof projectSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const user = await requirePermission(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = projectSchema.safeParse(input);
   if (!parsed.success) {
@@ -336,7 +339,8 @@ const phaseSchema = z.object({
 export async function createPhase(
   input: z.infer<typeof phaseSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  await requirePermission(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = phaseSchema.safeParse(input);
   if (!parsed.success) {
@@ -364,7 +368,8 @@ export async function createPhase(
 }
 
 export async function deletePhase(id: string): Promise<ActionResult> {
-  await requirePermission(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   try {
     const phase = await prisma.projectPhase.findUniqueOrThrow({
@@ -407,7 +412,8 @@ const milestoneSchema = z.object({
 export async function createMilestone(
   input: z.infer<typeof milestoneSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  await requirePermission(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = milestoneSchema.safeParse(input);
   if (!parsed.success) {
@@ -437,7 +443,9 @@ export async function completeMilestone(
   id: string,
   customerApproved: boolean,
 ): Promise<ActionResult> {
-  const user = await requirePermission(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   try {
     const milestone = await prisma.$transaction(async (tx) => {
@@ -532,7 +540,8 @@ async function assertAssigneeIsOnProject(
 export async function createTask(
   input: z.infer<typeof taskSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  await requirePermission(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = taskSchema.safeParse(input);
   if (!parsed.success) {
@@ -581,7 +590,9 @@ export async function updateTask(
   id: string,
   input: z.infer<typeof taskSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const user = await requirePermission(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = taskSchema.safeParse(input);
   if (!parsed.success) {
@@ -644,7 +655,9 @@ export async function changeTaskStatus(
   id: string,
   status: string,
 ): Promise<ActionResult> {
-  const user = await requirePermission(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = z
     .enum(["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "UNDER_REVIEW", "COMPLETED", "CANCELLED"])
@@ -737,7 +750,8 @@ const memberSchema = z.object({
 export async function addProjectMember(
   input: z.infer<typeof memberSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  await requirePermission(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = memberSchema.safeParse(input);
   if (!parsed.success) {
@@ -779,7 +793,8 @@ export async function updateProjectMember(
   id: string,
   input: Omit<z.infer<typeof memberSchema>, "projectId" | "userId"> & { active: boolean },
 ): Promise<ActionResult> {
-  await requirePermission(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const schema = memberSchema
     .omit({ projectId: true, userId: true })
@@ -811,7 +826,8 @@ export async function updateProjectMember(
  * must not lose their owner.
  */
 export async function removeProjectMember(id: string): Promise<ActionResult<{ deactivated: boolean }>> {
-  await requirePermission(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   try {
     const member = await prisma.projectMember.findUniqueOrThrow({
@@ -859,7 +875,8 @@ const LEVEL_SCORE: Record<string, number> = { LOW: 1, MEDIUM: 2, HIGH: 3, CRITIC
 export async function createRisk(
   input: z.infer<typeof riskSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  await requirePermission(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = riskSchema.safeParse(input);
   if (!parsed.success) {
@@ -895,7 +912,8 @@ const issueSchema = z.object({
 export async function createIssue(
   input: z.infer<typeof issueSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  await requirePermission(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = issueSchema.safeParse(input);
   if (!parsed.success) {

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { nextNumber, SEQUENCES } from "@/lib/numbering";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { auditChanges } from "@/lib/audit";
 import type { ActionResult } from "./partners";
 
@@ -64,7 +64,8 @@ function validate(data: z.infer<typeof contractSchema>): ActionResult<never> | n
 export async function createContract(
   input: z.infer<typeof contractSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  await requirePermission(PERMISSIONS.CONTRACT_WRITE);
+  const _auth = await authorize(PERMISSIONS.CONTRACT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = contractSchema.safeParse(input);
   if (!parsed.success) {
@@ -91,7 +92,9 @@ export async function updateContract(
   id: string,
   input: z.infer<typeof contractSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const user = await requirePermission(PERMISSIONS.CONTRACT_WRITE);
+  const _auth = await authorize(PERMISSIONS.CONTRACT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = contractSchema.safeParse(input);
   if (!parsed.success) {

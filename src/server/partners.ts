@@ -5,7 +5,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { nextNumber, SEQUENCES } from "@/lib/numbering";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { auditChanges, writeAudit } from "@/lib/audit";
 
 /**
@@ -95,7 +95,9 @@ export type ActionResult<T = void> =
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 
 export async function createPartner(input: PartnerInput): Promise<ActionResult<{ id: string }>> {
-  const user = await requirePermission(PERMISSIONS.PARTNER_WRITE);
+  const _auth = await authorize(PERMISSIONS.PARTNER_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = partnerSchema.safeParse(input);
   if (!parsed.success) {
@@ -232,7 +234,9 @@ const updatePartnerSchema = basePartnerSchema.partial().extend({ id: z.string().
 export async function updatePartner(
   input: z.infer<typeof updatePartnerSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const user = await requirePermission(PERMISSIONS.PARTNER_WRITE);
+  const _auth = await authorize(PERMISSIONS.PARTNER_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = updatePartnerSchema.safeParse(input);
   if (!parsed.success) {
@@ -282,7 +286,9 @@ const linkSchema = z.object({
 export async function linkPartnerToOpportunity(
   input: z.infer<typeof linkSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const user = await requirePermission(PERMISSIONS.OPPORTUNITY_WRITE);
+  const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = linkSchema.safeParse(input);
   if (!parsed.success) {
@@ -332,7 +338,8 @@ export async function linkPartnerToOpportunity(
 }
 
 export async function unlinkPartnerFromOpportunity(linkId: string): Promise<ActionResult> {
-  await requirePermission(PERMISSIONS.OPPORTUNITY_WRITE);
+  const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   try {
     const link = await prisma.opportunityPartner.findUniqueOrThrow({

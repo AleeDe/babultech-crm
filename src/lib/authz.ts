@@ -80,6 +80,36 @@ export async function requirePermission(permission: string): Promise<SessionUser
 }
 
 /**
+ * The server-action counterpart to `requirePermission`.
+ *
+ * Actions return an `ActionResult` to the browser rather than throwing, because
+ * a thrown error in an action surfaces as an unhandled rejection with no
+ * message the user can act on. This returns the same refusal as a value, so the
+ * caller can render it in the form it came from.
+ *
+ * `permission` is optional: omit it to require nothing more than a live session.
+ */
+export async function authorize(
+  permission?: string,
+): Promise<{ ok: true; user: SessionUser } | { ok: false; error: string }> {
+  let user: SessionUser;
+  try {
+    user = await requireUser();
+  } catch {
+    return { ok: false, error: "Your session has ended. Sign in again and retry." };
+  }
+
+  if (permission && !can(user, permission)) {
+    return {
+      ok: false,
+      error: "Your role does not allow this. Ask an administrator if you need it.",
+    };
+  }
+
+  return { ok: true, user };
+}
+
+/**
  * Builds the WHERE fragment that limits rows to what this user may see.
  * `ownerField` is the record's owning-user column (varies by entity).
  */

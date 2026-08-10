@@ -5,7 +5,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { nextNumber, SEQUENCES } from "@/lib/numbering";
-import { requirePermission, scopedContext, PERMISSIONS } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission, scopedContext } from "@/lib/authz";
 import { auditChanges } from "@/lib/audit";
 import { accrueForWonOpportunity } from "./commission-engine";
 import type { ActionResult } from "./partners";
@@ -67,7 +67,8 @@ function lineTotal(line: z.infer<typeof lineSchema>): Prisma.Decimal {
 export async function createOpportunity(
   input: z.infer<typeof opportunitySchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  await requirePermission(PERMISSIONS.OPPORTUNITY_WRITE);
+  const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = opportunitySchema.safeParse(input);
   if (!parsed.success) {
@@ -130,7 +131,9 @@ export async function updateOpportunity(
   id: string,
   input: z.infer<typeof opportunityUpdateSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const user = await requirePermission(PERMISSIONS.OPPORTUNITY_WRITE);
+  const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = opportunityUpdateSchema.safeParse(input);
   if (!parsed.success) {
@@ -230,7 +233,9 @@ const stageSchema = z.object({
 export async function changeStage(
   input: z.infer<typeof stageSchema>,
 ): Promise<ActionResult<{ commissionsCreated: number }>> {
-  const user = await requirePermission(PERMISSIONS.OPPORTUNITY_WRITE);
+  const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = stageSchema.safeParse(input);
   if (!parsed.success) {

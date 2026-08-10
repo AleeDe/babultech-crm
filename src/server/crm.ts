@@ -5,7 +5,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { nextNumber, SEQUENCES } from "@/lib/numbering";
-import { requirePermission, scopedContext, PERMISSIONS } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission, scopedContext } from "@/lib/authz";
 import { auditChanges } from "@/lib/audit";
 import type { ActionResult } from "./partners";
 
@@ -35,7 +35,8 @@ const accountSchema = z.object({
 export async function createAccount(
   input: z.infer<typeof accountSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  await requirePermission(PERMISSIONS.ACCOUNT_WRITE);
+  const _auth = await authorize(PERMISSIONS.ACCOUNT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = accountSchema.safeParse(input);
   if (!parsed.success) {
@@ -64,7 +65,9 @@ export async function updateAccount(
   id: string,
   input: z.infer<typeof accountSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const user = await requirePermission(PERMISSIONS.ACCOUNT_WRITE);
+  const _auth = await authorize(PERMISSIONS.ACCOUNT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = accountSchema.safeParse(input);
   if (!parsed.success) {
@@ -183,7 +186,8 @@ const contactSchema = z.object({
 export async function createContact(
   input: z.infer<typeof contactSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  await requirePermission(PERMISSIONS.ACCOUNT_WRITE);
+  const _auth = await authorize(PERMISSIONS.ACCOUNT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = contactSchema.safeParse(input);
   if (!parsed.success) {
@@ -229,7 +233,9 @@ export async function updateContact(
   id: string,
   input: z.infer<typeof contactSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const user = await requirePermission(PERMISSIONS.ACCOUNT_WRITE);
+  const _auth = await authorize(PERMISSIONS.ACCOUNT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = contactSchema.safeParse(input);
   if (!parsed.success) {
@@ -335,7 +341,8 @@ const leadSchema = z.object({
 export async function createLead(
   input: z.infer<typeof leadSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  await requirePermission(PERMISSIONS.LEAD_WRITE);
+  const _auth = await authorize(PERMISSIONS.LEAD_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = leadSchema.safeParse(input);
   if (!parsed.success) {
@@ -387,7 +394,9 @@ export async function updateLead(
   id: string,
   input: z.infer<typeof leadUpdateSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const user = await requirePermission(PERMISSIONS.LEAD_WRITE);
+  const _auth = await authorize(PERMISSIONS.LEAD_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = leadUpdateSchema.safeParse(input);
   if (!parsed.success) {
@@ -457,7 +466,9 @@ const convertSchema = z.object({
 export async function convertLead(
   input: z.infer<typeof convertSchema>,
 ): Promise<ActionResult<{ accountId: string; contactId: string; opportunityId: string | null }>> {
-  const user = await requirePermission(PERMISSIONS.LEAD_WRITE);
+  const _auth = await authorize(PERMISSIONS.LEAD_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = convertSchema.safeParse(input);
   if (!parsed.success) {

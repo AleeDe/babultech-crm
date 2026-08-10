@@ -5,7 +5,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { nextNumber, SEQUENCES } from "@/lib/numbering";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { auditChanges } from "@/lib/audit";
 import { accrueForInvoice, accrueForPayment } from "./commission-engine";
 import type { ActionResult } from "./partners";
@@ -142,7 +142,8 @@ async function recalculateInvoice(tx: Prisma.TransactionClient, invoiceId: strin
 export async function createInvoice(
   input: z.infer<typeof invoiceSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  await requirePermission(PERMISSIONS.INVOICE_WRITE);
+  const _auth = await authorize(PERMISSIONS.INVOICE_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = invoiceSchema.safeParse(input);
   if (!parsed.success) {
@@ -198,7 +199,9 @@ export async function updateInvoice(
   id: string,
   input: z.infer<typeof invoiceSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const user = await requirePermission(PERMISSIONS.INVOICE_WRITE);
+  const _auth = await authorize(PERMISSIONS.INVOICE_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = invoiceSchema.safeParse(input);
   if (!parsed.success) {
@@ -262,7 +265,9 @@ export async function updateInvoice(
  * never be billed twice (spec §13), and fires ON_INVOICE_SENT commission.
  */
 export async function sendInvoice(id: string): Promise<ActionResult<{ commissionsCreated: number }>> {
-  const user = await requirePermission(PERMISSIONS.INVOICE_APPROVE);
+  const _auth = await authorize(PERMISSIONS.INVOICE_APPROVE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -318,7 +323,9 @@ export async function sendInvoice(id: string): Promise<ActionResult<{ commission
 }
 
 export async function writeOffInvoice(id: string, amount: number, reason: string): Promise<ActionResult> {
-  const user = await requirePermission(PERMISSIONS.INVOICE_APPROVE);
+  const _auth = await authorize(PERMISSIONS.INVOICE_APPROVE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   if (!reason.trim()) return { ok: false, error: "A write-off needs a reason." };
   if (!(amount > 0)) return { ok: false, error: "Enter the amount being written off." };
@@ -368,7 +375,8 @@ export async function writeOffInvoice(id: string, amount: number, reason: string
 export async function runMilestoneBilling(
   projectId?: string,
 ): Promise<ActionResult<{ created: number; skipped: string[] }>> {
-  await requirePermission(PERMISSIONS.INVOICE_WRITE);
+  const _auth = await authorize(PERMISSIONS.INVOICE_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   try {
     const due = await prisma.milestone.findMany({
@@ -459,7 +467,8 @@ export async function runMilestoneBilling(
 export async function runTimeBilling(
   projectId: string,
 ): Promise<ActionResult<{ id: string; hours: number } | null>> {
-  await requirePermission(PERMISSIONS.INVOICE_WRITE);
+  const _auth = await authorize(PERMISSIONS.INVOICE_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   try {
     const logs = await prisma.timeLog.findMany({
@@ -574,7 +583,9 @@ const paymentSchema = z.object({
 export async function recordPayment(
   input: z.infer<typeof paymentSchema>,
 ): Promise<ActionResult<{ id: string; commissionsCreated: number }>> {
-  const user = await requirePermission(PERMISSIONS.PAYMENT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PAYMENT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = paymentSchema.safeParse(input);
   if (!parsed.success) {
@@ -665,7 +676,9 @@ export async function allocatePayment(
   invoiceId: string,
   amount: number,
 ): Promise<ActionResult<{ commissionsCreated: number }>> {
-  const user = await requirePermission(PERMISSIONS.PAYMENT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PAYMENT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
   if (!(amount > 0)) return { ok: false, error: "Enter an amount to apply." };
 
   try {

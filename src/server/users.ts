@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { requirePermission, requireUser, PERMISSIONS } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { auditChanges } from "@/lib/audit";
 import type { ActionResult } from "./partners";
 
@@ -98,7 +98,8 @@ async function validateAgainstRole(
 export async function createUser(
   input: z.infer<typeof createSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  await requirePermission(PERMISSIONS.ADMIN);
+  const _auth = await authorize(PERMISSIONS.ADMIN);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = createSchema.safeParse(input);
   if (!parsed.success) {
@@ -139,7 +140,9 @@ export async function updateUser(
   id: string,
   input: z.infer<typeof userSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const actor = await requirePermission(PERMISSIONS.ADMIN);
+  const _auth = await authorize(PERMISSIONS.ADMIN);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const actor = _auth.user;
 
   const parsed = userSchema.safeParse(input);
   if (!parsed.success) {
@@ -224,7 +227,9 @@ export async function updateUser(
 
 /** Administrator resets someone's password. */
 export async function setUserPassword(id: string, password: string): Promise<ActionResult> {
-  const actor = await requirePermission(PERMISSIONS.ADMIN);
+  const _auth = await authorize(PERMISSIONS.ADMIN);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const actor = _auth.user;
 
   const parsed = passwordRules.safeParse(password);
   if (!parsed.success) {
@@ -267,7 +272,9 @@ export async function changeOwnPassword(
   currentPassword: string,
   newPassword: string,
 ): Promise<ActionResult> {
-  const actor = await requireUser();
+  const _auth = await authorize();
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const actor = _auth.user;
 
   const parsed = passwordRules.safeParse(newPassword);
   if (!parsed.success) {

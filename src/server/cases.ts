@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { nextNumber, SEQUENCES } from "@/lib/numbering";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { auditChanges } from "@/lib/audit";
 import type { ActionResult } from "./partners";
 
@@ -71,7 +71,8 @@ async function slaDeadlines(
 export async function createCase(
   input: z.infer<typeof caseSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  await requirePermission(PERMISSIONS.CASE_WRITE);
+  const _auth = await authorize(PERMISSIONS.CASE_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = caseSchema.safeParse(input);
   if (!parsed.success) {
@@ -149,7 +150,9 @@ export async function updateCase(
   id: string,
   input: z.infer<typeof caseUpdateSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const user = await requirePermission(PERMISSIONS.CASE_WRITE);
+  const _auth = await authorize(PERMISSIONS.CASE_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   const parsed = caseUpdateSchema.safeParse(input);
   if (!parsed.success) {
@@ -238,7 +241,9 @@ export async function updateCase(
 
 /** Marks the first response, which is what SLA attainment is measured against. */
 export async function recordFirstResponse(id: string): Promise<ActionResult> {
-  const user = await requirePermission(PERMISSIONS.CASE_WRITE);
+  const _auth = await authorize(PERMISSIONS.CASE_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
 
   try {
     await prisma.$transaction(async (tx) => {
