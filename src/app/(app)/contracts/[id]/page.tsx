@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePermission, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
-  Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Alert,
+  Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Alert, Button,
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize, daysBetween } from "@/lib/utils";
 
@@ -64,6 +64,12 @@ export default async function ContractDetailPage({
         description={`${contract.contractNumber} · ${contract.account.name}`}
       >
         <Badge tone={statusTone(contract.status)}>{humanize(contract.status)}</Badge>
+        <Button asChild variant="outline">
+          <Link href={`/contracts/${contract.id}/edit`}>Edit</Link>
+        </Button>
+        <Button asChild>
+          <Link href={`/invoices/new?accountId=${contract.account.id}`}>New invoice</Link>
+        </Button>
       </PageHeader>
 
       {inRenewalWindow && (

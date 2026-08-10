@@ -1,16 +1,15 @@
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/authz";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
-  EmptyState, StatTile, Alert,
+  EmptyState, StatTile, Alert, Button,
 } from "@/components/ui";
+import { BillingRun } from "./billing-run";
 import { formatMoney, formatDate, humanize, daysBetween } from "@/lib/utils";
 
-/**
- * Read-only receivables view. Billing runs, payment allocation and the AP side
- * are Phase 4; the schema and the v_accounts_receivable view already exist.
- */
+/** Receivables: what has been billed, what is overdue, and what to bill next. */
 export default async function InvoicesPage() {
   await requireUser();
 
@@ -24,6 +23,13 @@ export default async function InvoicesPage() {
     orderBy: { dueDate: "asc" },
   });
 
+  // Projects the billing run can act on — anything live with work to bill.
+  const billableProjects = await prisma.project.findMany({
+    where: { deletedAt: null, status: { in: ["PLANNING", "ACTIVE", "AT_RISK", "COMPLETED"] } },
+    select: { id: true, name: true, projectNumber: true },
+    orderBy: { name: "asc" },
+  });
+
   const now = new Date();
   const live = invoices.filter((i) => !["DRAFT", "CANCELLED", "PAID", "WRITTEN_OFF"].includes(i.status));
   const overdue = live.filter((i) => i.dueDate < now);
@@ -32,7 +38,17 @@ export default async function InvoicesPage() {
 
   return (
     <>
-      <PageHeader title="Invoices" description="Customer billing and what is still owed to you." />
+      <PageHeader title="Invoices" description="Customer billing and what is still owed to you.">
+        <Button asChild variant="outline">
+          <Link href="/payments">Payments</Link>
+        </Button>
+        <BillingRun projects={billableProjects} />
+        <Button asChild>
+          <Link href="/invoices/new">
+            <Plus className="h-4 w-4" /> New invoice
+          </Link>
+        </Button>
+      </PageHeader>
 
       <div className="mb-6">
         <Alert tone="info">

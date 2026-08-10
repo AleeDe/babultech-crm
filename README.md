@@ -211,10 +211,16 @@ Following the spec's own phasing (§14.1):
 | **Partners** (new) | ✅ | ✅ | ✅ | ✅ Both partner kinds, deal splits, commission ledger, approvals, payouts, clawbacks |
 | 2 — Support | ✅ | ✅ | ✅ | ✅ Cases against a customer contact, SLA deadlines, first response, resolution |
 | 3 — Professional Services | ✅ | ✅ | ✅ | ✅ Projects, phases, milestones, tasks, team/allocation, RAID, timesheets, approvals, utilisation |
+| 2 — Commercial | ✅ | ✅ | ✅ | ✅ Quote builder with versioning and accept/reject, contracts |
+| 4 — Finance | ✅ | ✅ | ✅ | ✅ Invoices, milestone and time billing runs, payments and cash application |
 | 1 — Reference data | ✅ | ✅ | ✅ | ❌ Campaigns and Products are read-only |
-| 2 — Commercial | ✅ | ✅ | ✅ | ❌ Quotations and Contracts are read-only; no quote builder yet |
-| 4 — Finance | ✅ | ✅ | ✅ | ❌ Invoices read-only; no billing runs or payment allocation |
 | 5 — Optimisation | Partial | ❌ | ❌ | ❌ Approvals engine, portal, integrations, forecasting |
+
+The commercial and finance write paths enforce their own rules: a sent quote is
+revised rather than edited and only one version per deal can be accepted; an
+issued invoice is not editable and is written off rather than amended; payments
+cannot overpay an invoice, settle a draft one, or cross currencies; and both
+billing runs are safe to re-run without duplicating.
 
 Every record referenced by a foreign key links through to that record — accounts,
 contacts, leads, opportunities, quotes, contracts, cases, projects, invoices,

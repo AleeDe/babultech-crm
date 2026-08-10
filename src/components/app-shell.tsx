@@ -6,7 +6,7 @@ import { useState } from "react";
 import {
   LayoutDashboard, Megaphone, UserPlus, Building2, Users, Target,
   FileText, FileSignature, Handshake, Coins, LifeBuoy, FolderKanban,
-  Receipt, Package, CalendarCheck, Menu, X, LogOut, Clock, UsersRound,
+  Receipt, Package, CalendarCheck, Menu, X, LogOut, Clock, UsersRound, Banknote,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 
@@ -65,7 +65,10 @@ const NAV: NavGroup[] = [
   },
   {
     label: "Finance",
-    items: [{ href: "/invoices", label: "Invoices", icon: Receipt, soon: true }],
+    items: [
+      { href: "/invoices", label: "Invoices", icon: Receipt },
+      { href: "/payments", label: "Payments", icon: Banknote },
+    ],
   },
 ];
 

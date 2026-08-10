@@ -4,9 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { requirePermission, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
-  Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Alert,
+  Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Alert, Button,
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, formatNumber, humanize } from "@/lib/utils";
+import { QuoteActions } from "./quote-actions";
 
 export default async function QuotationDetailPage({
   params,
@@ -58,6 +59,11 @@ export default async function QuotationDetailPage({
         <Badge tone={statusTone(quote.status)}>{humanize(quote.status)}</Badge>
         {quote.approvalStatus !== "NOT_REQUIRED" && (
           <Badge tone={statusTone(quote.approvalStatus)}>{humanize(quote.approvalStatus)}</Badge>
+        )}
+        {["DRAFT", "UNDER_REVIEW", "APPROVED"].includes(quote.status) && (
+          <Button asChild variant="outline">
+            <Link href={`/quotations/${quote.id}/edit`}>Edit</Link>
+          </Button>
         )}
       </PageHeader>
 
@@ -144,6 +150,12 @@ export default async function QuotationDetailPage({
         </div>
 
         <div className="space-y-6">
+          <QuoteActions
+            quoteId={quote.id}
+            status={quote.status}
+            expiryDate={quote.expiryDate.toISOString()}
+          />
+
           <Card>
             <CardHeader>
               <CardTitle>Details</CardTitle>

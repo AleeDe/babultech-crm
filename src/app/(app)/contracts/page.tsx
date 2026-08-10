@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requirePermission, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
-  EmptyState, StatTile, Alert,
+  EmptyState, StatTile, Alert, Button,
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize, daysBetween } from "@/lib/utils";
 
@@ -33,7 +34,13 @@ export default async function ContractsPage() {
       <PageHeader
         title="Contracts"
         description="Signed agreements. Renewal notice periods are tracked so nothing auto-renews by accident."
-      />
+      >
+        <Button asChild>
+          <Link href="/contracts/new">
+            <Plus className="h-4 w-4" /> New contract
+          </Link>
+        </Button>
+      </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Active contracts" value={String(active.length)} />

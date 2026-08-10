@@ -1,0 +1,275 @@
+"use client";
+
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { createContract, updateContract } from "@/server/contracts";
+import {
+  Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
+  Select, Textarea, Alert,
+} from "@/components/ui";
+import { formatMoney, humanize } from "@/lib/utils";
+
+const STATUSES = ["DRAFT", "UNDER_REVIEW", "SENT_FOR_SIGNATURE", "ACTIVE", "EXPIRED", "TERMINATED", "RENEWED"];
+const FREQUENCIES = ["ONE_TIME", "MONTHLY", "QUARTERLY", "MILESTONE", "ANNUAL"];
+const RENEWALS = ["MANUAL", "AUTO_RENEW"];
+
+export interface ContractFormOptions {
+  accounts: { id: string; name: string }[];
+  users: { id: string; fullName: string }[];
+  opportunities: { id: string; opportunityNumber: string; name: string; accountId: string }[];
+  quotations: {
+    id: string; quoteNumber: string; versionNumber: number; accountId: string;
+    opportunityId: string; totalAmount: string; currencyCode: string;
+  }[];
+  currencies: { code: string; name: string }[];
+}
+
+export interface ContractDefaults {
+  id: string;
+  name: string;
+  accountId: string;
+  opportunityId: string | null;
+  quotationId: string | null;
+  ownerUserId: string;
+  contractType: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  contractValue: string;
+  currencyCode: string;
+  billingFrequency: string | null;
+  renewalType: string | null;
+  noticePeriodDays: number | null;
+  signedDate: string | null;
+  terminationReason: string | null;
+}
+
+const dateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
+
+export function ContractForm({
+  options,
+  defaults,
+  currentUserId,
+}: {
+  options: ContractFormOptions;
+  defaults?: ContractDefaults;
+  currentUserId: string;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+
+  const [accountId, setAccountId] = useState(defaults?.accountId ?? "");
+  const [status, setStatus] = useState(defaults?.status ?? "DRAFT");
+  const [value, setValue] = useState(defaults?.contractValue ?? "");
+  const [currency, setCurrency] = useState(defaults?.currencyCode ?? "PKR");
+
+  const editing = Boolean(defaults);
+  const accountOpportunities = useMemo(
+    () => options.opportunities.filter((o) => o.accountId === accountId),
+    [options.opportunities, accountId],
+  );
+  const accountQuotes = useMemo(
+    () => options.quotations.filter((q) => q.accountId === accountId),
+    [options.quotations, accountId],
+  );
+
+  /** An accepted quote already says what was agreed — carry it over. */
+  function seedFromQuote(quotationId: string) {
+    const quote = options.quotations.find((q) => q.id === quotationId);
+    if (!quote) return;
+    setValue(String(Number(quote.totalAmount)));
+    setCurrency(quote.currencyCode);
+  }
+
+  function onSubmit(formData: FormData) {
+    setError(null);
+    setFieldErrors({});
+
+    const get = (k: string) => {
+      const v = formData.get(k);
+      return v === null || v === "" ? null : String(v);
+    };
+
+    const input = {
+      name: String(formData.get("name") ?? ""),
+      accountId,
+      opportunityId: get("opportunityId"),
+      quotationId: get("quotationId"),
+      ownerUserId: String(formData.get("ownerUserId") ?? ""),
+      contractType: String(formData.get("contractType") ?? ""),
+      status,
+      startDate: get("startDate"),
+      endDate: get("endDate"),
+      contractValue: value || "0",
+      currencyCode: currency,
+      billingFrequency: get("billingFrequency"),
+      renewalType: get("renewalType"),
+      noticePeriodDays: get("noticePeriodDays"),
+      signedDate: get("signedDate"),
+      terminationReason: get("terminationReason"),
+    } as never;
+
+    startTransition(async () => {
+      const result = defaults
+        ? await updateContract(defaults.id, input)
+        : await createContract(input);
+
+      if (result.ok) {
+        router.push(`/contracts/${result.data.id}`);
+        router.refresh();
+      } else {
+        setError(result.error);
+        setFieldErrors(result.fieldErrors ?? {});
+      }
+    });
+  }
+
+  return (
+    <form action={onSubmit} className="space-y-6">
+      {error && <Alert tone="danger">{error}</Alert>}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Agreement</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <Field label="Contract name" required error={fieldErrors.name?.[0]}>
+            <Input name="name" required defaultValue={defaults?.name} placeholder="Acme — annual support" />
+          </Field>
+          <Field label="Customer" required>
+            <Select
+              name="accountId"
+              required
+              value={accountId}
+              disabled={editing}
+              onChange={(e) => setAccountId(e.target.value)}
+            >
+              <option value="">Select a customer…</option>
+              {options.accounts.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Contract type" required>
+            <Input name="contractType" required defaultValue={defaults?.contractType} placeholder="Support / Licence / Services" />
+          </Field>
+          <Field label="Owner" required>
+            <Select name="ownerUserId" required defaultValue={defaults?.ownerUserId ?? currentUserId}>
+              {options.users.map((u) => (
+                <option key={u.id} value={u.id}>{u.fullName}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="From accepted quote" hint="Fills the value and currency for you.">
+            <Select
+              name="quotationId"
+              defaultValue={defaults?.quotationId ?? ""}
+              disabled={!accountId}
+              onChange={(e) => seedFromQuote(e.target.value)}
+            >
+              <option value="">None</option>
+              {accountQuotes.map((q) => (
+                <option key={q.id} value={q.id}>
+                  {q.quoteNumber} v{q.versionNumber} — {formatMoney(q.totalAmount, q.currencyCode)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Opportunity">
+            <Select name="opportunityId" defaultValue={defaults?.opportunityId ?? ""} disabled={!accountId}>
+              <option value="">None</option>
+              {accountOpportunities.map((o) => (
+                <option key={o.id} value={o.id}>{o.opportunityNumber} — {o.name}</option>
+              ))}
+            </Select>
+          </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Term and value</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="Status" required>
+            <Select name="status" required value={status} onChange={(e) => setStatus(e.target.value)}>
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>{humanize(s)}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Start date" required>
+            <Input name="startDate" type="date" required defaultValue={dateInput(defaults?.startDate ?? null)} />
+          </Field>
+          <Field label="End date" required error={fieldErrors.endDate?.[0]}>
+            <Input name="endDate" type="date" required defaultValue={dateInput(defaults?.endDate ?? null)} />
+          </Field>
+          <Field
+            label="Signed on"
+            required={status === "ACTIVE"}
+            error={fieldErrors.signedDate?.[0]}
+            hint="Required before a contract can be Active."
+          >
+            <Input name="signedDate" type="date" defaultValue={dateInput(defaults?.signedDate ?? null)} />
+          </Field>
+          <Field label="Contract value" required>
+            <Input
+              name="contractValue"
+              type="number"
+              step="0.01"
+              min="0"
+              required
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+            />
+          </Field>
+          <Field label="Currency" required>
+            <Select name="currencyCode" required value={currency} onChange={(e) => setCurrency(e.target.value)}>
+              {options.currencies.map((c) => (
+                <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Billing frequency">
+            <Select name="billingFrequency" defaultValue={defaults?.billingFrequency ?? ""}>
+              <option value="">Not set</option>
+              {FREQUENCIES.map((f) => (
+                <option key={f} value={f}>{humanize(f)}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Renewal">
+            <Select name="renewalType" defaultValue={defaults?.renewalType ?? ""}>
+              <option value="">Not set</option>
+              {RENEWALS.map((r) => (
+                <option key={r} value={r}>{humanize(r)}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Notice period (days)" hint="Drives the renewal warning on the contract.">
+            <Input name="noticePeriodDays" type="number" min="0" defaultValue={defaults?.noticePeriodDays ?? 90} />
+          </Field>
+
+          {status === "TERMINATED" && (
+            <div className="sm:col-span-2 lg:col-span-4">
+              <Field label="Termination reason" required error={fieldErrors.terminationReason?.[0]}>
+                <Textarea name="terminationReason" rows={2} required defaultValue={defaults?.terminationReason ?? ""} />
+              </Field>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={() => router.back()} disabled={pending}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={pending}>
+          {pending ? "Saving…" : editing ? "Save contract" : "Create contract"}
+        </Button>
+      </div>
+    </form>
+  );
+}

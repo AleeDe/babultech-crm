@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requirePermission, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
-  EmptyState, StatTile,
+  EmptyState, StatTile, Button,
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize } from "@/lib/utils";
 
@@ -34,7 +35,13 @@ export default async function QuotationsPage() {
       <PageHeader
         title="Quotations"
         description="Versioned offers. Only one version per deal can be accepted, and accepted quotes are locked."
-      />
+      >
+        <Button asChild>
+          <Link href="/quotations/new">
+            <Plus className="h-4 w-4" /> New quote
+          </Link>
+        </Button>
+      </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Open quotes" value={String(quotes.filter((q) => ["DRAFT", "SENT", "APPROVED", "UNDER_REVIEW"].includes(q.status)).length)} />

@@ -4,9 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { requirePermission, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
-  Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Alert,
+  Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Alert, Button,
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, formatNumber, humanize, daysBetween } from "@/lib/utils";
+import { InvoiceActions } from "./invoice-actions";
 
 export default async function InvoiceDetailPage({
   params,
@@ -68,6 +69,11 @@ export default async function InvoiceDetailPage({
         description={`${invoice.account.name} · issued ${formatDate(invoice.invoiceDate)}`}
       >
         <Badge tone={statusTone(invoice.status)}>{humanize(invoice.status)}</Badge>
+        {["DRAFT", "APPROVED"].includes(invoice.status) && (
+          <Button asChild variant="outline">
+            <Link href={`/invoices/${invoice.id}/edit`}>Edit</Link>
+          </Button>
+        )}
       </PageHeader>
 
       {overdue && (
@@ -204,6 +210,13 @@ export default async function InvoiceDetailPage({
         </div>
 
         <div className="space-y-6">
+          <InvoiceActions
+            invoiceId={invoice.id}
+            status={invoice.status}
+            outstanding={String(invoice.outstandingAmount)}
+            currency={invoice.currencyCode}
+          />
+
           <Card>
             <CardHeader>
               <CardTitle>Details</CardTitle>
