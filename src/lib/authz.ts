@@ -21,6 +21,12 @@ export interface SessionUser {
   permissions: string[];
   departmentId: string | null;
   teamIds: string[];
+  /**
+   * Set only for external partner portal logins. Its presence is what makes a
+   * user external: the internal app bounces them out, and every portal query
+   * scopes through it. Never take this from a URL — only from the session.
+   */
+  partnerId: string | null;
 }
 
 export class AuthorizationError extends Error {
@@ -53,6 +59,7 @@ export async function requireUser(): Promise<SessionUser> {
     permissions: user.role.permissions,
     departmentId: user.departmentId,
     teamIds: user.teamMemberships.map((m) => m.teamId),
+    partnerId: user.partnerId,
   };
 }
 

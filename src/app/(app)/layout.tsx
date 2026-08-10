@@ -5,6 +5,11 @@ import { requireUser, can, AuthorizationError, PERMISSIONS } from "@/lib/authz";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   try {
     const user = await requireUser();
+
+    // External partner logins never see the internal app, whatever they type
+    // in the address bar. The portal layout enforces the reverse.
+    if (user.partnerId) redirect("/portal");
+
     return (
       <AppShell
         user={{ fullName: user.fullName, email: user.email, roleName: user.roleName }}

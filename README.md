@@ -215,7 +215,30 @@ Following the spec's own phasing (§14.1):
 | 4 — Finance | ✅ | ✅ | ✅ | ✅ Invoices, milestone and time billing runs, payments and cash application |
 | 1 — Reference data | ✅ | ✅ | ✅ | ❌ Campaigns and Products are read-only |
 | Administration | ✅ | ✅ | ✅ | ✅ Users, roles, credentials, partner portal logins |
-| 5 — Optimisation | Partial | ❌ | ❌ | ❌ Approvals engine, partner portal screens, integrations, forecasting |
+| **Partner portal** | ✅ | ✅ | ✅ | ✅ External login: their deals, customers, referrals, commission and payouts |
+| 5 — Optimisation | Partial | ❌ | ❌ | ❌ Approvals engine, integrations, forecasting |
+
+### The partner portal
+
+Partners sign in at the same `/login` and land on `/portal`. It is a separate
+route group with its own shell — not the internal app with items hidden — and
+isolation is enforced from both ends:
+
+- `(app)/layout.tsx` redirects any user with a `partnerId` to `/portal`
+- `portal/layout.tsx` redirects any user without one to `/`
+
+Neither side depends on the other, so a mistake in one does not open the other.
+
+Every query in `src/server/portal.ts` starts from the partner id **on the
+session**. No portal function takes a partner id as an argument, so there is no
+parameter for an external user to tamper with. A partner sees the deals they are
+registered on, the customers behind those deals, the leads they referred, their
+own commission ledger and their payouts — and never another partner's records,
+internal cost or margin, the wider pipeline, employee data, or their own stored
+bank details.
+
+To create one: **Users → New user → Partner role → pick the partner**. A partner
+gets exactly one login.
 
 ### Users and roles
 
