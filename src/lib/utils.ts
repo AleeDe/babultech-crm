@@ -90,6 +90,42 @@ export function daysBetween(from: Date | string, to: Date | string): number {
   return Math.floor(ms / 86_400_000);
 }
 
+/**
+ * Route for a record, given the polymorphic (entityType, entityId) pair used by
+ * Activity, Note, Document, Approval and Audit. Returns null when that entity
+ * has no page of its own, so callers can fall back to plain text rather than
+ * rendering a link that 404s.
+ */
+export function entityHref(
+  entityType: string | null | undefined,
+  entityId: string | null | undefined,
+): string | null {
+  if (!entityType || !entityId) return null;
+
+  const routes: Record<string, string> = {
+    Account: "/accounts",
+    Contact: "/contacts",
+    Lead: "/leads",
+    Opportunity: "/opportunities",
+    Quotation: "/quotations",
+    Contract: "/contracts",
+    Case: "/cases",
+    SupportCase: "/cases",
+    Project: "/projects",
+    Invoice: "/invoices",
+    Partner: "/partners",
+    Campaign: "/campaigns",
+    Product: "/products",
+  };
+
+  const base = routes[entityType];
+  if (!base) return null;
+
+  // Contacts and leads are edited rather than viewed — they have no read page.
+  if (base === "/contacts" || base === "/leads") return `${base}/${entityId}/edit`;
+  return `${base}/${entityId}`;
+}
+
 /** Prisma Decimals don't survive the server→client boundary. Flatten first. */
 export function serialize<T>(value: T): T {
   return JSON.parse(

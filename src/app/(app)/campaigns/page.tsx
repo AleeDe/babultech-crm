@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { listCampaigns, getCampaignPerformance } from "@/server/crm";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Table, THead, TBody,
@@ -73,7 +74,9 @@ export default async function CampaignsPage() {
                 {campaigns.map((c) => (
                   <TR key={c.id}>
                     <TD>
-                      <span className="font-medium">{c.name}</span>
+                      <Link href={`/campaigns/${c.id}`} className="font-medium hover:underline">
+                        {c.name}
+                      </Link>
                       <p className="text-xs text-muted-foreground">{c.campaignNumber}</p>
                     </TD>
                     <TD className="text-sm text-muted-foreground">
@@ -129,7 +132,11 @@ export default async function CampaignsPage() {
               <TBody>
                 {performance.map((p) => (
                   <TR key={p.campaign_id}>
-                    <TD className="text-sm font-medium">{p.campaign_name}</TD>
+                    <TD className="text-sm font-medium">
+                      <Link href={`/campaigns/${p.campaign_id}`} className="hover:underline">
+                        {p.campaign_name}
+                      </Link>
+                    </TD>
                     <TD className="text-right tabular">{formatMoney(p.actual_cost)}</TD>
                     <TD className="text-right tabular">{Number(p.leads)}</TD>
                     <TD className="text-right tabular">

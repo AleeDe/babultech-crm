@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { listProducts } from "@/server/crm";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, EmptyState,
@@ -36,7 +37,9 @@ export default async function ProductsPage() {
               {products.map((p) => (
                 <TR key={p.id} className={p.active ? "" : "opacity-50"}>
                   <TD>
-                    <span className="font-medium">{p.name}</span>
+                    <Link href={`/products/${p.id}`} className="font-medium hover:underline">
+                      {p.name}
+                    </Link>
                     <p className="text-xs text-muted-foreground">{p.productCode}</p>
                   </TD>
                   <TD className="text-sm text-muted-foreground">{p.category ?? "—"}</TD>

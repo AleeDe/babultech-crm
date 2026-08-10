@@ -93,7 +93,9 @@ export default async function OpportunityDetailPage({
                     {opp.lines.map((l) => (
                       <TR key={l.id}>
                         <TD className="text-sm">
-                          {l.product.name}
+                          <Link href={`/products/${l.product.id}`} className="font-medium hover:underline">
+                            {l.product.name}
+                          </Link>
                           <p className="text-xs text-muted-foreground">{l.product.productCode}</p>
                         </TD>
                         <TD className="text-right tabular">{Number(l.quantity)}</TD>
@@ -138,7 +140,11 @@ export default async function OpportunityDetailPage({
                     {opp.commissionRecords.map((r) => (
                       <TR key={r.id}>
                         <TD className="font-mono text-xs">{r.commissionNumber}</TD>
-                        <TD className="text-sm">{r.partner.displayName}</TD>
+                        <TD className="text-sm">
+                          <Link href={`/partners/${r.partner.id}`} className="hover:underline">
+                            {r.partner.displayName}
+                          </Link>
+                        </TD>
                         <TD className="text-sm">{formatDate(r.earnedDate)}</TD>
                         <TD className="text-right tabular">{formatMoney(r.commissionAmount, r.currencyCode)}</TD>
                         <TD className="text-right font-medium tabular">
@@ -170,12 +176,20 @@ export default async function OpportunityDetailPage({
                 </Link>
               </Row>
               <Row label="Primary contact">
-                {opp.primaryContact
-                  ? `${opp.primaryContact.firstName} ${opp.primaryContact.lastName}`
-                  : "—"}
+                {opp.primaryContact ? (
+                  <Link href={`/contacts/${opp.primaryContact.id}/edit`} className="text-primary hover:underline">
+                    {opp.primaryContact.firstName} {opp.primaryContact.lastName}
+                  </Link>
+                ) : "—"}
               </Row>
               <Row label="Owner">{opp.owner.fullName}</Row>
-              <Row label="Campaign">{opp.campaign?.name ?? "—"}</Row>
+              <Row label="Campaign">
+                {opp.campaign ? (
+                  <Link href={`/campaigns/${opp.campaign.id}`} className="text-primary hover:underline">
+                    {opp.campaign.name}
+                  </Link>
+                ) : "—"}
+              </Row>
               <Row label="Lead source">{opp.leadSource ?? "—"}</Row>
               <Row label="Next step">{opp.nextStep ?? "—"}</Row>
               {opp.lossReason && <Row label="Loss reason">{opp.lossReason}</Row>}
@@ -195,7 +209,9 @@ export default async function OpportunityDetailPage({
                 opp.quotations.map((q) => (
                   <div key={q.id} className="flex items-center justify-between border-b pb-2 last:border-0">
                     <div>
-                      <p className="font-mono text-xs">{q.quoteNumber}</p>
+                      <Link href={`/quotations/${q.id}`} className="font-mono text-xs hover:underline">
+                        {q.quoteNumber}
+                      </Link>
                       <p className="text-xs text-muted-foreground">v{q.versionNumber}</p>
                     </div>
                     <div className="text-right">

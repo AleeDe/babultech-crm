@@ -294,6 +294,22 @@ export function StatTile({
   return href ? <Link href={href}>{body}</Link> : body;
 }
 
+/** Label-above-value row used down the side of every detail page. */
+export function DetailRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="mt-0.5">{children}</div>
+    </div>
+  );
+}
+
 export function EmptyState({
   title,
   description,

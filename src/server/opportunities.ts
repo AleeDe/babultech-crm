@@ -356,7 +356,7 @@ export async function getOpportunity(id: string) {
       },
       commissionRecords: {
         where: { deletedAt: null },
-        include: { partner: { select: { displayName: true } } },
+        include: { partner: { select: { id: true, displayName: true } } },
         orderBy: { earnedDate: "desc" },
       },
     },

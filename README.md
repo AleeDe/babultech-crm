@@ -98,13 +98,15 @@ Design decisions worth flagging:
 
 ### Prerequisites
 
-**Node.js is not currently installed on this machine.** Install it first:
+Node 22 and PostgreSQL 16, both via Homebrew. On Apple Silicon `node@22` is
+keg-only, so it needs to be on your PATH explicitly:
 
 ```bash
-# Install Homebrew, then Node 22
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 brew install node@22 postgresql@16
 brew services start postgresql@16
+echo 'export PATH="/opt/homebrew/opt/node@22/bin:/opt/homebrew/opt/postgresql@16/bin:$PATH"' >> ~/.zprofile
+source ~/.zprofile
 ```
 
 ### Setup
@@ -117,12 +119,16 @@ npm install
 createdb babultech_crm
 
 cp .env.example .env
-# Set DATABASE_URL, then generate a secret:
+# Homebrew's PostgreSQL has no "postgres" role — the role is your macOS
+# username, with no password. So DATABASE_URL looks like:
+#   postgresql://<your-username>@localhost:5432/babultech_crm?schema=public
+# Then generate a secret:
 #   openssl rand -base64 32   →  AUTH_SECRET
 
 npx prisma migrate dev --name init      # build the schema
-psql "$DATABASE_URL" -f prisma/sql/01_constraints.sql   # checks + triggers
-psql "$DATABASE_URL" -f prisma/sql/02_views.sql         # reporting views
+# Pass the database name, not $DATABASE_URL — psql rejects the ?schema= param.
+psql babultech_crm -f prisma/sql/01_constraints.sql   # checks + triggers
+psql babultech_crm -f prisma/sql/02_views.sql         # reporting views
 npm run db:seed                          # reference + demo data
 
 npm run dev
@@ -199,15 +205,22 @@ Following the spec's own phasing (§14.1):
 
 "Working UI" below means **you can create and edit records**, not just look at them.
 
-| Phase | Schema | Read | Create / edit |
-|---|---|---|---|
-| 1 — Core CRM | ✅ | ✅ | ✅ Accounts, Contacts, Leads (+ conversion), Opportunities (+ line items, stage moves) |
-| **Partners** (new) | ✅ | ✅ | ✅ Partner CRUD both kinds, deal attachment with splits, commission ledger, approvals, payouts, clawbacks |
-| 1 — Reference data | ✅ | ✅ | ❌ Campaigns, Products and Activities are read-only lists |
-| 2 — Commercial & Support | ✅ | ✅ | ❌ Quotations, Contracts, Cases — list views only; no server actions yet, and the SLA timer engine is unwritten |
-| 3 — Professional Services | ✅ | ✅ | ❌ Projects list only |
-| 4 — Finance | ✅ | ✅ | ❌ Invoices list + AR ageing; no billing runs or payment allocation |
-| 5 — Optimisation | Partial | ❌ | ❌ Approvals engine, portal, integrations, forecasting |
+| Phase | Schema | List | Detail | Create / edit |
+|---|---|---|---|---|
+| 1 — Core CRM | ✅ | ✅ | ✅ | ✅ Accounts, Contacts, Leads (+ conversion), Opportunities (+ line items, stage moves) |
+| **Partners** (new) | ✅ | ✅ | ✅ | ✅ Both partner kinds, deal splits, commission ledger, approvals, payouts, clawbacks |
+| 2 — Support | ✅ | ✅ | ✅ | ✅ Cases against a customer contact, SLA deadlines, first response, resolution |
+| 3 — Professional Services | ✅ | ✅ | ✅ | ✅ Projects, phases, milestones, tasks, team/allocation, RAID, timesheets, approvals, utilisation |
+| 1 — Reference data | ✅ | ✅ | ✅ | ❌ Campaigns and Products are read-only |
+| 2 — Commercial | ✅ | ✅ | ✅ | ❌ Quotations and Contracts are read-only; no quote builder yet |
+| 4 — Finance | ✅ | ✅ | ✅ | ❌ Invoices read-only; no billing runs or payment allocation |
+| 5 — Optimisation | Partial | ❌ | ❌ | ❌ Approvals engine, portal, integrations, forecasting |
+
+Every record referenced by a foreign key links through to that record — accounts,
+contacts, leads, opportunities, quotes, contracts, cases, projects, invoices,
+products, campaigns and partners all have a page, and `entityHref()` in
+`src/lib/utils.ts` resolves the polymorphic (entityType, entityId) pairs used by
+Activity, Note, Document and Audit.
 
 Every module's **data model is complete** — the remaining work is screens and server actions, not migrations.
 

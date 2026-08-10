@@ -1,17 +1,18 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, EmptyState, StatTile,
 } from "@/components/ui";
-import { formatDateTime, humanize } from "@/lib/utils";
+import { formatDateTime, humanize, entityHref } from "@/lib/utils";
 
 export default async function ActivitiesPage() {
   const user = await requireUser();
 
   const activities = await prisma.activity.findMany({
     where: { deletedAt: null, ownerUserId: user.id },
-    include: { contact: { select: { firstName: true, lastName: true } } },
+    include: { contact: { select: { id: true, firstName: true, lastName: true } } },
     orderBy: [{ status: "asc" }, { dueAt: "asc" }],
     take: 200,
   });
@@ -68,11 +69,26 @@ export default async function ActivitiesPage() {
                       <TD>
                         <Badge tone="neutral">{humanize(a.activityType)}</Badge>
                       </TD>
-                      <TD className="text-sm text-muted-foreground">
-                        {a.contact ? `${a.contact.firstName} ${a.contact.lastName}` : "—"}
+                      <TD className="text-sm">
+                        {a.contact ? (
+                          <Link href={`/contacts/${a.contact.id}/edit`} className="hover:underline">
+                            {a.contact.firstName} {a.contact.lastName}
+                          </Link>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TD>
-                      <TD className="text-sm text-muted-foreground">
-                        {a.relatedEntityType ? humanize(a.relatedEntityType) : "—"}
+                      <TD className="text-sm">
+                        {(() => {
+                          const href = entityHref(a.relatedEntityType, a.relatedEntityId);
+                          if (!a.relatedEntityType) return <span className="text-muted-foreground">—</span>;
+                          const label = humanize(a.relatedEntityType);
+                          return href ? (
+                            <Link href={href} className="text-primary hover:underline">{label}</Link>
+                          ) : (
+                            <span className="text-muted-foreground">{label}</span>
+                          );
+                        })()}
                       </TD>
                       <TD className={`text-sm ${late ? "text-red-600 dark:text-red-400" : ""}`}>
                         {formatDateTime(a.dueAt)}

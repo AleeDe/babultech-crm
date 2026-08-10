@@ -73,7 +73,9 @@ export default async function QuotationsPage() {
                 return (
                   <TR key={q.id}>
                     <TD>
-                      <span className="font-mono text-xs">{q.quoteNumber}</span>
+                      <Link href={`/quotations/${q.id}`} className="font-mono text-xs hover:underline">
+                        {q.quoteNumber}
+                      </Link>
                       <p className="text-xs text-muted-foreground">v{q.versionNumber} · {q._count.lines} lines</p>
                     </TD>
                     <TD className="text-sm">

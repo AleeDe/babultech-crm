@@ -117,7 +117,9 @@ export default async function AccountDetailPage({
                   {account.contacts.map((c) => (
                     <TR key={c.id}>
                       <TD className="text-sm font-medium">
-                        {c.firstName} {c.lastName}
+                        <Link href={`/contacts/${c.id}/edit`} className="hover:underline">
+                          {c.firstName} {c.lastName}
+                        </Link>
                         {c.isPrimary && <Badge tone="info" className="ml-2">Primary</Badge>}
                       </TD>
                       <TD className="text-sm text-muted-foreground">{c.jobTitle ?? "—"}</TD>
@@ -224,7 +226,9 @@ export default async function AccountDetailPage({
                 <TBody>
                   {account.invoices.map((i) => (
                     <TR key={i.id}>
-                      <TD className="font-mono text-xs">{i.invoiceNumber}</TD>
+                      <TD className="font-mono text-xs">
+                        <Link href={`/invoices/${i.id}`} className="hover:underline">{i.invoiceNumber}</Link>
+                      </TD>
                       <TD className="text-sm">{formatDate(i.dueDate)}</TD>
                       <TD className="text-right tabular">{formatMoney(i.outstandingAmount, i.currencyCode)}</TD>
                       <TD>

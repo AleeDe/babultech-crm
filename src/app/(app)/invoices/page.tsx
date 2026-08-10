@@ -18,7 +18,7 @@ export default async function InvoicesPage() {
     where: { deletedAt: null },
     include: {
       account: { select: { id: true, name: true } },
-      project: { select: { name: true } },
+      project: { select: { id: true, name: true } },
       _count: { select: { allocations: true } },
     },
     orderBy: { dueDate: "asc" },
@@ -78,12 +78,18 @@ export default async function InvoicesPage() {
 
                 return (
                   <TR key={i.id}>
-                    <TD className="font-mono text-xs">{i.invoiceNumber}</TD>
+                    <TD className="font-mono text-xs">
+                      <Link href={`/invoices/${i.id}`} className="hover:underline">{i.invoiceNumber}</Link>
+                    </TD>
                     <TD className="text-sm">
                       <Link href={`/accounts/${i.account.id}`} className="hover:underline">
                         {i.account.name}
                       </Link>
-                      {i.project && <p className="text-xs text-muted-foreground">{i.project.name}</p>}
+                      {i.project && (
+                        <Link href={`/projects/${i.project.id}`} className="block text-xs text-muted-foreground hover:underline">
+                          {i.project.name}
+                        </Link>
+                      )}
                     </TD>
                     <TD className="text-sm">{formatDate(i.invoiceDate)}</TD>
                     <TD className={`text-sm ${late ? "text-red-600 dark:text-red-400" : ""}`}>

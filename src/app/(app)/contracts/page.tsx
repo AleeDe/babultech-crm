@@ -76,7 +76,9 @@ export default async function ContractsPage() {
                 return (
                   <TR key={c.id}>
                     <TD>
-                      <span className="font-medium">{c.name}</span>
+                      <Link href={`/contracts/${c.id}`} className="font-medium hover:underline">
+                        {c.name}
+                      </Link>
                       <p className="text-xs text-muted-foreground">{c.contractNumber}</p>
                     </TD>
                     <TD className="text-sm">
