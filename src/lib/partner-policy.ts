@@ -20,6 +20,40 @@
  */
 export const DEAL_REGISTRATION_PROTECTION_DAYS = 90;
 
+/**
+ * Protection window by partner tier.
+ *
+ * A longer window is the cheapest reward in a partner programme: it costs
+ * nothing unless the partner actually wins, and it is what a partner feels
+ * when they are promoted. These are the conventional shape — each step roughly
+ * half again as long — but they are **BabulTech's commercial policy to set**,
+ * not a technical constant. Change the numbers here and every future
+ * registration follows; existing registrations keep the window they were given,
+ * because the expiry is stamped on the record rather than computed on read.
+ */
+export const TIER_PROTECTION_DAYS: Record<string, number> = {
+  REGISTERED: 60,
+  SILVER: 90,
+  GOLD: 120,
+  PLATINUM: 180,
+};
+
+/**
+ * How long this partner's registrations are protected.
+ *
+ * Precedence: a per-partner override beats the tier default, which beats the
+ * programme default. The override exists because a specific partner will
+ * eventually negotiate a specific number, and encoding that as a fake tier
+ * would corrupt the tier's meaning everywhere else.
+ */
+export function protectionDaysFor(
+  tier: string | null | undefined,
+  override?: number | null,
+): number {
+  if (override && override > 0) return override;
+  return (tier && TIER_PROTECTION_DAYS[tier]) || DEAL_REGISTRATION_PROTECTION_DAYS;
+}
+
 /** How long before expiry a partner is warned on their portal. */
 export const REGISTRATION_EXPIRY_WARNING_DAYS = 30;
 

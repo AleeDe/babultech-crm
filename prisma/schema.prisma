@@ -1180,6 +1180,9 @@ model Partner {
   taxNumber         String?       @db.VarChar(50)
   /// Withholding tax deducted at payout time, if any.
   withholdingTaxPercent Decimal?  @db.Decimal(8, 4)
+  /// Negotiated deal-registration protection window, in days. Null means the
+  /// tier default applies — see src/lib/partner-policy.ts.
+  registrationProtectionDays Int? 
   bankDetails       Json?
   email             String?       @db.VarChar(255)
   phone             String?       @db.VarChar(50)

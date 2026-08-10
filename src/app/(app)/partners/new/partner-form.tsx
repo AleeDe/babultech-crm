@@ -9,6 +9,7 @@ import {
   Select, Textarea, Alert,
 } from "@/components/ui";
 import { cn, humanize } from "@/lib/utils";
+import { TIER_PROTECTION_DAYS, DEAL_REGISTRATION_PROTECTION_DAYS } from "@/lib/partner-policy";
 
 interface Options {
   users: { id: string; fullName: string }[];
@@ -28,6 +29,7 @@ export function PartnerForm({ options }: { options: Options }) {
   const [pending, startTransition] = useTransition();
   const [kind, setKind] = useState<"COMPANY" | "INDIVIDUAL">("COMPANY");
   const [linkExisting, setLinkExisting] = useState(false);
+  const [tierValue, setTierValue] = useState("REGISTERED");
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
@@ -53,6 +55,7 @@ export function PartnerForm({ options }: { options: Options }) {
       payoutCurrencyCode: get("payoutCurrencyCode") ?? "PKR",
       taxNumber: get("taxNumber"),
       withholdingTaxPercent: get("withholdingTaxPercent"),
+      registrationProtectionDays: get("registrationProtectionDays"),
       email: get("email"),
       phone: get("phone"),
       website: get("website"),
@@ -235,7 +238,7 @@ export function PartnerForm({ options }: { options: Options }) {
             </Select>
           </Field>
           <Field label="Tier">
-            <Select name="tier" defaultValue="REGISTERED">
+            <Select name="tier" value={tierValue} onChange={(e) => setTierValue(e.target.value)}>
               {["REGISTERED", "SILVER", "GOLD", "PLATINUM"].map((t) => (
                 <option key={t} value={t}>{humanize(t)}</option>
               ))}
@@ -311,7 +314,12 @@ export function PartnerForm({ options }: { options: Options }) {
           <Field label="Withholding tax %" hint="Deducted automatically at payout.">
             <Input name="withholdingTaxPercent" type="number" step="0.01" min="0" max="100" placeholder="10" />
           </Field>
-          <div className="hidden lg:block" />
+          <Field
+            label="Deal protection (days)"
+            hint={`Blank uses the tier default — ${TIER_PROTECTION_DAYS[tierValue] ?? DEAL_REGISTRATION_PROTECTION_DAYS} days for ${humanize(tierValue)}.`}
+          >
+            <Input name="registrationProtectionDays" type="number" min="1" max="365" />
+          </Field>
           <Field label="Bank name">
             <Input name="bankName" />
           </Field>

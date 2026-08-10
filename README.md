@@ -273,11 +273,32 @@ honestly means today.
 
 #### Registration protection
 
-`src/lib/partner-policy.ts` holds the commercial numbers — protection window,
+`src/lib/partner-policy.ts` holds the commercial numbers — protection windows,
 warning threshold, review SLA — in one place rather than scattered as magic
-numbers. The window is **90 days**, and it runs from when the partner
-*registered*, not from when we got round to converting: a slow internal review
-must not quietly extend a claim, and a fast one must not shorten it.
+numbers. The window runs from when the partner *registered*, not from when we
+got round to converting: a slow internal review must not quietly extend a claim,
+and a fast one must not shorten it.
+
+The window varies by tier, which is the cheapest reward in a partner programme —
+it costs nothing unless the partner actually wins:
+
+| Tier | Protected for |
+|---|---|
+| Registered | 60 days |
+| Silver | 90 days |
+| Gold | 120 days |
+| Platinum | 180 days |
+
+**These are a proposal, not your policy.** Change the numbers in
+`TIER_PROTECTION_DAYS` and every future registration follows; existing
+registrations keep the window they were granted, because the expiry is stamped
+on the record rather than computed on read.
+
+`Partner.registrationProtectionDays` overrides the tier for a specific partner
+who has negotiated a specific number — encoding that as a fake tier would
+corrupt the tier's meaning everywhere else. Both the partner's own portal and
+the internal partner page show the effective window, so nobody has to read code
+to find out what was promised.
 
 The commission engine already refused to accrue against a lapsed registration;
 what was missing was anything that set the expiry, so the rule never fired.

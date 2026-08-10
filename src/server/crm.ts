@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { nextNumber, SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission, scopedContext } from "@/lib/authz";
 import { auditChanges } from "@/lib/audit";
-import { registrationExpiry } from "@/lib/partner-policy";
+import { registrationExpiry, protectionDaysFor } from "@/lib/partner-policy";
 import type { ActionResult } from "./partners";
 
 /** Accounts, Contacts, Leads, Campaigns and Products — the Phase 1 core. */
@@ -544,7 +544,11 @@ export async function convertLead(
           // from today — a slow internal review must not quietly extend their
           // claim, and a fast one must not shorten it.
           const registeredAt = lead.createdAt;
-          const expiresAt = registrationExpiry(registeredAt);
+          const days = protectionDaysFor(
+            lead.referredByPartner?.tier,
+            lead.referredByPartner?.registrationProtectionDays,
+          );
+          const expiresAt = registrationExpiry(registeredAt, days);
 
           await tx.opportunityPartner.create({
             data: {
@@ -555,7 +559,7 @@ export async function convertLead(
               commissionPlanId: lead.referredByPartner?.commissionPlanId ?? null,
               registeredAt,
               registrationExpiresAt: expiresAt,
-              notes: `Auto-attached on conversion of lead ${lead.leadNumber}. Registration protected until ${expiresAt.toISOString().slice(0, 10)}.`,
+              notes: `Auto-attached on conversion of lead ${lead.leadNumber}. Registration protected for ${days} days, until ${expiresAt.toISOString().slice(0, 10)}.`,
             },
           });
         }

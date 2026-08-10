@@ -66,6 +66,7 @@ export async function getPartnerProfile() {
       defaultCommissionPercent: true,
       payoutCurrencyCode: true,
       withholdingTaxPercent: true,
+      registrationProtectionDays: true,
       taxNumber: true,
       email: true,
       phone: true,

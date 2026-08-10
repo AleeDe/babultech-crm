@@ -1,6 +1,7 @@
 import { getPartnerProfile } from "@/server/portal";
 import { PageHeader, Alert } from "@/components/ui";
 import { formatDate, humanize } from "@/lib/utils";
+import { protectionDaysFor } from "@/lib/partner-policy";
 import { RegisterForm } from "./register-form";
 
 export default async function RegisterDealPage() {
@@ -14,7 +15,7 @@ export default async function RegisterDealPage() {
     <div className="mx-auto max-w-3xl">
       <PageHeader
         title="Register a deal"
-        description="Tell us about a customer you are working so the deal is credited to you."
+        description={`Tell us about a customer you are working so the deal is credited to you. Accepted registrations are protected for ${protectionDaysFor(partner.tier, partner.registrationProtectionDays)} days.`}
       />
 
       {blocked ? (

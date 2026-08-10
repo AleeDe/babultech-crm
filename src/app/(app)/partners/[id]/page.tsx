@@ -7,6 +7,7 @@ import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, EmptyState, Button, Alert, Forbidden
 } from "@/components/ui";
+import { protectionDaysFor } from "@/lib/partner-policy";
 import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
@@ -115,6 +116,12 @@ export default async function PartnerDetailPage({
                   Visit
                 </a>
               ) : "—"}
+            </Row>
+            <Row label="Deal protection">
+              {protectionDaysFor(partner.tier, partner.registrationProtectionDays)} days
+              {partner.registrationProtectionDays
+                ? " (negotiated)"
+                : ` (${humanize(partner.tier)} tier default)`}
             </Row>
             <Row label="Agreement">
               {partner.startDate ? formatDate(partner.startDate) : "—"}

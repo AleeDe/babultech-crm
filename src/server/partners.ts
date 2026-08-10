@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { nextNumber, SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { auditChanges, writeAudit } from "@/lib/audit";
-import { registrationExpiry } from "@/lib/partner-policy";
+import { registrationExpiry, protectionDaysFor } from "@/lib/partner-policy";
 
 /**
  * Partner management.
@@ -43,6 +43,8 @@ const basePartnerSchema = z.object({
   payoutCurrencyCode: z.string().length(3).default("PKR"),
   taxNumber: z.string().max(50).optional().nullable(),
   withholdingTaxPercent: z.coerce.number().min(0).max(100).optional().nullable(),
+  /// Blank means the tier default applies.
+  registrationProtectionDays: z.coerce.number().int().min(1).max(365).optional().nullable(),
   email: z.string().email().optional().nullable().or(z.literal("")),
   phone: z.string().max(50).optional().nullable(),
   website: z.string().max(255).optional().nullable(),
@@ -329,7 +331,11 @@ export async function linkPartnerToOpportunity(
           // would mean "protected forever", which is not a policy anyone
           // intends to set by leaving a field empty.
           registrationExpiresAt:
-            data.registrationExpiresAt ?? registrationExpiry(registeredAt),
+            data.registrationExpiresAt ??
+            registrationExpiry(
+              registeredAt,
+              protectionDaysFor(partner.tier, partner.registrationProtectionDays),
+            ),
           notes: data.notes ?? null,
         },
       });
