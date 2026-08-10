@@ -583,6 +583,9 @@ model User {
   managerUserId      String?    @db.Uuid
   roleId             String     @db.Uuid
   status             UserStatus @default(ACTIVE)
+  /// Set only for portal users on the Partner role: the partner they act for.
+  /// Everything a partner user can see is scoped through this.
+  partnerId          String?    @unique @db.Uuid
   /// Internal hourly cost — drives Project Profitability view.
   costRate           Decimal?   @db.Decimal(18, 2)
   defaultBillingRate Decimal?   @db.Decimal(18, 2)
@@ -592,6 +595,7 @@ model User {
   deletedAt          DateTime?
 
   role       SecurityRole @relation(fields: [roleId], references: [id])
+  partner    Partner?     @relation("PartnerPortalUser", fields: [partnerId], references: [id], onDelete: SetNull)
   department Department?  @relation("UserDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
   manager    User?        @relation("UserHierarchy", fields: [managerUserId], references: [id], onDelete: SetNull)
   reports    User[]       @relation("UserHierarchy")
@@ -1189,6 +1193,8 @@ model Partner {
   contact        Contact?        @relation("PartnerPerson", fields: [contactId], references: [id], onDelete: Cascade)
   partnerManager User?           @relation("PartnerManager", fields: [partnerManagerId], references: [id], onDelete: SetNull)
   commissionPlan CommissionPlan? @relation(fields: [commissionPlanId], references: [id], onDelete: SetNull)
+  /// The login this partner uses for the portal, if they have been given one.
+  portalUser     User?           @relation("PartnerPortalUser")
 
   /// Additional named people at a partner company (sales rep, finance contact…).
   contacts          PartnerContact[]

@@ -7,6 +7,7 @@ import {
   LayoutDashboard, Megaphone, UserPlus, Building2, Users, Target,
   FileText, FileSignature, Handshake, Coins, LifeBuoy, FolderKanban,
   Receipt, Package, CalendarCheck, Menu, X, LogOut, Clock, UsersRound, Banknote,
+  ShieldCheck, UserCog,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 
@@ -21,6 +22,8 @@ interface NavItem {
 interface NavGroup {
   label: string;
   items: NavItem[];
+  /** Hidden entirely from anyone without admin:* — not just disabled. */
+  adminOnly?: boolean;
 }
 
 const NAV: NavGroup[] = [
@@ -70,13 +73,20 @@ const NAV: NavGroup[] = [
       { href: "/payments", label: "Payments", icon: Banknote },
     ],
   },
+  {
+    label: "Administration",
+    adminOnly: true,
+    items: [{ href: "/users", label: "Users", icon: ShieldCheck }],
+  },
 ];
 
 export function AppShell({
   user,
+  isAdmin,
   children,
 }: {
   user: { fullName: string; email: string; roleName: string };
+  isAdmin: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -115,7 +125,7 @@ export function AppShell({
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4">
-          {NAV.map((group) => (
+          {NAV.filter((group) => !group.adminOnly || isAdmin).map((group) => (
             <div key={group.label} className="mb-5">
               <p className="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 {group.label}
@@ -156,10 +166,10 @@ export function AppShell({
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-secondary text-xs font-semibold">
               {initials(user.fullName)}
             </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{user.fullName}</p>
+            <Link href="/profile" className="min-w-0 flex-1" onClick={() => setOpen(false)}>
+              <p className="truncate text-sm font-medium hover:underline">{user.fullName}</p>
               <p className="truncate text-xs text-muted-foreground">{user.roleName}</p>
-            </div>
+            </Link>
             <form action="/api/auth/signout" method="post">
               <button type="submit" className="text-muted-foreground hover:text-foreground" aria-label="Sign out">
                 <LogOut className="h-4 w-4" />

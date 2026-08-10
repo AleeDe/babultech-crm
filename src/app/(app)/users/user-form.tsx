@@ -1,0 +1,303 @@
+"use client";
+
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Building2, Handshake, ShieldCheck } from "lucide-react";
+import { createUser, updateUser } from "@/server/users";
+import {
+  Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
+  Select, Alert, Badge,
+} from "@/components/ui";
+import { cn, humanize } from "@/lib/utils";
+
+const STATUSES = ["ACTIVE", "INACTIVE", "SUSPENDED"];
+const PARTNER_ROLE = "Partner";
+
+export interface UserFormOptions {
+  roles: {
+    id: string;
+    name: string;
+    description: string | null;
+    dataScope: string;
+    permissions: string[];
+  }[];
+  departments: { id: string; name: string }[];
+  managers: { id: string; fullName: string; jobTitle: string | null }[];
+  partners: { id: string; partnerNumber: string; displayName: string; kind: string }[];
+}
+
+export interface UserDefaults {
+  id: string;
+  fullName: string;
+  email: string;
+  employeeNumber: string | null;
+  jobTitle: string | null;
+  phone: string | null;
+  roleId: string;
+  departmentId: string | null;
+  managerUserId: string | null;
+  partnerId: string | null;
+  status: string;
+  costRate: string | null;
+  defaultBillingRate: string | null;
+}
+
+const SCOPE_EXPLAINER: Record<string, string> = {
+  OWN: "Only records they own",
+  TEAM: "Their team's records",
+  DEPARTMENT: "Their department's records",
+  ALL: "Every record in the system",
+};
+
+export function UserForm({
+  options,
+  defaults,
+}: {
+  options: UserFormOptions;
+  defaults?: UserDefaults;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  const [roleId, setRoleId] = useState(defaults?.roleId ?? "");
+
+  const editing = Boolean(defaults);
+  const role = useMemo(() => options.roles.find((r) => r.id === roleId), [options.roles, roleId]);
+  const isPartner = role?.name === PARTNER_ROLE;
+
+  function onSubmit(formData: FormData) {
+    setError(null);
+    setFieldErrors({});
+
+    const get = (k: string) => {
+      const v = formData.get(k);
+      return v === null || v === "" ? null : String(v);
+    };
+
+    const base = {
+      fullName: String(formData.get("fullName") ?? ""),
+      email: String(formData.get("email") ?? ""),
+      employeeNumber: isPartner ? null : get("employeeNumber"),
+      jobTitle: get("jobTitle"),
+      phone: get("phone"),
+      roleId,
+      departmentId: isPartner ? null : get("departmentId"),
+      managerUserId: isPartner ? null : get("managerUserId"),
+      partnerId: isPartner ? get("partnerId") : null,
+      status: get("status") ?? "ACTIVE",
+      costRate: isPartner ? null : get("costRate"),
+      defaultBillingRate: isPartner ? null : get("defaultBillingRate"),
+    };
+
+    startTransition(async () => {
+      const result = defaults
+        ? await updateUser(defaults.id, base as never)
+        : await createUser({ ...base, password: get("password") } as never);
+
+      if (result.ok) {
+        router.push("/users");
+        router.refresh();
+      } else {
+        setError(result.error);
+        setFieldErrors(result.fieldErrors ?? {});
+      }
+    });
+  }
+
+  return (
+    <form action={onSubmit} className="space-y-6">
+      {error && <Alert tone="danger">{error}</Alert>}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Access</CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            The role is the only thing that decides what this person can do and how much they can see.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {options.roles.map((r) => {
+              const selected = r.id === roleId;
+              const Icon = r.name === PARTNER_ROLE ? Handshake : r.permissions.includes("*") ? ShieldCheck : Building2;
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => setRoleId(r.id)}
+                  className={cn(
+                    "flex gap-3 rounded-lg border p-3 text-left transition-colors",
+                    selected ? "border-primary bg-primary/5" : "hover:bg-accent",
+                  )}
+                >
+                  <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", selected ? "text-primary" : "text-muted-foreground")} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{r.name}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {SCOPE_EXPLAINER[r.dataScope] ?? r.dataScope}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {role && (
+            <Alert tone={isPartner ? "warning" : "info"}>
+              <p className="font-medium">{role.name}</p>
+              {role.description && <p className="mt-0.5">{role.description}</p>}
+              <p className="mt-1 text-xs">
+                Sees: {SCOPE_EXPLAINER[role.dataScope] ?? role.dataScope} ·{" "}
+                {role.permissions.includes("*")
+                  ? "every permission"
+                  : `${role.permissions.length} permission(s)`}
+              </p>
+            </Alert>
+          )}
+
+          {isPartner && (
+            <Field
+              label="Partner they act for"
+              required
+              error={fieldErrors.partnerId?.[0]}
+              hint="Everything this login can see is scoped through this record."
+            >
+              <Select name="partnerId" required defaultValue={defaults?.partnerId ?? ""}>
+                <option value="">Select a partner…</option>
+                {options.partners.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.displayName} ({p.partnerNumber}) — {humanize(p.kind)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
+
+          <Field label="Status" required>
+            <Select name="status" required defaultValue={defaults?.status ?? "ACTIVE"} className="sm:w-56">
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>{humanize(s)}</option>
+              ))}
+            </Select>
+          </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Credentials</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <Field label="Email" required error={fieldErrors.email?.[0]} hint="This is what they sign in with.">
+            <Input name="email" type="email" required defaultValue={defaults?.email} />
+          </Field>
+
+          {editing ? (
+            <div className="flex items-end">
+              <p className="pb-2 text-sm text-muted-foreground">
+                Passwords are set from the user's page, not here.
+              </p>
+            </div>
+          ) : (
+            <Field
+              label="Password"
+              required
+              error={fieldErrors.password?.[0]}
+              hint="At least 10 characters, mixed case, with a number."
+            >
+              <Input name="password" type="password" required autoComplete="new-password" />
+            </Field>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Profile</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label="Full name" required error={fieldErrors.fullName?.[0]}>
+            <Input name="fullName" required defaultValue={defaults?.fullName} />
+          </Field>
+          <Field label="Job title">
+            <Input name="jobTitle" defaultValue={defaults?.jobTitle ?? ""} placeholder="Senior Consultant" />
+          </Field>
+          <Field label="Phone">
+            <Input name="phone" defaultValue={defaults?.phone ?? ""} placeholder="+92 300 1234567" />
+          </Field>
+
+          {!isPartner && (
+            <>
+              <Field label="Employee number">
+                <Input name="employeeNumber" defaultValue={defaults?.employeeNumber ?? ""} />
+              </Field>
+              <Field label="Department">
+                <Select name="departmentId" defaultValue={defaults?.departmentId ?? ""}>
+                  <option value="">None</option>
+                  {options.departments.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Reports to">
+                <Select name="managerUserId" defaultValue={defaults?.managerUserId ?? ""}>
+                  <option value="">Nobody</option>
+                  {options.managers
+                    .filter((m) => m.id !== defaults?.id)
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.fullName}{m.jobTitle ? ` — ${m.jobTitle}` : ""}
+                      </option>
+                    ))}
+                </Select>
+              </Field>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {!isPartner && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Rates</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Used as the default when this person is booked onto a project. Without them their time
+              costs nothing and their utilisation reads zero.
+            </p>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Cost rate per hour" hint="What they cost the business.">
+              <Input name="costRate" type="number" step="0.01" min="0" defaultValue={defaults?.costRate ?? ""} />
+            </Field>
+            <Field label="Billing rate per hour" hint="What a customer is charged.">
+              <Input
+                name="defaultBillingRate"
+                type="number"
+                step="0.01"
+                min="0"
+                defaultValue={defaults?.defaultBillingRate ?? ""}
+              />
+            </Field>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="flex items-center justify-between gap-2">
+        {role && (
+          <Badge tone={isPartner ? "warning" : "info"}>
+            {isPartner ? "External login" : "Internal user"}
+          </Badge>
+        )}
+        <div className="ml-auto flex gap-2">
+          <Button type="button" variant="outline" onClick={() => router.back()} disabled={pending}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={pending || !roleId}>
+            {pending ? "Saving…" : editing ? "Save user" : "Create user"}
+          </Button>
+        </div>
+      </div>
+    </form>
+  );
+}

@@ -214,7 +214,35 @@ Following the spec's own phasing (§14.1):
 | 2 — Commercial | ✅ | ✅ | ✅ | ✅ Quote builder with versioning and accept/reject, contracts |
 | 4 — Finance | ✅ | ✅ | ✅ | ✅ Invoices, milestone and time billing runs, payments and cash application |
 | 1 — Reference data | ✅ | ✅ | ✅ | ❌ Campaigns and Products are read-only |
-| 5 — Optimisation | Partial | ❌ | ❌ | ❌ Approvals engine, portal, integrations, forecasting |
+| Administration | ✅ | ✅ | ✅ | ✅ Users, roles, credentials, partner portal logins |
+| 5 — Optimisation | Partial | ❌ | ❌ | ❌ Approvals engine, partner portal screens, integrations, forecasting |
+
+### Users and roles
+
+A user record is a login, a profile and a role at once. The role is the only
+thing the app enforces — `SecurityRole.permissions` is the ceiling on what
+someone can do, `dataScope` narrows which rows it applies to, and both are read
+server-side on every page and action.
+
+| Role | Scope | For |
+|---|---|---|
+| Administrator | ALL | Everything, including user administration |
+| Delivery Manager | TEAM | Runs projects, approves timesheets |
+| Sales Manager | TEAM | Pipeline and partners across their team |
+| Sales Executive | OWN | Their own leads, accounts and deals |
+| Finance | ALL | Billing, payments, commission payouts |
+| Support Agent | TEAM | The case queue |
+| Resource | OWN | Delivery staff: their projects, tasks and timesheet |
+| Partner | OWN | **External** portal login |
+
+A **Partner** user is the only kind tied to an external record: `User.partnerId`
+links them to the `Partner` they act for, and that link is what a partner portal
+scopes everything through. The rules are enforced server-side — a Partner user
+without the link is refused, a non-Partner user with one is refused, and a
+partner gets exactly one login. Partner users carry no employee fields or rates.
+
+Two lockouts are prevented: you cannot deactivate your own account, and the last
+active administrator cannot be demoted or deactivated.
 
 The commercial and finance write paths enforce their own rules: a sent quote is
 revised rather than edited and only one version per deal can be accepted; an

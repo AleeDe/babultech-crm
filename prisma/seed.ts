@@ -154,6 +154,52 @@ async function main() {
     },
   });
 
+  await prisma.securityRole.upsert({
+    where: { name: "Resource" },
+    update: {},
+    create: {
+      name: "Resource",
+      description:
+        "Delivery staff. Sees the projects they are booked on, logs their own time, and works their assigned tasks.",
+      permissions: [
+        "project:read", "case:read", "case:write",
+        "account:read", "opportunity:read", "partner:read",
+      ],
+      dataScope: "OWN",
+      isSystem: true,
+    },
+  });
+
+  await prisma.securityRole.upsert({
+    where: { name: "Delivery Manager" },
+    update: {},
+    create: {
+      name: "Delivery Manager",
+      description: "Runs projects and approves timesheets for their team.",
+      permissions: [
+        "project:*", "time:approve", "case:*",
+        "account:read", "opportunity:read", "invoice:read", "partner:read",
+      ],
+      dataScope: "TEAM",
+      isSystem: true,
+    },
+  });
+
+  // External login. Everything a partner user sees is scoped through
+  // User.partnerId — the role's permissions are the ceiling, not the scope.
+  await prisma.securityRole.upsert({
+    where: { name: "Partner" },
+    update: {},
+    create: {
+      name: "Partner",
+      description:
+        "External partner portal login. Scoped entirely through the linked partner record — sees their own accounts and commission, nothing else.",
+      permissions: ["partner:read", "commission:read", "account:read"],
+      dataScope: "OWN",
+      isSystem: true,
+    },
+  });
+
   // -------------------------------------------------------------------------
   // Departments, users, teams
   // -------------------------------------------------------------------------

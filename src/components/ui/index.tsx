@@ -294,6 +294,35 @@ export function StatTile({
   return href ? <Link href={href}>{body}</Link> : body;
 }
 
+/**
+ * Rendered in place of a page the signed-in user may not see.
+ *
+ * Authorization is still enforced by `requirePermission` in the server layer —
+ * this only decides what the refusal *looks like*. Pages check first and return
+ * this so the user gets a sentence instead of a 500, because a thrown error
+ * during the initial server render never reaches the error boundary.
+ */
+export function Forbidden({ what = "this screen" }: { what?: string }) {
+  return (
+    <div className="mx-auto flex max-w-lg flex-col items-center justify-center py-20 text-center">
+      <Card className="w-full">
+        <CardContent className="flex flex-col items-center gap-4 p-8">
+          <span className="grid h-12 w-12 place-items-center rounded-full bg-muted text-xl">🔒</span>
+          <div>
+            <h1 className="text-lg font-semibold">You do not have access to {what}</h1>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              Your role does not include it. If it should, ask an administrator to change your role.
+            </p>
+          </div>
+          <Button asChild variant="outline">
+            <Link href="/">Back to the dashboard</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 /** Label-above-value row used down the side of every detail page. */
 export function DetailRow({
   label,
