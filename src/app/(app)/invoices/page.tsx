@@ -1,16 +1,19 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/authz";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
-  EmptyState, StatTile, Alert, Button,
+  EmptyState, StatTile, Alert, Button, Forbidden
 } from "@/components/ui";
 import { BillingRun } from "./billing-run";
 import { formatMoney, formatDate, humanize, daysBetween } from "@/lib/utils";
 
 /** Receivables: what has been billed, what is overdue, and what to bill next. */
 export default async function InvoicesPage() {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.INVOICE_READ)) return <Forbidden what="invoices" />;
+
   await requireUser();
 
   const invoices = await prisma.invoice.findMany({

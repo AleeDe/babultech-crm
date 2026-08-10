@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { listProducts } from "@/server/crm";
 import {
-  PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, EmptyState,
+  PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, EmptyState, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatPercent, humanize } from "@/lib/utils";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 export default async function ProductsPage() {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="the product catalogue" />;
+
   const products = await listProducts(false);
 
   return (

@@ -1,11 +1,12 @@
 import { getFormOptions } from "@/server/crm";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { AccountForm } from "../account-form";
 
 export default async function NewAccountPage() {
-  const user = await requirePermission(PERMISSIONS.ACCOUNT_WRITE);
+  const user = await requireUser();
+  if (!can(user, PERMISSIONS.ACCOUNT_WRITE)) return <Forbidden what="accounts" />;
   const options = await getFormOptions();
 
   return (

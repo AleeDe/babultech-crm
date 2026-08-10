@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getCase, getCaseFormOptions } from "@/server/cases";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { CaseForm, type CaseDefaults, type CaseFormOptions } from "../../case-form";
 
@@ -11,8 +11,8 @@ export default async function EditCasePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  await requirePermission(PERMISSIONS.CASE_WRITE);
-
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.CASE_WRITE)) return <Forbidden what="support cases" />;
   const [supportCase, options] = await Promise.all([getCase(id), getCaseFormOptions()]);
   if (!supportCase) notFound();
 

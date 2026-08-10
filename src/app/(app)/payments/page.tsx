@@ -3,15 +3,19 @@ import { Plus } from "lucide-react";
 import { listPayments } from "@/server/billing";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
-  EmptyState, StatTile, Button,
+  EmptyState, StatTile, Button, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize } from "@/lib/utils";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 export default async function PaymentsPage({
   searchParams,
 }: {
   searchParams: Promise<{ filter?: string }>;
 }) {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.INVOICE_READ)) return <Forbidden what="payments" />;
+
   const { filter } = await searchParams;
   const payments = await listPayments({ unappliedOnly: filter === "unapplied" });
 

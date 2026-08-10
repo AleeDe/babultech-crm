@@ -4,16 +4,20 @@ import { getProject, getProjectBurn, getProjectFormOptions } from "@/server/proj
 import { getAuditTrail } from "@/lib/audit";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
-  StatTile, Button, Alert,
+  StatTile, Button, Alert, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, formatNumber, humanize, serialize } from "@/lib/utils";
 import { TaskBoard, TeamPanel, PlanPanel, RaidPanel } from "./project-panels";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 export default async function ProjectWorkspacePage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.PROJECT_READ)) return <Forbidden what="projects" />;
+
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getLead, getFormOptions } from "@/server/crm";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { ConvertForm } from "./convert-form";
 
@@ -11,8 +11,8 @@ export default async function ConvertLeadPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  await requirePermission(PERMISSIONS.LEAD_WRITE);
-
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.LEAD_WRITE)) return <Forbidden what="leads" />;
   const [lead, options] = await Promise.all([getLead(id), getFormOptions()]);
   if (!lead) notFound();
 

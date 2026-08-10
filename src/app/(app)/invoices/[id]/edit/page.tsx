@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getInvoice, getBillingFormOptions } from "@/server/billing";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader, Alert, Button } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader, Alert, Button , Forbidden} from "@/components/ui";
 import { serialize, humanize } from "@/lib/utils";
 import { InvoiceForm, type InvoiceDefaults, type InvoiceFormOptions } from "../../invoice-form";
 
@@ -14,8 +14,8 @@ export default async function EditInvoicePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  await requirePermission(PERMISSIONS.INVOICE_WRITE);
-
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.INVOICE_WRITE)) return <Forbidden what="invoices" />;
   const [invoice, options] = await Promise.all([getInvoice(id), getBillingFormOptions()]);
   if (!invoice) notFound();
 

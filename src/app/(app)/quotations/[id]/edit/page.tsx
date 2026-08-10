@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getQuotation, getQuotationFormOptions } from "@/server/quotations";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader, Alert, Button } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader, Alert, Button , Forbidden} from "@/components/ui";
 import { serialize, humanize } from "@/lib/utils";
 import { QuoteForm, type QuoteDefaults, type QuoteFormOptions } from "../../quote-form";
 
@@ -14,8 +14,8 @@ export default async function EditQuotationPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  await requirePermission(PERMISSIONS.OPPORTUNITY_WRITE);
-
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.OPPORTUNITY_WRITE)) return <Forbidden what="quotations" />;
   const [quote, options] = await Promise.all([getQuotation(id), getQuotationFormOptions()]);
   if (!quote) notFound();
 

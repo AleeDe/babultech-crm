@@ -1,12 +1,12 @@
 import { prisma } from "@/lib/prisma";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { PartnerForm } from "./partner-form";
 
 export default async function NewPartnerPage() {
-  await requirePermission(PERMISSIONS.PARTNER_WRITE);
-
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.PARTNER_WRITE)) return <Forbidden what="partners" />;
   const [users, accounts, contacts, plans, currencies] = await Promise.all([
     prisma.user.findMany({
       where: { status: "ACTIVE", deletedAt: null },

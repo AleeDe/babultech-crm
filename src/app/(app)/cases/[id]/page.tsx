@@ -4,16 +4,20 @@ import { getCase } from "@/server/cases";
 import { getAuditTrail } from "@/lib/audit";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
-  StatTile, Button,
+  StatTile, Button, Forbidden
 } from "@/components/ui";
 import { formatDateTime, formatDate, humanize } from "@/lib/utils";
 import { FirstResponseControl } from "./case-controls";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 export default async function CaseDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.CASE_READ)) return <Forbidden what="support cases" />;
+
   const { id } = await params;
   const c = await getCase(id);
   if (!c) notFound();

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getContact, getFormOptions } from "@/server/crm";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { ContactForm, type ContactDefaults } from "../../contact-form";
 
@@ -11,8 +11,8 @@ export default async function EditContactPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  await requirePermission(PERMISSIONS.ACCOUNT_WRITE);
-
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.ACCOUNT_WRITE)) return <Forbidden what="contacts" />;
   const [contact, options] = await Promise.all([getContact(id), getFormOptions()]);
   if (!contact) notFound();
 

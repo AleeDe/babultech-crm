@@ -4,9 +4,10 @@ import { Handshake, Plus } from "lucide-react";
 import { listOpportunities, getPipelineByStage } from "@/server/opportunities";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
-  EmptyState, StatTile, Input, Select, Button,
+  EmptyState, StatTile, Input, Select, Button, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatCompactMoney, formatDate, humanize } from "@/lib/utils";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 const STAGES = [
   "DISCOVERY", "QUALIFICATION", "REQUIREMENTS", "SOLUTION_PROPOSED",
@@ -19,6 +20,9 @@ export default async function OpportunitiesPage({
 }: {
   searchParams: Promise<{ stage?: string; search?: string }>;
 }) {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="opportunities" />;
+
   const params = await searchParams;
   const [deals, pipeline] = await Promise.all([
     listOpportunities(params),

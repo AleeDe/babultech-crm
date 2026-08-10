@@ -1,6 +1,6 @@
 import { getBillingFormOptions } from "@/server/billing";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { InvoiceForm, type InvoiceFormOptions } from "../invoice-form";
 
@@ -9,7 +9,8 @@ export default async function NewInvoicePage({
 }: {
   searchParams: Promise<{ accountId?: string }>;
 }) {
-  await requirePermission(PERMISSIONS.INVOICE_WRITE);
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.INVOICE_WRITE)) return <Forbidden what="invoices" />;
   const [{ accountId }, options] = await Promise.all([searchParams, getBillingFormOptions()]);
 
   return (

@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
-  Table, THead, TBody, TR, TH, TD, StatTile, DetailRow,
+  Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatPercent, formatDate, formatNumber, humanize } from "@/lib/utils";
 
@@ -14,8 +14,8 @@ export default async function ProductDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
-
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="the product catalogue" />;
   const product = await prisma.product.findUnique({
     where: { id },
     include: {

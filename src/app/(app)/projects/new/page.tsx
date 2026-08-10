@@ -1,6 +1,6 @@
 import { getProjectFormOptions } from "@/server/projects";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { ProjectForm, type ProjectFormOptions } from "../project-form";
 
@@ -9,7 +9,8 @@ export default async function NewProjectPage({
 }: {
   searchParams: Promise<{ accountId?: string }>;
 }) {
-  const user = await requirePermission(PERMISSIONS.PROJECT_WRITE);
+  const user = await requireUser();
+  if (!can(user, PERMISSIONS.PROJECT_WRITE)) return <Forbidden what="projects" />;
   const [{ accountId }, options] = await Promise.all([searchParams, getProjectFormOptions()]);
 
   return (

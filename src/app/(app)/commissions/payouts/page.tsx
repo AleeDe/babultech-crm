@@ -1,14 +1,18 @@
 import Link from "next/link";
 import { listPayouts } from "@/server/commissions";
 import { prisma } from "@/lib/prisma";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
-  Table, THead, TBody, TR, TH, TD, EmptyState, Button,
+  Table, THead, TBody, TR, TH, TD, EmptyState, Button, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize, serialize } from "@/lib/utils";
 import { PayoutActions } from "./payout-actions";
 
 export default async function PayoutsPage() {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.COMMISSION_READ)) return <Forbidden what="commission payouts" />;
+
   const [payouts, bankAccounts] = await Promise.all([
     listPayouts(),
     prisma.bankAccount.findMany({

@@ -5,15 +5,19 @@ import { getPartner, getPartnerSummary } from "@/server/partners";
 import { getAuditTrail } from "@/lib/audit";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
-  Table, THead, TBody, TR, TH, TD, StatTile, EmptyState, Button, Alert,
+  Table, THead, TBody, TR, TH, TD, StatTile, EmptyState, Button, Alert, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 export default async function PartnerDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.PARTNER_READ)) return <Forbidden what="partners" />;
+
   const { id } = await params;
   const [partner, summary] = await Promise.all([getPartner(id), getPartnerSummary(id)]);
   if (!partner) notFound();

@@ -3,9 +3,10 @@ import { Plus } from "lucide-react";
 import { listLeads } from "@/server/crm";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
-  EmptyState, Input, Select, Button, StatTile,
+  EmptyState, Input, Select, Button, StatTile, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize } from "@/lib/utils";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 const STATUSES = [
   "NEW", "ASSIGNED", "ATTEMPTED_CONTACT", "CONTACTED", "DISCOVERY_SCHEDULED",
@@ -17,6 +18,9 @@ export default async function LeadsPage({
 }: {
   searchParams: Promise<{ search?: string; status?: string }>;
 }) {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.LEAD_READ)) return <Forbidden what="leads" />;
+
   const params = await searchParams;
   const leads = await listLeads(params);
 

@@ -3,9 +3,10 @@ import { Plus } from "lucide-react";
 import { listProjects } from "@/server/projects";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
-  EmptyState, StatTile, Input, Select, Button,
+  EmptyState, StatTile, Input, Select, Button, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 const STATUSES = ["DRAFT", "PLANNING", "ACTIVE", "ON_HOLD", "AT_RISK", "COMPLETED", "CANCELLED"];
 
@@ -14,6 +15,9 @@ export default async function ProjectsPage({
 }: {
   searchParams: Promise<{ status?: string; search?: string }>;
 }) {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.PROJECT_READ)) return <Forbidden what="projects" />;
+
   const params = await searchParams;
   const projects = await listProjects(params);
 

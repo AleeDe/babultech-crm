@@ -3,15 +3,19 @@ import { Plus } from "lucide-react";
 import { listAccounts } from "@/server/crm";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
-  EmptyState, Input, Select, Button,
+  EmptyState, Input, Select, Button, Forbidden
 } from "@/components/ui";
 import { humanize } from "@/lib/utils";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 export default async function AccountsPage({
   searchParams,
 }: {
   searchParams: Promise<{ search?: string; accountType?: string }>;
 }) {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.ACCOUNT_READ)) return <Forbidden what="accounts" />;
+
   const params = await searchParams;
   const accounts = await listAccounts(params);
 

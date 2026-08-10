@@ -3,15 +3,19 @@ import { Plus } from "lucide-react";
 import { listContacts } from "@/server/crm";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge,
-  EmptyState, Input, Button, Select,
+  EmptyState, Input, Button, Select, Forbidden
 } from "@/components/ui";
 import { humanize } from "@/lib/utils";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 export default async function ContactsPage({
   searchParams,
 }: {
   searchParams: Promise<{ search?: string; filter?: string }>;
 }) {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.ACCOUNT_READ)) return <Forbidden what="contacts" />;
+
   const params = await searchParams;
   const contacts = await listContacts({
     search: params.search,

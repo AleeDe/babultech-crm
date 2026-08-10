@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
-  EmptyState, StatTile, Select, Input, Button,
+  EmptyState, StatTile, Select, Input, Button, Forbidden
 } from "@/components/ui";
 import { formatDateTime, humanize } from "@/lib/utils";
 
@@ -18,7 +18,8 @@ export default async function CasesPage({
 }: {
   searchParams: Promise<{ status?: string; priority?: string; search?: string }>;
 }) {
-  await requirePermission(PERMISSIONS.CASE_READ);
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.CASE_READ)) return <Forbidden what="support cases" />;
   const params = await searchParams;
 
   const cases = await prisma.case.findMany({

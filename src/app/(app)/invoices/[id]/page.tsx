@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
-  Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Alert, Button,
+  Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Alert, Button, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, formatNumber, humanize, daysBetween } from "@/lib/utils";
 import { InvoiceActions } from "./invoice-actions";
@@ -15,8 +15,8 @@ export default async function InvoiceDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  await requirePermission(PERMISSIONS.INVOICE_READ);
-
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.INVOICE_READ)) return <Forbidden what="invoices" />;
   const invoice = await prisma.invoice.findUnique({
     where: { id },
     include: {

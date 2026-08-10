@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLead, getFormOptions } from "@/server/crm";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader, Alert, Button } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader, Alert, Button , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { LeadForm, type LeadDefaults } from "../../lead-form";
 
@@ -12,8 +12,8 @@ export default async function EditLeadPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const user = await requirePermission(PERMISSIONS.LEAD_WRITE);
-
+  const user = await requireUser();
+  if (!can(user, PERMISSIONS.LEAD_WRITE)) return <Forbidden what="leads" />;
   const [lead, options] = await Promise.all([getLead(id), getFormOptions()]);
   if (!lead) notFound();
 

@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { getPendingApprovals } from "@/server/timesheets";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader, Button } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader, Button , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { ApprovalClient, type PendingEntry } from "./approval-client";
 
 export default async function TimeApprovalsPage() {
-  await requirePermission(PERMISSIONS.TIME_APPROVE);
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.TIME_APPROVE)) return <Forbidden what="timesheets" />;
   const entries = await getPendingApprovals();
 
   return (

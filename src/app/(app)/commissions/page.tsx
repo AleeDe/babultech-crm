@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { listCommissions, getCommissionTotals } from "@/server/commissions";
 import { prisma } from "@/lib/prisma";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
-  PageHeader, Card, StatTile, Button, Select, Input, Alert,
+  PageHeader, Card, StatTile, Button, Select, Input, Alert, Forbidden
 } from "@/components/ui";
 import { formatMoney, humanize, serialize } from "@/lib/utils";
 import { CommissionTable } from "./commission-table";
@@ -12,6 +13,9 @@ export default async function CommissionsPage({
 }: {
   searchParams: Promise<{ status?: string; partnerId?: string }>;
 }) {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.COMMISSION_READ)) return <Forbidden what="commissions" />;
+
   const params = await searchParams;
 
   const [records, totals, partners] = await Promise.all([

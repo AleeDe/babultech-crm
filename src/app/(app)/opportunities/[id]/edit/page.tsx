@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import { getOpportunity } from "@/server/opportunities";
 import { getFormOptions } from "@/server/crm";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader, Alert } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader, Alert , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import {
   OpportunityForm,
@@ -16,8 +16,8 @@ export default async function EditOpportunityPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const user = await requirePermission(PERMISSIONS.OPPORTUNITY_WRITE);
-
+  const user = await requireUser();
+  if (!can(user, PERMISSIONS.OPPORTUNITY_WRITE)) return <Forbidden what="opportunities" />;
   const [opp, options] = await Promise.all([getOpportunity(id), getFormOptions()]);
   if (!opp) notFound();
 

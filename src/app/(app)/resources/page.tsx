@@ -2,9 +2,10 @@ import Link from "next/link";
 import { getUtilisation } from "@/server/timesheets";
 import {
   PageHeader, Card, CardContent, Table, THead, TBody, TR, TH, TD,
-  Badge, StatTile, Select, Button,
+  Badge, StatTile, Select, Button, Forbidden
 } from "@/components/ui";
 import { formatDate, formatNumber, formatMoney } from "@/lib/utils";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 /**
  * Resource utilisation. "Resources" here are the people using this system —
@@ -16,6 +17,9 @@ export default async function ResourcesPage({
 }: {
   searchParams: Promise<{ weeks?: string }>;
 }) {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.PROJECT_READ)) return <Forbidden what="resource utilisation" />;
+
   const { weeks } = await searchParams;
   const window = Math.min(Math.max(Number(weeks) || 4, 1), 26);
   const data = await getUtilisation(window);

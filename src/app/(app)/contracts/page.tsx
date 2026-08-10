@@ -1,16 +1,16 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
-  EmptyState, StatTile, Alert, Button,
+  EmptyState, StatTile, Alert, Button, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize, daysBetween } from "@/lib/utils";
 
 export default async function ContractsPage() {
-  await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
-
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="contracts" />;
   const contracts = await prisma.contract.findMany({
     where: { deletedAt: null },
     include: {

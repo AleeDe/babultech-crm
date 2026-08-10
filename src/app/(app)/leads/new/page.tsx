@@ -1,11 +1,12 @@
 import { getFormOptions } from "@/server/crm";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { LeadForm } from "../lead-form";
 
 export default async function NewLeadPage() {
-  const user = await requirePermission(PERMISSIONS.LEAD_WRITE);
+  const user = await requireUser();
+  if (!can(user, PERMISSIONS.LEAD_WRITE)) return <Forbidden what="leads" />;
   const options = await getFormOptions();
 
   return (

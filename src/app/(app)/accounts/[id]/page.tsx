@@ -3,15 +3,19 @@ import { notFound } from "next/navigation";
 import { getAccount } from "@/server/crm";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
-  Table, THead, TBody, TR, TH, TD, StatTile, Button, Alert,
+  Table, THead, TBody, TR, TH, TD, StatTile, Button, Alert, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize } from "@/lib/utils";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 export default async function AccountDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.ACCOUNT_READ)) return <Forbidden what="accounts" />;
+
   const { id } = await params;
   const account = await getAccount(id);
   if (!account) notFound();

@@ -1,6 +1,6 @@
 import { getQuotationFormOptions } from "@/server/quotations";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { QuoteForm, type QuoteFormOptions } from "../quote-form";
 
@@ -9,7 +9,8 @@ export default async function NewQuotationPage({
 }: {
   searchParams: Promise<{ opportunityId?: string }>;
 }) {
-  await requirePermission(PERMISSIONS.OPPORTUNITY_WRITE);
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.OPPORTUNITY_WRITE)) return <Forbidden what="quotations" />;
   const [{ opportunityId }, options] = await Promise.all([
     searchParams,
     getQuotationFormOptions(),

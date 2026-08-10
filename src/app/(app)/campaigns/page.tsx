@@ -2,11 +2,15 @@ import Link from "next/link";
 import { listCampaigns, getCampaignPerformance } from "@/server/crm";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Table, THead, TBody,
-  TR, TH, TD, Badge, statusTone, EmptyState, StatTile, Alert,
+  TR, TH, TD, Badge, statusTone, EmptyState, StatTile, Alert, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 export default async function CampaignsPage() {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.LEAD_READ)) return <Forbidden what="campaigns" />;
+
   const campaigns = await listCampaigns();
 
   // The ROI view only exists once prisma/sql/02_views.sql has been applied.

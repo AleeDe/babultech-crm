@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
-  Table, THead, TBody, TR, TH, TD, StatTile, DetailRow,
+  Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
 
@@ -14,8 +14,8 @@ export default async function CampaignDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  await requirePermission(PERMISSIONS.LEAD_READ);
-
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.LEAD_READ)) return <Forbidden what="campaigns" />;
   const campaign = await prisma.campaign.findUnique({
     where: { id },
     include: {

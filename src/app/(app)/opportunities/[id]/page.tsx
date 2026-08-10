@@ -2,10 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getOpportunity } from "@/server/opportunities";
 import { prisma } from "@/lib/prisma";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { getAuditTrail } from "@/lib/audit";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
-  Table, THead, TBody, TR, TH, TD, EmptyState, StatTile, Button,
+  Table, THead, TBody, TR, TH, TD, EmptyState, StatTile, Button, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize, serialize } from "@/lib/utils";
 import { PartnerPanel, StageControl } from "./partner-panel";
@@ -15,6 +16,9 @@ export default async function OpportunityDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="opportunities" />;
+
   const { id } = await params;
   const [opp, availablePartners] = await Promise.all([
     getOpportunity(id),

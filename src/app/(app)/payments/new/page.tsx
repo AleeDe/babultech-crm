@@ -1,12 +1,12 @@
 import { prisma } from "@/lib/prisma";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { PaymentForm, type OpenInvoice } from "../payment-form";
 
 export default async function NewPaymentPage() {
-  await requirePermission(PERMISSIONS.PAYMENT_WRITE);
-
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.PAYMENT_WRITE)) return <Forbidden what="payments" />;
   const [accounts, currencies, openInvoices] = await Promise.all([
     prisma.account.findMany({
       where: { deletedAt: null },

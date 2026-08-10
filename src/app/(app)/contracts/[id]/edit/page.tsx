@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getContract, getContractFormOptions } from "@/server/contracts";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { ContractForm, type ContractDefaults, type ContractFormOptions } from "../../contract-form";
 
@@ -11,8 +11,8 @@ export default async function EditContractPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const user = await requirePermission(PERMISSIONS.CONTRACT_WRITE);
-
+  const user = await requireUser();
+  if (!can(user, PERMISSIONS.CONTRACT_WRITE)) return <Forbidden what="contracts" />;
   const [contract, options] = await Promise.all([getContract(id), getContractFormOptions()]);
   if (!contract) notFound();
 

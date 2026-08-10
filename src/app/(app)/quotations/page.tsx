@@ -1,16 +1,16 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
-  EmptyState, StatTile, Button,
+  EmptyState, StatTile, Button, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize } from "@/lib/utils";
 
 export default async function QuotationsPage() {
-  await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
-
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="quotations" />;
   const quotes = await prisma.quotation.findMany({
     where: { deletedAt: null },
     include: {

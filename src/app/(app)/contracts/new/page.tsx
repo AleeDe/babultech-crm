@@ -1,11 +1,12 @@
 import { getContractFormOptions } from "@/server/contracts";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { ContractForm, type ContractFormOptions } from "../contract-form";
 
 export default async function NewContractPage() {
-  const user = await requirePermission(PERMISSIONS.CONTRACT_WRITE);
+  const user = await requireUser();
+  if (!can(user, PERMISSIONS.CONTRACT_WRITE)) return <Forbidden what="contracts" />;
   const options = await getContractFormOptions();
 
   return (

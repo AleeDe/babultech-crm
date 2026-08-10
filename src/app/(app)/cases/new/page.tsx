@@ -1,6 +1,6 @@
 import { getCaseFormOptions } from "@/server/cases";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { CaseForm, type CaseFormOptions } from "../case-form";
 
@@ -9,7 +9,8 @@ export default async function NewCasePage({
 }: {
   searchParams: Promise<{ accountId?: string }>;
 }) {
-  await requirePermission(PERMISSIONS.CASE_WRITE);
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.CASE_WRITE)) return <Forbidden what="support cases" />;
   const [{ accountId }, options] = await Promise.all([searchParams, getCaseFormOptions()]);
 
   return (

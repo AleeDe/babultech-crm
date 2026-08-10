@@ -1,6 +1,6 @@
 import { getFormOptions } from "@/server/crm";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { ContactForm } from "../contact-form";
 
@@ -9,7 +9,8 @@ export default async function NewContactPage({
 }: {
   searchParams: Promise<{ accountId?: string }>;
 }) {
-  await requirePermission(PERMISSIONS.ACCOUNT_WRITE);
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.ACCOUNT_WRITE)) return <Forbidden what="contacts" />;
   const [{ accountId }, options] = await Promise.all([searchParams, getFormOptions()]);
 
   return (

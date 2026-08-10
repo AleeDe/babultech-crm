@@ -3,9 +3,10 @@ import { Prisma } from "@prisma/client";
 import { Building2, User } from "lucide-react";
 import { listPartners } from "@/server/partners";
 import { prisma } from "@/lib/prisma";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Button, Card, Table, THead, TBody, TR, TH, TD,
-  Badge, statusTone, EmptyState, StatTile, Input, Select,
+  Badge, statusTone, EmptyState, StatTile, Input, Select, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatPercent, humanize, formatDate } from "@/lib/utils";
 
@@ -14,6 +15,9 @@ export default async function PartnersPage({
 }: {
   searchParams: Promise<{ search?: string; status?: string; kind?: string; partnerType?: string }>;
 }) {
+  const _me = await requireUser();
+  if (!can(_me, PERMISSIONS.PARTNER_READ)) return <Forbidden what="partners" />;
+
   const params = await searchParams;
   const partners = await listPartners(params);
 

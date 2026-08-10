@@ -1,6 +1,6 @@
 import { getFormOptions } from "@/server/crm";
-import { requirePermission, PERMISSIONS } from "@/lib/authz";
-import { PageHeader } from "@/components/ui";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import { OpportunityForm, type OpportunityFormOptions } from "../opportunity-form";
 
@@ -9,7 +9,8 @@ export default async function NewOpportunityPage({
 }: {
   searchParams: Promise<{ accountId?: string }>;
 }) {
-  const user = await requirePermission(PERMISSIONS.OPPORTUNITY_WRITE);
+  const user = await requireUser();
+  if (!can(user, PERMISSIONS.OPPORTUNITY_WRITE)) return <Forbidden what="opportunities" />;
   const [{ accountId }, options] = await Promise.all([searchParams, getFormOptions()]);
 
   return (
