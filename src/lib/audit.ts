@@ -18,21 +18,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 type Db = Pick<SupabaseClient, "from">;
 
-/**
- * A Prisma transaction client, structurally. Modules not yet ported call these
- * helpers with `tx` first; the overloads below keep both call styles working
- * until the port finishes.
- */
-// Deliberately loose: Prisma's generated TransactionClient carries far more
-// detail than this, and a precise structural match fails to unify. Only
-// `auditHistory` is ever touched, and isPrismaClient() guards the cast.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type PrismaLike = { auditHistory: any };
-
-function isPrismaClient(v: unknown): v is PrismaLike {
-  return typeof v === "object" && v !== null && "auditHistory" in v;
-}
-
 export interface AuditEntry {
   entityType: string;
   entityId: string;
@@ -43,31 +28,8 @@ export interface AuditEntry {
   source?: string;
 }
 
-export async function writeAudit(entry: AuditEntry, client?: Db): Promise<void>;
-export async function writeAudit(tx: PrismaLike, entry: AuditEntry): Promise<void>;
-export async function writeAudit(
-  a: AuditEntry | PrismaLike,
-  b?: Db | AuditEntry,
-): Promise<void> {
-  // Prisma call style: writeAudit(tx, entry).
-  if (isPrismaClient(a)) {
-    const entry = b as AuditEntry;
-    await a.auditHistory.create({
-      data: {
-        entityType: entry.entityType,
-        entityId: entry.entityId,
-        fieldName: entry.fieldName,
-        oldValue: entry.oldValue,
-        newValue: entry.newValue,
-        changedById: entry.changedById,
-        source: entry.source ?? "UI",
-      },
-    });
-    return;
-  }
-
-  const entry = a;
-  const db = (b as Db) ?? (await supabaseServer());
+export async function writeAudit(entry: AuditEntry, client?: Db): Promise<void> {
+  const db = client ?? (await supabaseServer());
 
   const { error } = await db.from("audit_history").insert({
     id: crypto.randomUUID(),
@@ -158,15 +120,10 @@ interface AuditChangeParams {
   source?: string;
 }
 
-export async function auditChanges(params: AuditChangeParams, client?: Db): Promise<void>;
-export async function auditChanges(tx: PrismaLike, params: AuditChangeParams): Promise<void>;
 export async function auditChanges(
-  a: AuditChangeParams | PrismaLike,
-  b?: Db | AuditChangeParams,
+  params: AuditChangeParams,
+  client?: Db,
 ): Promise<void> {
-  const usingPrisma = isPrismaClient(a);
-  const params = (usingPrisma ? (b as AuditChangeParams) : a) as AuditChangeParams;
-
   const entries: AuditEntry[] = [];
 
   for (const field of Object.keys(params.after)) {
@@ -189,14 +146,7 @@ export async function auditChanges(
 
   if (entries.length === 0) return;
 
-  if (usingPrisma) {
-    await (a as PrismaLike).auditHistory.createMany({
-      data: entries.map((e) => ({ ...e, source: e.source ?? "UI" })),
-    });
-    return;
-  }
-
-  const db = (b as Db) ?? (await supabaseServer());
+  const db = client ?? (await supabaseServer());
 
   const { error } = await db.from("audit_history").insert(
     entries.map((e) => ({

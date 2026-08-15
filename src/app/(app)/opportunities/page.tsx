@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Prisma } from "@prisma/client";
+import { toDecimal } from "@/lib/decimal";
 import { Handshake, Plus } from "lucide-react";
 import { listOpportunities, getPipelineByStage } from "@/server/opportunities";
 import {
@@ -30,13 +30,13 @@ export default async function OpportunitiesPage({
   ]);
 
   const open = pipeline.filter((p) => !["CLOSED_WON", "CLOSED_LOST"].includes(p.stage));
-  const openTotal = open.reduce((s, p) => s.plus(p.total), new Prisma.Decimal(0));
+  const openTotal = open.reduce((s, p) => s.plus(p.total), toDecimal(0));
   const weighted = deals
     .filter((d) => !["CLOSED_WON", "CLOSED_LOST"].includes(d.stage))
     .reduce(
       (s, d) =>
-        s.plus(new Prisma.Decimal(d.amount).times(d.probabilityPercent).dividedBy(100)),
-      new Prisma.Decimal(0),
+        s.plus(toDecimal(d.amount).times(d.probabilityPercent).dividedBy(100)),
+      toDecimal(0),
     );
   const partnerSourced = deals.filter((d) => d.partners.length > 0).length;
 

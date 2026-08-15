@@ -1,25 +1,6 @@
 import { supabaseServer } from "./supabase";
 
 /**
- * The slice of a Prisma transaction client this needs. Structural, so it
- * accepts `Prisma.TransactionClient` without importing it — the goal is for
- * this file to stop depending on Prisma once every module is ported.
- */
-interface PrismaLike {
-  numberSequence: {
-    findUnique(args: { where: { entityType: string } }): Promise<{
-      prefix: string;
-      paddingLength: number;
-      includeYear: boolean;
-    } | null>;
-    update(args: {
-      where: { entityType: string };
-      data: { nextValue: { increment: number } };
-    }): Promise<{ nextValue: number }>;
-  };
-}
-
-/**
  * Human-readable record numbers (spec §1.1: "separate unique fields generated
  * by controlled sequences").
  *
@@ -32,34 +13,7 @@ interface PrismaLike {
  * does both in one call. Use this directly only when a number is needed without
  * an immediate insert.
  */
-export async function nextNumber(
-  entityType: string,
-  tx?: PrismaLike,
-): Promise<string> {
-  // Modules still on Prisma pass their transaction client and must allocate
-  // inside that transaction — see docs/SUPABASE-MIGRATION.md for which ones.
-  if (tx) {
-    const seq = await tx.numberSequence.findUnique({ where: { entityType } });
-    if (!seq) {
-      throw new Error(
-        `No number sequence configured for "${entityType}". Add one in prisma/seed.ts.`,
-      );
-    }
-
-    const updated = await tx.numberSequence.update({
-      where: { entityType },
-      data: { nextValue: { increment: 1 } },
-    });
-
-    const value = updated.nextValue - 1;
-    const padded = String(value).padStart(seq.paddingLength, "0");
-    const year = new Date().getFullYear();
-
-    return seq.includeYear
-      ? `${seq.prefix}-${year}-${padded}`
-      : `${seq.prefix}-${padded}`;
-  }
-
+export async function nextNumber(entityType: string): Promise<string> {
   const db = await supabaseServer();
 
   const { data, error } = await db.rpc("next_sequence_number", {

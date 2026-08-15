@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Prisma } from "@prisma/client";
+import { toDecimal } from "@/lib/decimal";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/authz";
 import { getPipelineByStage } from "@/server/opportunities";
@@ -53,13 +53,13 @@ export default async function DashboardPage() {
   );
   const openPipelineTotal = openStages.reduce(
     (s, p) => s.plus(p.total),
-    new Prisma.Decimal(0),
+    toDecimal(0),
   );
   const wonTotal =
-    pipeline.find((p) => p.stage === "CLOSED_WON")?.total ?? new Prisma.Decimal(0);
+    pipeline.find((p) => p.stage === "CLOSED_WON")?.total ?? toDecimal(0);
   const maxStage = openStages.reduce(
     (m, p) => (p.total.greaterThan(m) ? p.total : m),
-    new Prisma.Decimal(1),
+    toDecimal(1),
   );
 
   const partnersRanked = topPartners
@@ -67,7 +67,7 @@ export default async function DashboardPage() {
       ...p,
       earned: p.commissionRecords.reduce(
         (s, r) => s.plus(r.commissionAmount),
-        new Prisma.Decimal(0),
+        toDecimal(0),
       ),
     }))
     .sort((a, b) => b.earned.comparedTo(a.earned));

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
+import { one } from "@/lib/decimal";
 import { requireUser } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
@@ -10,19 +11,39 @@ import { formatDateTime, humanize, entityHref } from "@/lib/utils";
 export default async function ActivitiesPage() {
   const user = await requireUser();
 
-  const activities = await prisma.activity.findMany({
-    where: { deletedAt: null, ownerUserId: user.id },
-    include: { contact: { select: { id: true, firstName: true, lastName: true } } },
-    orderBy: [{ status: "asc" }, { dueAt: "asc" }],
-    take: 200,
-  });
+  const db = await supabaseServer();
+
+  const { data: activityRows } = await db
+    .from("activity")
+    .select("*, contact ( id, firstName, lastName )")
+    .is("deletedAt", null)
+    .eq("ownerUserId", user.id)
+    .order("status")
+    .order("dueAt")
+    .limit(200);
+
+  const activities = (activityRows ?? []).map((a) => ({
+    ...a,
+    contact: one(a.contact as never),
+  }));
 
   const now = new Date();
+
+  // dueAt arrives as an ISO string, not a Date. Comparing a string to a Date is
+  // always false and `.toDateString()` does not exist on it, so both are parsed
+  // first — otherwise the overdue and due-today counts silently read zero.
+  const dueAtOf = (a: { dueAt?: unknown }) =>
+    a.dueAt ? new Date(a.dueAt as string) : null;
+
   const open = activities.filter((a) => a.status === "OPEN");
-  const overdue = open.filter((a) => a.dueAt && a.dueAt < now);
-  const today = open.filter(
-    (a) => a.dueAt && a.dueAt.toDateString() === now.toDateString(),
-  );
+  const overdue = open.filter((a) => {
+    const due = dueAtOf(a);
+    return due !== null && due < now;
+  });
+  const today = open.filter((a) => {
+    const due = dueAtOf(a);
+    return due !== null && due.toDateString() === now.toDateString();
+  });
 
   return (
     <>

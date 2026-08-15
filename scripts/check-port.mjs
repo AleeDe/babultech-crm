@@ -12,6 +12,9 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
+// Both server modules and app pages query the database directly, so the
+// check has to cover both — scanning only src/server hid 18 pages that still
+// imported Prisma.
 const dir = "src/server";
 const files = fs.readdirSync(dir).filter((f) => f.endsWith(".ts"));
 

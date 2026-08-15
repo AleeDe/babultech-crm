@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
+import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
@@ -11,16 +12,30 @@ import { formatMoney, formatDate, humanize, daysBetween } from "@/lib/utils";
 export default async function ContractsPage() {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="contracts" />;
-  const contracts = await prisma.contract.findMany({
-    where: { deletedAt: null },
-    include: {
-      account: { select: { id: true, name: true } },
-      owner: { select: { fullName: true } },
-      opportunity: { select: { id: true, name: true } },
-      _count: { select: { projects: true, invoices: true } },
-    },
-    orderBy: { endDate: "asc" },
-  });
+  const db = await supabaseServer();
+
+  const { data: contractRows } = await db
+    .from("contract")
+    .select(
+      `*,
+       account ( id, name ),
+       owner:app_user!contract_ownerUserId_fkey ( fullName ),
+       opportunity ( id, name ),
+       projects:project ( count ),
+       invoices:invoice ( count )`,
+    )
+    .is("deletedAt", null)
+    .order("endDate");
+
+  const countOf = (v: unknown) => (v as { count: number }[] | undefined)?.[0]?.count ?? 0;
+
+  const contracts = (contractRows ?? []).map((c) => ({
+    ...c,
+    account: one(c.account as never),
+    owner: one(c.owner as never),
+    opportunity: one(c.opportunity as never),
+    _count: { projects: countOf(c.projects), invoices: countOf(c.invoices) },
+  }));
 
   const active = contracts.filter((c) => c.status === "ACTIVE");
   const renewalWindow = active.filter((c) => {

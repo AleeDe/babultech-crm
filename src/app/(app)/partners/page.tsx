@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Prisma } from "@prisma/client";
+import { toDecimal } from "@/lib/decimal";
 import { Building2, User } from "lucide-react";
 import { listPartners } from "@/server/partners";
 import { prisma } from "@/lib/prisma";
@@ -44,9 +44,9 @@ export default async function PartnersPage({
     .reduce(
       (s, d) =>
         s.plus(
-          new Prisma.Decimal(d.opportunity.amount).times(d.revenueSharePercent).dividedBy(100),
+          toDecimal(d.opportunity.amount).times(d.revenueSharePercent).dividedBy(100),
         ),
-      new Prisma.Decimal(0),
+      toDecimal(0),
     );
 
   return (
