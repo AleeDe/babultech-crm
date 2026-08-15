@@ -115,7 +115,7 @@ export default async function UserDetailPage({
                 <p className="text-sm text-muted-foreground">{user.role.description}</p>
               )}
               <div className="flex flex-wrap gap-1.5">
-                {user.role.permissions.map((p) => (
+                {user.role.permissions.map((p: string) => (
                   <Badge key={p} tone={p === "*" ? "danger" : "neutral"} className="font-mono">
                     {p === "*" ? "everything" : p}
                   </Badge>
@@ -134,7 +134,7 @@ export default async function UserDetailPage({
                 <CardTitle>Booked on</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
-                {user.projectMemberships.map((m) => (
+                {user.projectMemberships.map((m: Record<string, any>) => (
                   <div key={m.id} className="flex items-center justify-between gap-3 border-b pb-2 last:border-0">
                     <div className="min-w-0">
                       <Link href={`/projects/${m.project.id}`} className="font-medium hover:underline">
@@ -157,7 +157,7 @@ export default async function UserDetailPage({
                 <CardTitle>Direct reports</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
-                {user.reports.map((r) => (
+                {user.reports.map((r: Record<string, any>) => (
                   <div key={r.id} className="flex items-center justify-between gap-3 border-b pb-2 last:border-0">
                     <Link href={`/users/${r.id}`} className="hover:underline">
                       {r.fullName}
@@ -178,7 +178,7 @@ export default async function UserDetailPage({
               {audit.length === 0 ? (
                 <p className="text-muted-foreground">No changes recorded.</p>
               ) : (
-                audit.map((a) => (
+                audit.map((a: Record<string, any>) => (
                   <div key={a.id}>
                     <p>
                       <span className="font-medium">{humanize(a.fieldName)}</span>{" "}
@@ -235,7 +235,7 @@ export default async function UserDetailPage({
               <DetailRow label="Teams">
                 {user.teamMemberships.length === 0
                   ? "—"
-                  : user.teamMemberships.map((t) => t.team.name).join(", ")}
+                  : user.teamMemberships.map((t: Record<string, any>) => t.team.name).join(", ")}
               </DetailRow>
               <DetailRow label="Created">{formatDate(user.createdAt)}</DetailRow>
             </CardContent>
