@@ -109,7 +109,7 @@ async function recalculateInvoice(invoiceId: string) {
 
   // Locks the invoice, sums only CLEARED allocations, rewrites both balances
   // and advances the status — atomically. See
-  // prisma/rls/021_fn_recalculate_invoice.sql. This is the single place
+  // supabase/functions-sql/021_fn_recalculate_invoice.sql. This is the single place
   // paidAmount and outstandingAmount are ever written, which is what makes the
   // AR ageing view trustworthy.
   const { data, error } = await db.rpc("recalculate_invoice", {
@@ -556,7 +556,7 @@ export async function runTimeBilling(
     // Invoice, lines, and the invoiceLineId stamps on the time logs, all in one
     // transaction. If the invoice landed but the stamps did not, the next run
     // would bill the same hours again — the customer charged twice for the
-    // same work. See prisma/rls/028_fn_time_billing.sql.
+    // same work. See supabase/functions-sql/028_fn_time_billing.sql.
     const { data: invoice, error } = await db.rpc("run_time_billing", {
       p_project_id: project.id,
       p_account_id: project.accountId,
@@ -625,7 +625,7 @@ export async function recordPayment(
     // Payment, its allocations, and the recalculation of every touched invoice
     // in one transaction. A refused allocation rolls the payment row back too —
     // otherwise cash would be recorded against nothing. See
-    // prisma/rls/022_fn_record_payment.sql.
+    // supabase/functions-sql/022_fn_record_payment.sql.
     const { data: payment, error } = await db.rpc("record_payment", {
       p_payload: {
         accountId: data.accountId,

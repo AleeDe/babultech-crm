@@ -73,7 +73,7 @@ export async function updateAccount(
 
   try {
     // update_record reads, updates and writes the change history in one
-    // transaction — see prisma/rls/014_fn_generic_write.sql.
+    // transaction — see supabase/functions-sql/014_fn_generic_write.sql.
     await updateRecord(
       "account",
       id,
@@ -251,7 +251,7 @@ export async function createContact(
 
   try {
     // create_contact demotes any existing primary and inserts in one
-    // transaction — see prisma/rls/015_fn_contact_primary.sql.
+    // transaction — see supabase/functions-sql/015_fn_contact_primary.sql.
     const db = await supabaseServer();
     const { data: contact, error } = await db.rpc("create_contact", {
       p_payload: { ...data, accountId: data.accountId ?? null, email: data.email || null },
@@ -591,7 +591,7 @@ export async function convertLead(
     );
     const expiresAt = registrationExpiry(registeredAt, days);
 
-    // Five tables in one transaction — see prisma/rls/016_fn_convert_lead.sql.
+    // Five tables in one transaction — see supabase/functions-sql/016_fn_convert_lead.sql.
     const { data: result, error } = await db.rpc("convert_lead", {
       p_lead_id: data.leadId,
       p_actor_id: user.id,
@@ -701,7 +701,7 @@ export async function getCampaignPerformance() {
 
   const db = await supabaseServer();
 
-  // v_campaign_performance is a view (prisma/sql/02_views.sql, applied to cloud
+  // v_campaign_performance is a view (supabase/schema-sql/02_views.sql, applied to cloud
   // as migration 20260815000006). PostgREST selects from views like tables.
   const { data, error } = await db
     .from("v_campaign_performance")

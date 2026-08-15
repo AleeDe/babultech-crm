@@ -5,7 +5,7 @@ import { supabaseServer } from "./supabase";
  * by controlled sequences").
  *
  * The allocation itself lives in the database — `next_sequence_number()` in
- * prisma/rls/009_fn_numbering.sql — because it must happen in the same
+ * supabase/functions-sql/009_fn_numbering.sql — because it must happen in the same
  * transaction as the insert it numbers. Allocating here and inserting in a
  * separate HTTP call would burn a number whenever the insert failed.
  *

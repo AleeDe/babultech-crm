@@ -456,7 +456,7 @@ export async function clawback(
   const db = await supabaseServer();
 
   // Read, reverse, update and audit in one transaction — see
-  // prisma/rls/010_fn_clawback.sql. The window check and the "already clawed
+  // supabase/functions-sql/010_fn_clawback.sql. The window check and the "already clawed
   // back" guard live there too, so two concurrent clawbacks cannot both pass.
   const { data, error } = await db.rpc("claw_back_commission", {
     p_record_id: commissionRecordId,

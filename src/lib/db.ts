@@ -4,7 +4,7 @@ import { supabaseServer } from "./supabase";
  * Atomic write helpers.
  *
  * These wrap the `create_record` / `update_record` database functions (see
- * prisma/rls/014_fn_generic_write.sql). They exist because supabase-js has no
+ * supabase/functions-sql/014_fn_generic_write.sql). They exist because supabase-js has no
  * transaction API: a create that allocates a sequence number, or an update that
  * must also write change history, cannot be two HTTP calls without risking a
  * burnt number or a lost audit row.

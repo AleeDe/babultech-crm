@@ -8,7 +8,7 @@
  * Run: node scripts/preflight-supabase.mjs
  */
 import { config } from "dotenv";
-import { PrismaClient } from "@prisma/client";
+import pg from "pg";
 
 config({ path: ".env" });
 
@@ -68,16 +68,25 @@ for (const n of notes) console.log("  - " + n);
 
 // Live connectivity check against both URLs.
 async function probe(label, url) {
-  const client = new PrismaClient({ datasources: { db: { url } } });
+  // Supabase cloud terminates TLS with its own CA; rejectUnauthorized:false
+  // keeps this working without shipping a cert bundle. Local ignores it.
+  const needsSsl = /supabase\.(com|co)/.test(url);
+  const client = new pg.Client({
+    connectionString: url,
+    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+  });
   try {
-    const [row] = await client.$queryRaw`select current_database() as db, version() as version`;
-    console.log(`  ok ${label}: ${row.db} (${row.version.split(",")[0]})`);
+    await client.connect();
+    const { rows } = await client.query(
+      "select current_database() as db, version() as version",
+    );
+    console.log(`  ok ${label}: ${rows[0].db} (${rows[0].version.split(",")[0]})`);
     return true;
   } catch (err) {
     console.error(`  x  ${label}: ${err.message.split("\n")[0]}`);
     return false;
   } finally {
-    await client.$disconnect();
+    await client.end().catch(() => {});
   }
 }
 

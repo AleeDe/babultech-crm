@@ -6,7 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * Change history (spec §13 Audit: "Status, owner, amount, dates, approvals and
  * financial balances require change history"). One row per changed field.
  *
- * Most updates now go through `update_record` (prisma/rls/014_fn_generic_write.sql),
+ * Most updates now go through `update_record` (supabase/functions-sql/014_fn_generic_write.sql),
  * which does this diff inside the same transaction as the update — history can
  * never drift from the record. These helpers remain for the write paths that
  * record history without a matching row update (approvals, state machines).

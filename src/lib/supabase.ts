@@ -34,7 +34,7 @@ function requireEnv(value: string | undefined, name: string): string {
  * Request-scoped client bound to the caller's session cookie.
  *
  * Every query issued through this runs with the user's JWT, so the RLS policies
- * in prisma/rls/ decide what rows come back. This is the default — reach for
+ * in supabase/functions-sql/ decide what rows come back. This is the default — reach for
  * anything else only with a reason.
  */
 export async function supabaseServer(): Promise<SupabaseClient> {

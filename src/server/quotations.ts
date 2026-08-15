@@ -276,7 +276,7 @@ export async function reviseQuotation(id: string): Promise<ActionResult<{ id: st
   try {
     const db = await supabaseServer();
 
-    // Copy + supersede in one transaction — see prisma/rls/023_fn_revise_quotation.sql.
+    // Copy + supersede in one transaction — see supabase/functions-sql/023_fn_revise_quotation.sql.
     const { data: revision, error } = await db.rpc("revise_quotation", {
       p_id: id,
       p_actor_id: user.id,
