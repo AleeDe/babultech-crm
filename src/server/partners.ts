@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
-import { nextNumber, SEQUENCES } from "@/lib/numbering";
+import Decimal from "decimal.js";
+import { toDecimal, one } from "@/lib/decimal";
+import { supabaseServer } from "@/lib/supabase";
+import { updateRecord } from "@/lib/db";
+import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
-import { auditChanges, writeAudit } from "@/lib/audit";
 import { registrationExpiry, protectionDaysFor } from "@/lib/partner-policy";
 
 /**
@@ -109,121 +110,61 @@ export async function createPartner(input: PartnerInput): Promise<ActionResult<{
   const data = parsed.data;
 
   try {
-    const partner = await prisma.$transaction(async (tx) => {
-      let accountId: string | null = null;
-      let contactId: string | null = null;
-      let displayName: string;
+    const db = await supabaseServer();
 
-      if (data.kind === "COMPANY") {
-        if (data.accountId) {
-          const account = await tx.account.findUniqueOrThrow({ where: { id: data.accountId } });
-          // The DB trigger enforces this too; promote the account here so the
-          // common "this existing customer is now also a reseller" path works.
-          if (account.accountType !== "PARTNER") {
-            await tx.account.update({
-              where: { id: account.id },
-              data: { accountType: "PARTNER" },
-            });
-            await writeAudit(tx, {
-              entityType: "Account",
-              entityId: account.id,
-              fieldName: "accountType",
-              oldValue: account.accountType,
-              newValue: "PARTNER",
-              changedById: user.id,
-            });
+    // Account/contact creation, the PARTNER-type promotion and the partner row
+    // all in one transaction — partner_identity_check requires the account or
+    // contact to exist first, and a half-done create would leave an account
+    // silently promoted to PARTNER with no partner behind it.
+    // Split by branch: `data` is a discriminated union, so the COMPANY-only and
+    // INDIVIDUAL-only fields are not both present on it.
+    const kindFields =
+      data.kind === "COMPANY"
+        ? {
+            accountId: data.accountId ?? null,
+            companyName: data.companyName ?? null,
+            industry: data.industry ?? null,
+            billingAddress: data.billingAddress ?? null,
+            primaryContactFirstName: data.primaryContactFirstName ?? null,
+            primaryContactLastName: data.primaryContactLastName ?? null,
+            primaryContactEmail: data.primaryContactEmail ?? null,
           }
-          accountId = account.id;
-          displayName = account.name;
-        } else {
-          if (!data.companyName) {
-            throw new Error("Provide either an existing account or a company name.");
-          }
-          const account = await tx.account.create({
-            data: {
-              accountNumber: await nextNumber(SEQUENCES.ACCOUNT, tx),
-              name: data.companyName,
-              accountType: "PARTNER",
-              ownerUserId: data.partnerManagerId ?? user.id,
-              industry: data.industry ?? null,
-              website: data.website ?? null,
-              mainPhone: data.phone ?? null,
-              taxNumberNtn: data.taxNumber ?? null,
-              billingAddress: (data.billingAddress ?? undefined) as Prisma.InputJsonValue | undefined,
-            },
-          });
-          accountId = account.id;
-          displayName = account.name;
-        }
+        : {
+            contactId: data.contactId ?? null,
+            firstName: data.firstName ?? null,
+            lastName: data.lastName ?? null,
+            mobile: data.mobile ?? null,
+            whatsapp: data.whatsapp ?? null,
+          };
 
-        // Optional named person at the partner company.
-        if (data.primaryContactFirstName && data.primaryContactLastName) {
-          await tx.contact.create({
-            data: {
-              accountId,
-              firstName: data.primaryContactFirstName,
-              lastName: data.primaryContactLastName,
-              email: data.primaryContactEmail || null,
-              isPrimary: true,
-              contactRole: "Partner Manager",
-            },
-          });
-        }
-      } else {
-        // INDIVIDUAL — a partner who is a person, with no company account.
-        if (data.contactId) {
-          const contact = await tx.contact.findUniqueOrThrow({ where: { id: data.contactId } });
-          contactId = contact.id;
-          displayName = `${contact.firstName} ${contact.lastName}`;
-        } else {
-          if (!data.firstName || !data.lastName) {
-            throw new Error("Provide either an existing contact or a first and last name.");
-          }
-          const contact = await tx.contact.create({
-            data: {
-              accountId: null, // the whole point: no company behind this person
-              firstName: data.firstName,
-              lastName: data.lastName,
-              email: data.email || null,
-              phone: data.phone ?? null,
-              mobile: data.mobile ?? null,
-              whatsapp: data.whatsapp ?? null,
-              contactRole: "Partner",
-              communicationConsent: true,
-            },
-          });
-          contactId = contact.id;
-          displayName = `${contact.firstName} ${contact.lastName}`;
-        }
-      }
-
-      return tx.partner.create({
-        data: {
-          partnerNumber: await nextNumber(SEQUENCES.PARTNER, tx),
-          displayName,
-          kind: data.kind,
-          accountId,
-          contactId,
-          partnerType: data.partnerType,
-          tier: data.tier,
-          status: data.status,
-          partnerManagerId: data.partnerManagerId ?? null,
-          territory: data.territory ?? null,
-          startDate: data.startDate ?? null,
-          agreementExpiryDate: data.agreementExpiryDate ?? null,
-          defaultCommissionPercent: data.defaultCommissionPercent ?? null,
-          commissionPlanId: data.commissionPlanId ?? null,
-          payoutCurrencyCode: data.payoutCurrencyCode,
-          taxNumber: data.taxNumber ?? null,
-          withholdingTaxPercent: data.withholdingTaxPercent ?? null,
-          bankDetails: (data.bankDetails ?? undefined) as Prisma.InputJsonValue | undefined,
-          email: data.email || null,
-          phone: data.phone ?? null,
-          website: data.website ?? null,
-          notes: data.notes ?? null,
-        },
-      });
+    const { data: partner, error } = await db.rpc("create_partner", {
+      p_payload: {
+        kind: data.kind,
+        ...kindFields,
+        partnerType: data.partnerType,
+        tier: data.tier,
+        status: data.status,
+        partnerManagerId: data.partnerManagerId ?? null,
+        territory: data.territory ?? null,
+        startDate: data.startDate ? data.startDate.toISOString().slice(0, 10) : null,
+        agreementExpiryDate: data.agreementExpiryDate
+          ? data.agreementExpiryDate.toISOString().slice(0, 10)
+          : null,
+        defaultCommissionPercent: data.defaultCommissionPercent ?? null,
+        commissionPlanId: data.commissionPlanId ?? null,
+        payoutCurrencyCode: data.payoutCurrencyCode,
+        taxNumber: data.taxNumber ?? null,
+        withholdingTaxPercent: data.withholdingTaxPercent ?? null,
+        bankDetails: data.bankDetails ?? null,
+        website: data.website ?? null,
+        email: data.email ?? null,
+        phone: data.phone ?? null,
+        notes: data.notes ?? null,
+      },
+      p_actor_id: user.id,
     });
+
+    if (error) return { ok: false, error: error.message };
 
     revalidatePath("/partners");
     return { ok: true, data: { id: partner.id } };
@@ -248,24 +189,23 @@ export async function updatePartner(
   const { id, ...changes } = parsed.data;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const before = await tx.partner.findUniqueOrThrow({ where: { id } });
-      const after = await tx.partner.update({
-        where: { id },
-        data: {
-          ...changes,
-          email: changes.email === "" ? null : changes.email,
-          bankDetails: (changes.bankDetails ?? undefined) as Prisma.InputJsonValue | undefined,
-        },
-      });
-      await auditChanges(tx, {
-        entityType: "Partner",
-        entityId: id,
-        before,
-        after,
-        changedById: user.id,
-      });
-    });
+    await updateRecord(
+      "partner",
+      id,
+      {
+        ...changes,
+        email: changes.email === "" ? null : changes.email,
+        bankDetails: changes.bankDetails ?? null,
+        startDate: changes.startDate
+          ? changes.startDate.toISOString().slice(0, 10)
+          : changes.startDate,
+        agreementExpiryDate: changes.agreementExpiryDate
+          ? changes.agreementExpiryDate.toISOString().slice(0, 10)
+          : changes.agreementExpiryDate,
+      },
+      "Partner",
+      user.id,
+    );
 
     revalidatePath("/partners");
     revalidatePath(`/partners/${id}`);
@@ -300,46 +240,40 @@ export async function linkPartnerToOpportunity(
   const data = parsed.data;
 
   try {
-    const link = await prisma.$transaction(async (tx) => {
-      // Guard the 100% total here as well as in the DB, so the user gets a
-      // readable message instead of a raised exception.
-      const existing = await tx.opportunityPartner.aggregate({
-        where: { opportunityId: data.opportunityId },
-        _sum: { revenueSharePercent: true },
-      });
-      const used = new Prisma.Decimal(existing._sum.revenueSharePercent ?? 0);
-      if (used.plus(data.revenueSharePercent).greaterThan(100)) {
-        throw new Error(
-          `Revenue share would total ${used.plus(data.revenueSharePercent)}%. Only ${new Prisma.Decimal(100).minus(used)}% is unallocated on this deal.`,
-        );
-      }
+    const db = await supabaseServer();
 
-      const partner = await tx.partner.findUniqueOrThrow({ where: { id: data.partnerId } });
-      const registeredAt = new Date();
+    // The partner tier drives the default protection window, so it is read
+    // here and the resolved day count passed in — the tier rules stay in
+    // partner-policy.ts rather than being duplicated in SQL.
+    const { data: partner } = await db
+      .from("partner")
+      .select("tier, registrationProtectionDays")
+      .eq("id", data.partnerId)
+      .maybeSingle();
 
-      return tx.opportunityPartner.create({
-        data: {
-          opportunityId: data.opportunityId,
-          partnerId: data.partnerId,
-          role: data.role,
-          revenueSharePercent: data.revenueSharePercent,
-          commissionPercentOverride: data.commissionPercentOverride ?? null,
-          // Snapshot the plan so later plan edits can't rewrite this deal.
-          commissionPlanId: partner.commissionPlanId,
-          registeredAt,
-          // Left blank, the standard protection window applies. A null expiry
-          // would mean "protected forever", which is not a policy anyone
-          // intends to set by leaving a field empty.
-          registrationExpiresAt:
-            data.registrationExpiresAt ??
-            registrationExpiry(
-              registeredAt,
-              protectionDaysFor(partner.tier, partner.registrationProtectionDays),
-            ),
-          notes: data.notes ?? null,
-        },
-      });
+    if (!partner) return { ok: false, error: "That partner no longer exists." };
+
+    const defaultDays = protectionDaysFor(
+      partner.tier as never,
+      partner.registrationProtectionDays,
+    );
+
+    // The 100%% guard runs inside the function, under a lock on the deal: two
+    // concurrent attaches each seeing 60%% used would otherwise both pass.
+    const { data: link, error } = await db.rpc("attach_partner_to_deal", {
+      p_opportunity_id: data.opportunityId,
+      p_partner_id: data.partnerId,
+      p_role: data.role,
+      p_share_percent: data.revenueSharePercent,
+      p_override_percent: data.commissionPercentOverride ?? null,
+      p_expires_at: data.registrationExpiresAt
+        ? data.registrationExpiresAt.toISOString()
+        : null,
+      p_default_days: defaultDays,
+      p_notes: data.notes ?? null,
     });
+
+    if (error) return { ok: false, error: error.message };
 
     revalidatePath(`/opportunities/${data.opportunityId}`);
     revalidatePath(`/partners/${data.partnerId}`);
@@ -354,19 +288,25 @@ export async function unlinkPartnerFromOpportunity(linkId: string): Promise<Acti
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
   try {
-    const link = await prisma.opportunityPartner.findUniqueOrThrow({
-      where: { id: linkId },
-      include: { _count: { select: { commissionRecords: true } } },
-    });
+    const db = await supabaseServer();
 
-    if (link._count.commissionRecords > 0) {
+    const { data: link } = await db
+      .from("opportunity_partner")
+      .select("opportunityId, commissionRecords:commission_record ( id )")
+      .eq("id", linkId)
+      .maybeSingle();
+
+    if (!link) return { ok: false, error: "That link no longer exists." };
+
+    if (((link.commissionRecords ?? []) as unknown[]).length > 0) {
       return {
         ok: false,
         error: "This partner already has commission records on the deal. Claw those back before removing the link.",
       };
     }
 
-    await prisma.opportunityPartner.delete({ where: { id: linkId } });
+    const { error } = await db.from("opportunity_partner").delete().eq("id", linkId);
+    if (error) throw new Error(error.message);
     revalidatePath(`/opportunities/${link.opportunityId}`);
     return { ok: true, data: undefined };
   } catch (err) {
@@ -386,115 +326,180 @@ export async function listPartners(filters?: {
 }) {
   await requirePermission(PERMISSIONS.PARTNER_READ);
 
-  return prisma.partner.findMany({
-    where: {
-      deletedAt: null,
-      ...(filters?.status ? { status: filters.status as never } : {}),
-      ...(filters?.partnerType ? { partnerType: filters.partnerType as never } : {}),
-      ...(filters?.kind ? { kind: filters.kind as never } : {}),
-      ...(filters?.search
-        ? {
-            OR: [
-              { displayName: { contains: filters.search, mode: "insensitive" as const } },
-              { partnerNumber: { contains: filters.search, mode: "insensitive" as const } },
-              { email: { contains: filters.search, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
+  const db = await supabaseServer();
+
+  let query = db
+    .from("partner")
+    .select(
+      `*,
+       account ( id, name ),
+       contact ( id, firstName, lastName, email ),
+       partnerManager:app_user!partner_partnerManagerId_fkey ( id, fullName ),
+       commissionPlan:commission_plan ( id, name ),
+       opportunities:opportunity_partner ( count ),
+       commissionRecords:commission_record ( count ),
+       referredLeads:lead ( count )`,
+    )
+    .is("deletedAt", null)
+    .order("createdAt", { ascending: false });
+
+  if (filters?.status) query = query.eq("status", filters.status);
+  if (filters?.partnerType) query = query.eq("partnerType", filters.partnerType);
+  if (filters?.kind) query = query.eq("kind", filters.kind);
+  if (filters?.search) {
+    const s = filters.search.replace(/[,()]/g, "");
+    query = query.or(
+      `displayName.ilike.%${s}%,partnerNumber.ilike.%${s}%,email.ilike.%${s}%`,
+    );
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Could not load partners: ${error.message}`);
+
+  const countOf = (v: unknown) => (v as { count: number }[] | undefined)?.[0]?.count ?? 0;
+
+  return (data ?? []).map((p) => ({
+    ...p,
+    account: one(p.account as never),
+    contact: one(p.contact as never),
+    partnerManager: one(p.partnerManager as never),
+    commissionPlan: one(p.commissionPlan as never),
+    _count: {
+      opportunities: countOf(p.opportunities),
+      commissionRecords: countOf(p.commissionRecords),
+      referredLeads: countOf(p.referredLeads),
     },
-    include: {
-      account: { select: { id: true, name: true } },
-      contact: { select: { id: true, firstName: true, lastName: true, email: true } },
-      partnerManager: { select: { id: true, fullName: true } },
-      commissionPlan: { select: { id: true, name: true } },
-      _count: { select: { opportunities: true, commissionRecords: true, referredLeads: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  }));
 }
 
 export async function getPartner(id: string) {
   await requirePermission(PERMISSIONS.PARTNER_READ);
 
-  return prisma.partner.findUnique({
-    where: { id },
-    include: {
-      account: true,
-      contact: true,
-      partnerManager: { select: { id: true, fullName: true, email: true } },
-      commissionPlan: { include: { tiers: { orderBy: { sortOrder: "asc" } } } },
-      contacts: { include: { contact: true } },
-      referredLeads: {
-        where: { deletedAt: null },
-        select: { id: true, leadNumber: true, firstName: true, lastName: true, companyName: true, status: true, estimatedValue: true },
-        orderBy: { createdAt: "desc" },
-        take: 20,
-      },
-      opportunities: {
-        include: {
-          opportunity: {
-            select: {
-              id: true, opportunityNumber: true, name: true, stage: true,
-              amount: true, currencyCode: true, expectedCloseDate: true,
-              account: { select: { name: true } },
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-      },
-      commissionRecords: {
-        where: { deletedAt: null },
-        include: { opportunity: { select: { opportunityNumber: true, name: true } } },
-        orderBy: { earnedDate: "desc" },
-      },
-      payouts: { orderBy: { createdAt: "desc" } },
-    },
-  });
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("partner")
+    .select(
+      `*,
+       account ( * ),
+       contact ( * ),
+       partnerManager:app_user!partner_partnerManagerId_fkey ( id, fullName, email ),
+       commissionPlan:commission_plan ( *, tiers:commission_tier ( * ) ),
+       contacts:partner_contact ( *, contact ( * ) ),
+       referredLeads:lead ( id, leadNumber, firstName, lastName, companyName, status, estimatedValue, createdAt, deletedAt ),
+       opportunities:opportunity_partner (
+         *,
+         opportunity (
+           id, opportunityNumber, name, stage, amount, currencyCode,
+           expectedCloseDate, account ( name )
+         )
+       ),
+       commissionRecords:commission_record (
+         *,
+         opportunity ( opportunityNumber, name )
+       ),
+       payouts:commission_payout ( * )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load partner: ${error.message}`);
+  if (!data) return null;
+
+  // PostgREST returns embedded collections unfiltered and unordered, so the
+  // per-relation where/orderBy/take from the Prisma query are applied here.
+  type Row = Record<string, unknown>;
+  const rows = (v: unknown) => ((v as Row[] | null) ?? []);
+  const desc = (a: unknown, b: unknown) => String(b ?? "").localeCompare(String(a ?? ""));
+
+  const plan = one(data.commissionPlan as never) as Row | null;
+
+  return {
+    ...data,
+    account: one(data.account as never),
+    contact: one(data.contact as never),
+    partnerManager: one(data.partnerManager as never),
+    commissionPlan: plan
+      ? {
+          ...plan,
+          tiers: rows(plan.tiers).sort(
+            (a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0),
+          ),
+        }
+      : null,
+    contacts: rows(data.contacts).map((c): Row => ({ ...c, contact: one(c.contact as never) })),
+    referredLeads: rows(data.referredLeads)
+      .filter((l) => !l.deletedAt)
+      .sort((a, b) => desc(a.createdAt, b.createdAt))
+      .slice(0, 20),
+    opportunities: rows(data.opportunities)
+      .map((o): Row => {
+        const opp = one(o.opportunity as never) as Row | null;
+        return {
+          ...o,
+          opportunity: opp ? { ...opp, account: one(opp.account as never) } : null,
+        };
+      })
+      .sort((a, b) => desc(a.createdAt, b.createdAt)),
+    commissionRecords: rows(data.commissionRecords)
+      .filter((r) => !r.deletedAt)
+      .map((r): Row => ({ ...r, opportunity: one(r.opportunity as never) }))
+      .sort((a, b) => desc(a.earnedDate, b.earnedDate)),
+    payouts: rows(data.payouts).sort((a, b) => desc(a.createdAt, b.createdAt)),
+  };
 }
 
 /** Headline numbers for the partner detail page. */
 export async function getPartnerSummary(partnerId: string) {
   await requirePermission(PERMISSIONS.PARTNER_READ);
 
-  const [deals, commissions] = await Promise.all([
-    prisma.opportunityPartner.findMany({
-      where: { partnerId },
-      include: { opportunity: { select: { stage: true, amount: true } } },
-    }),
-    prisma.commissionRecord.groupBy({
-      by: ["status"],
-      where: { partnerId, deletedAt: null },
-      _sum: { commissionAmount: true, netPayableAmount: true },
-      _count: true,
-    }),
+  const db = await supabaseServer();
+
+  const [dealsRes, commissionsRes] = await Promise.all([
+    db
+      .from("opportunity_partner")
+      .select("revenueSharePercent, opportunity ( stage, amount )")
+      .eq("partnerId", partnerId),
+    // PostgREST has no groupBy, so the records are fetched and bucketed below.
+    db
+      .from("commission_record")
+      .select("status, netPayableAmount")
+      .eq("partnerId", partnerId)
+      .is("deletedAt", null),
   ]);
 
-  const won = deals.filter((d) => d.opportunity.stage === "CLOSED_WON");
-  const lost = deals.filter((d) => d.opportunity.stage === "CLOSED_LOST");
+  type DealRow = { revenueSharePercent: unknown; opportunity: { stage: string; amount: unknown } };
+
+  const deals = (dealsRes.data ?? []).map((d) => ({
+    revenueSharePercent: d.revenueSharePercent,
+    opportunity: one(d.opportunity as never) as unknown as { stage: string; amount: unknown },
+  })) as DealRow[];
+
+  const won = deals.filter((d) => d.opportunity?.stage === "CLOSED_WON");
+  const lost = deals.filter((d) => d.opportunity?.stage === "CLOSED_LOST");
   const open = deals.filter(
-    (d) => d.opportunity.stage !== "CLOSED_WON" && d.opportunity.stage !== "CLOSED_LOST",
+    (d) => d.opportunity?.stage !== "CLOSED_WON" && d.opportunity?.stage !== "CLOSED_LOST",
   );
 
-  const sourcedValue = (rows: typeof deals) =>
+  const sourcedValue = (rows: DealRow[]) =>
     rows.reduce(
       (sum, d) =>
         sum.plus(
-          new Prisma.Decimal(d.opportunity.amount)
-            .times(d.revenueSharePercent)
+          toDecimal(d.opportunity?.amount)
+            .times(toDecimal(d.revenueSharePercent))
             .dividedBy(100),
         ),
-      new Prisma.Decimal(0),
+      toDecimal(0),
     );
 
-  const byStatus = Object.fromEntries(
-    commissions.map((c) => [c.status, c._sum.netPayableAmount ?? new Prisma.Decimal(0)]),
-  );
+  const byStatus: Record<string, Decimal> = {};
+  for (const c of commissionsRes.data ?? []) {
+    const key = c.status as string;
+    byStatus[key] = (byStatus[key] ?? toDecimal(0)).plus(toDecimal(c.netPayableAmount));
+  }
 
   const sumOf = (...statuses: string[]) =>
-    statuses.reduce(
-      (acc, s) => acc.plus(byStatus[s] ?? new Prisma.Decimal(0)),
-      new Prisma.Decimal(0),
-    );
+    statuses.reduce((acc, s) => acc.plus(byStatus[s] ?? toDecimal(0)), toDecimal(0));
 
   return {
     dealsOpen: open.length,

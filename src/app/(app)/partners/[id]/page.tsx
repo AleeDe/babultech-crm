@@ -165,7 +165,7 @@ export default async function PartnerDetailPage({
                           </TR>
                         </THead>
                         <TBody>
-                          {partner.commissionPlan.tiers.map((t) => (
+                          {partner.commissionPlan.tiers.map((t: Record<string, any>) => (
                             <TR key={t.id}>
                               <TD className="tabular">{formatMoney(t.fromAmount)}</TD>
                               <TD className="tabular">{t.toAmount ? formatMoney(t.toAmount) : "and above"}</TD>
@@ -227,7 +227,7 @@ export default async function PartnerDetailPage({
                 </TR>
               </THead>
               <TBody>
-                {partner.opportunities.map((link) => (
+                {partner.opportunities.map((link: Record<string, any>) => (
                   <TR key={link.id}>
                     <TD>
                       <Link href={`/opportunities/${link.opportunity.id}`} className="font-medium hover:underline">
@@ -289,7 +289,7 @@ export default async function PartnerDetailPage({
                 </TR>
               </THead>
               <TBody>
-                {partner.commissionRecords.map((r) => (
+                {partner.commissionRecords.map((r: Record<string, any>) => (
                   <TR key={r.id}>
                     <TD className="font-mono text-xs">{r.commissionNumber}</TD>
                     <TD className="text-sm">{r.opportunity.name}</TD>
@@ -328,7 +328,7 @@ export default async function PartnerDetailPage({
                   </TR>
                 </THead>
                 <TBody>
-                  {partner.referredLeads.map((l) => (
+                  {partner.referredLeads.map((l: Record<string, any>) => (
                     <TR key={l.id}>
                       <TD className="text-sm">
                         {l.firstName} {l.lastName}
@@ -355,7 +355,7 @@ export default async function PartnerDetailPage({
               <p className="px-5 pb-2 text-sm text-muted-foreground">No changes recorded yet.</p>
             ) : (
               <ul className="divide-y text-sm">
-                {audit.map((a) => (
+                {audit.map((a: Record<string, any>) => (
                   <li key={a.id} className="px-5 py-2.5">
                     <p>
                       <span className="font-medium">{humanize(a.fieldName)}</span>{" "}
