@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
@@ -8,27 +8,60 @@ export default async function NewPartnerPage() {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.PARTNER_WRITE)) return <Forbidden what="partners" />;
   const [users, accounts, contacts, plans, currencies] = await Promise.all([
-    prisma.user.findMany({
-      where: { status: "ACTIVE", deletedAt: null },
-      select: { id: true, fullName: true },
-      orderBy: { fullName: "asc" },
-    }),
-    prisma.account.findMany({
-      where: { deletedAt: null, partner: null },
-      select: { id: true, name: true, accountType: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.contact.findMany({
-      where: { deletedAt: null, partnerAsPerson: null },
-      select: { id: true, firstName: true, lastName: true, email: true },
-      orderBy: [{ lastName: "asc" }],
-    }),
-    prisma.commissionPlan.findMany({
-      where: { deletedAt: null, active: true },
-      select: { id: true, name: true, rateType: true, flatPercent: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.currency.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
+    (async () => {
+      const db = await supabaseServer();
+      const { data } = await db
+        .from("app_user")
+        .select("id, fullName")
+        .eq("status", "ACTIVE")
+        .is("deletedAt", null)
+        .order("fullName");
+      return data ?? [];
+    })(),
+    // `partner: null` and `partnerAsPerson: null` are not-exists tests on a
+    // relation, which PostgREST cannot express. The ids already taken are
+    // fetched and excluded instead — one partner record per account/contact.
+    (async () => {
+      const db = await supabaseServer();
+      const [{ data: accounts }, { data: taken }] = await Promise.all([
+        db
+          .from("account")
+          .select("id, name, accountType")
+          .is("deletedAt", null)
+          .order("name"),
+        db.from("partner").select("accountId").not("accountId", "is", null),
+      ]);
+      const used = new Set((taken ?? []).map((p) => p.accountId));
+      return (accounts ?? []).filter((a) => !used.has(a.id));
+    })(),
+    (async () => {
+      const db = await supabaseServer();
+      const [{ data: contacts }, { data: taken }] = await Promise.all([
+        db
+          .from("contact")
+          .select("id, firstName, lastName, email")
+          .is("deletedAt", null)
+          .order("lastName"),
+        db.from("partner").select("contactId").not("contactId", "is", null),
+      ]);
+      const used = new Set((taken ?? []).map((p) => p.contactId));
+      return (contacts ?? []).filter((c) => !used.has(c.id));
+    })(),
+    (async () => {
+      const db = await supabaseServer();
+      const { data } = await db
+        .from("commission_plan")
+        .select("id, name, rateType, flatPercent")
+        .is("deletedAt", null)
+        .eq("active", true)
+        .order("name");
+      return data ?? [];
+    })(),
+    (async () => {
+      const db = await supabaseServer();
+      const { data } = await db.from("currency").select("*").eq("active", true).order("code");
+      return data ?? [];
+    })(),
   ]);
 
   return (

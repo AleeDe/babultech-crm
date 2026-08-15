@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
+import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
@@ -16,43 +17,62 @@ export default async function CampaignDetailPage({
   const { id } = await params;
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.LEAD_READ)) return <Forbidden what="campaigns" />;
-  const campaign = await prisma.campaign.findUnique({
-    where: { id },
-    include: {
-      campaignType: true,
-      owner: { select: { id: true, fullName: true } },
-      parentCampaign: { select: { id: true, name: true } },
-      childCampaigns: { select: { id: true, name: true, status: true } },
-      leads: {
-        select: {
-          id: true, leadNumber: true, firstName: true, lastName: true,
-          companyName: true, status: true, estimatedValue: true,
+  const db = await supabaseServer();
+
+  const { data: campaignRow } = await db
+    .from("campaign")
+    .select(
+      `*,
+       campaignType:campaign_type ( * ),
+       owner:app_user!campaign_ownerUserId_fkey ( id, fullName ),
+       parentCampaign:parentCampaignId ( id, name ),
+       leads:lead ( id, leadNumber, firstName, lastName, companyName, status, estimatedValue, createdAt ),
+       opportunities:opportunity ( id, opportunityNumber, name, stage, amount, currencyCode, expectedCloseDate, account ( id, name ) ),
+       members:campaign_member ( count )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  type Row = Record<string, unknown>;
+  const desc = (a: unknown, b: unknown) => String(b ?? "").localeCompare(String(a ?? ""));
+
+  // PostgREST cannot embed the reverse side of a self-referencing FK, so the
+  // child campaigns are a second query.
+  const { data: childCampaigns } = await db
+    .from("campaign")
+    .select("id, name, status")
+    .eq("parentCampaignId", id);
+
+  const campaign = campaignRow
+    ? {
+        ...campaignRow,
+        campaignType: one(campaignRow.campaignType as never),
+        owner: one(campaignRow.owner as never),
+        parentCampaign: one(campaignRow.parentCampaign as never),
+        childCampaigns: childCampaigns ?? [],
+        leads: ((campaignRow.leads ?? []) as Row[])
+          .sort((a, b) => desc(a.createdAt, b.createdAt))
+          .slice(0, 50),
+        opportunities: ((campaignRow.opportunities ?? []) as Row[])
+          .map((o): Row => ({ ...o, account: one(o.account as never) }))
+          .sort((a, b) => desc(a.expectedCloseDate, b.expectedCloseDate))
+          .slice(0, 50),
+        _count: {
+          members:
+            (campaignRow.members as { count: number }[] | undefined)?.[0]?.count ?? 0,
         },
-        orderBy: { createdAt: "desc" },
-        take: 50,
-      },
-      opportunities: {
-        select: {
-          id: true, opportunityNumber: true, name: true, stage: true,
-          amount: true, currencyCode: true,
-          account: { select: { id: true, name: true } },
-        },
-        orderBy: { expectedCloseDate: "desc" },
-        take: 50,
-      },
-      _count: { select: { members: true } },
-    },
-  });
+      }
+    : null;
 
   if (!campaign) notFound();
 
   const spend = Number(campaign.actualCost ?? 0);
-  const converted = campaign.leads.filter((l) => l.status === "CONVERTED").length;
-  const won = campaign.opportunities.filter((o) => o.stage === "CLOSED_WON");
-  const wonValue = won.reduce((s, o) => s + Number(o.amount), 0);
+  const converted = campaign.leads.filter((l: Record<string, any>) => l.status === "CONVERTED").length;
+  const won = campaign.opportunities.filter((o: Record<string, any>) => o.stage === "CLOSED_WON");
+  const wonValue = won.reduce((s: any, o: Record<string, any>) => s + Number(o.amount), 0);
   const pipeline = campaign.opportunities
-    .filter((o) => !["CLOSED_WON", "CLOSED_LOST"].includes(o.stage))
-    .reduce((s, o) => s + Number(o.amount), 0);
+    .filter((o: Record<string, any>) => !["CLOSED_WON", "CLOSED_LOST"].includes(o.stage))
+    .reduce((s: any, o: Record<string, any>) => s + Number(o.amount), 0);
   const roi = spend > 0 ? ((wonValue - spend) / spend) * 100 : null;
   const costPerLead = campaign.leads.length > 0 && spend > 0 ? spend / campaign.leads.length : null;
 
@@ -106,7 +126,7 @@ export default async function CampaignDetailPage({
                     </TR>
                   </THead>
                   <TBody>
-                    {campaign.leads.map((l) => (
+                    {campaign.leads.map((l: Record<string, any>) => (
                       <TR key={l.id}>
                         <TD>
                           <Link href={`/leads/${l.id}/edit`} className="font-medium hover:underline">
@@ -143,7 +163,7 @@ export default async function CampaignDetailPage({
                     </TR>
                   </THead>
                   <TBody>
-                    {campaign.opportunities.map((o) => (
+                    {campaign.opportunities.map((o: Record<string, any>) => (
                       <TR key={o.id}>
                         <TD>
                           <Link href={`/opportunities/${o.id}`} className="font-medium hover:underline">
@@ -193,7 +213,7 @@ export default async function CampaignDetailPage({
               {campaign.childCampaigns.length > 0 && (
                 <DetailRow label="Sub-campaigns">
                   <div className="space-y-0.5">
-                    {campaign.childCampaigns.map((c) => (
+                    {campaign.childCampaigns.map((c: Record<string, any>) => (
                       <Link key={c.id} href={`/campaigns/${c.id}`} className="block text-primary hover:underline">
                         {c.name}
                       </Link>

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getOpportunity } from "@/server/opportunities";
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
+import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { getAuditTrail } from "@/lib/audit";
 import {
@@ -22,11 +23,16 @@ export default async function OpportunityDetailPage({
   const { id } = await params;
   const [opp, availablePartners] = await Promise.all([
     getOpportunity(id),
-    prisma.partner.findMany({
-      where: { deletedAt: null, status: "ACTIVE" },
-      select: { id: true, displayName: true, partnerNumber: true, kind: true },
-      orderBy: { displayName: "asc" },
-    }),
+    (async () => {
+      const db = await supabaseServer();
+      const { data } = await db
+        .from("partner")
+        .select("id, displayName, partnerNumber, kind")
+        .is("deletedAt", null)
+        .eq("status", "ACTIVE")
+        .order("displayName");
+      return data ?? [];
+    })(),
   ]);
   if (!opp) notFound();
 
