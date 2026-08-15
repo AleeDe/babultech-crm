@@ -33,10 +33,10 @@ export default async function ProjectWorkspacePage({
   const budgetUsed = approvedHours > 0 ? (loggedHours / approvedHours) * 100 : 0;
   const overBudget = approvedHours > 0 && loggedHours > approvedHours;
 
-  const openTasks = project.tasks.filter((t) => !["COMPLETED", "CANCELLED"].includes(t.status));
-  const overdueTasks = openTasks.filter((t) => t.dueDate && t.dueDate < new Date());
-  const openRisks = project.risks.filter((r) => r.status === "OPEN");
-  const openIssues = project.issues.filter((i) => i.status === "OPEN");
+  const openTasks = project.tasks.filter((t: Record<string, any>) => !["COMPLETED", "CANCELLED"].includes(t.status));
+  const overdueTasks = openTasks.filter((t: Record<string, any>) => t.dueDate && t.dueDate < new Date());
+  const openRisks = project.risks.filter((r: Record<string, any>) => r.status === "OPEN");
+  const openIssues = project.issues.filter((i: Record<string, any>) => i.status === "OPEN");
   const margin = Number(burn.billableValue) - Number(burn.cost);
 
   const s = serialize({
@@ -187,7 +187,7 @@ export default async function ProjectWorkspacePage({
                 <CardTitle>Linked support cases</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
-                {project.cases.map((c) => (
+                {project.cases.map((c: Record<string, any>) => (
                   <div key={c.id} className="flex items-center justify-between gap-2 border-b pb-2 last:border-0">
                     <Link href={`/cases/${c.id}`} className="min-w-0 flex-1 truncate hover:underline">
                       {c.subject}
@@ -219,7 +219,7 @@ export default async function ProjectWorkspacePage({
               {audit.length === 0 ? (
                 <p className="text-muted-foreground">No changes recorded.</p>
               ) : (
-                audit.map((a) => (
+                audit.map((a: Record<string, any>) => (
                   <div key={a.id}>
                     <p>
                       <span className="font-medium">{humanize(a.fieldName)}</span>{" "}
