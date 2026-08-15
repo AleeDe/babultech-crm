@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
+import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
@@ -16,46 +17,55 @@ export default async function ProductDetailPage({
   const { id } = await params;
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="the product catalogue" />;
-  const product = await prisma.product.findUnique({
-    where: { id },
-    include: {
-      defaultTaxRate: true,
-      opportunityLines: {
-        include: {
-          opportunity: {
-            select: {
-              id: true, opportunityNumber: true, name: true, stage: true, currencyCode: true,
-              account: { select: { id: true, name: true } },
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 25,
-      },
-      quoteLines: {
-        include: {
-          quotation: {
-            select: {
-              id: true, quoteNumber: true, status: true, currencyCode: true,
-              account: { select: { id: true, name: true } },
-            },
-          },
-        },
-        take: 25,
-      },
-      invoiceLines: {
-        include: {
-          invoice: {
-            select: {
-              id: true, invoiceNumber: true, status: true, invoiceDate: true, currencyCode: true,
-              account: { select: { id: true, name: true } },
-            },
-          },
-        },
-        take: 25,
-      },
-    },
-  });
+  const db = await supabaseServer();
+
+  const { data: productRow } = await db
+    .from("product")
+    .select(
+      `*,
+       defaultTaxRate:tax_rate ( * ),
+       opportunityLines:opportunity_product (
+         *,
+         opportunity ( id, opportunityNumber, name, stage, currencyCode, account ( id, name ) )
+       ),
+       quoteLines:quote_line (
+         *,
+         quotation ( id, quoteNumber, status, currencyCode, account ( id, name ) )
+       ),
+       invoiceLines:invoice_line (
+         *,
+         invoice ( id, invoiceNumber, status, invoiceDate, currencyCode, account ( id, name ) )
+       )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  type Row = Record<string, unknown>;
+
+  // PostgREST returns embedded collections unordered and untrimmed, so the
+  // orderBy/take from the original query are applied here.
+  const withParent = (rows: unknown, key: string) =>
+    ((rows as Row[] | null) ?? []).map((l): Row => {
+      const parent = one(l[key] as never) as Row | null;
+      return {
+        ...l,
+        [key]: parent ? { ...parent, account: one(parent.account as never) } : null,
+      };
+    });
+
+  const product = productRow
+    ? {
+        ...productRow,
+        defaultTaxRate: one(productRow.defaultTaxRate as never),
+        opportunityLines: withParent(productRow.opportunityLines, "opportunity")
+          .sort((a, b) =>
+            String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")),
+          )
+          .slice(0, 25),
+        quoteLines: withParent(productRow.quoteLines, "quotation").slice(0, 25),
+        invoiceLines: withParent(productRow.invoiceLines, "invoice").slice(0, 25),
+      }
+    : null;
 
   if (!product) notFound();
 
@@ -64,9 +74,9 @@ export default async function ProductDetailPage({
   const marginPercent = price > 0 ? ((price - cost) / price) * 100 : 0;
 
   const pipelineValue = product.opportunityLines
-    .filter((l) => !["CLOSED_WON", "CLOSED_LOST"].includes(l.opportunity.stage))
-    .reduce((s, l) => s + Number(l.lineTotal), 0);
-  const invoicedValue = product.invoiceLines.reduce((s, l) => s + Number(l.lineTotal), 0);
+    .filter((l: Record<string, any>) => !["CLOSED_WON", "CLOSED_LOST"].includes(l.opportunity.stage))
+    .reduce((s: any, l: Record<string, any>) => s + Number(l.lineTotal), 0);
+  const invoicedValue = product.invoiceLines.reduce((s: any, l: Record<string, any>) => s + Number(l.lineTotal), 0);
 
   return (
     <>
@@ -108,7 +118,7 @@ export default async function ProductDetailPage({
                     </TR>
                   </THead>
                   <TBody>
-                    {product.opportunityLines.map((l) => (
+                    {product.opportunityLines.map((l: Record<string, any>) => (
                       <TR key={l.id}>
                         <TD>
                           <Link href={`/opportunities/${l.opportunity.id}`} className="font-medium hover:underline">
@@ -150,7 +160,7 @@ export default async function ProductDetailPage({
                     </TR>
                   </THead>
                   <TBody>
-                    {product.quoteLines.map((l) => (
+                    {product.quoteLines.map((l: Record<string, any>) => (
                       <TR key={l.id}>
                         <TD>
                           <Link href={`/quotations/${l.quotation.id}`} className="font-medium hover:underline">
@@ -167,7 +177,7 @@ export default async function ProductDetailPage({
                         <TD><Badge tone={statusTone(l.quotation.status)}>{humanize(l.quotation.status)}</Badge></TD>
                       </TR>
                     ))}
-                    {product.invoiceLines.map((l) => (
+                    {product.invoiceLines.map((l: Record<string, any>) => (
                       <TR key={l.id}>
                         <TD>
                           <Link href={`/invoices/${l.invoice.id}`} className="font-medium hover:underline">
