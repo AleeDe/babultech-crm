@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
-import { nextNumber, SEQUENCES } from "@/lib/numbering";
+import Decimal from "decimal.js";
+import { toDecimal, one } from "@/lib/decimal";
+import { supabaseServer } from "@/lib/supabase";
+import { updateRecord } from "@/lib/db";
+import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
-import { writeAudit } from "@/lib/audit";
 import { clawback } from "./commission-engine";
 import type { ActionResult } from "./partners";
 
@@ -16,7 +17,7 @@ import type { ActionResult } from "./partners";
  * through the workflow and turns approved amounts into money out the door.
  */
 
-const ZERO = new Prisma.Decimal(0);
+const ZERO = toDecimal(0);
 
 export async function submitCommissionsForApproval(recordIds: string[]): Promise<ActionResult<{ count: number }>> {
   const _auth = await authorize(PERMISSIONS.COMMISSION_WRITE);
@@ -24,32 +25,19 @@ export async function submitCommissionsForApproval(recordIds: string[]): Promise
   const user = _auth.user;
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      const records = await tx.commissionRecord.findMany({
-        where: { id: { in: recordIds }, status: "ACCRUED", deletedAt: null },
-      });
+    const db = await supabaseServer();
 
-      if (records.length === 0) throw new Error("No accrued commissions were selected.");
-
-      await tx.commissionRecord.updateMany({
-        where: { id: { in: records.map((r) => r.id) } },
-        data: { status: "PENDING_APPROVAL" },
-      });
-
-      await tx.auditHistory.createMany({
-        data: records.map((r) => ({
-          entityType: "CommissionRecord",
-          entityId: r.id,
-          fieldName: "status",
-          oldValue: "ACCRUED",
-          newValue: "PENDING_APPROVAL",
-          changedById: user.id,
-          source: "UI",
-        })),
-      });
-
-      return records.length;
+    // Status change + one audit row per record, atomically.
+    const { data: result, error } = await db.rpc("transition_commissions", {
+      p_record_ids: recordIds,
+      p_from_statuses: ["ACCRUED"],
+      p_to_status: "PENDING_APPROVAL",
+      p_actor_id: user.id,
+      p_reason: null,
     });
+
+    if (error) throw new Error(error.message);
+    if (!result) return { ok: false, error: "No accrued commissions were selected." };
 
     revalidatePath("/commissions");
     return { ok: true, data: { count: result } };
@@ -64,42 +52,20 @@ export async function approveCommissions(recordIds: string[]): Promise<ActionRes
   const user = _auth.user;
 
   try {
-    const count = await prisma.$transaction(async (tx) => {
-      const records = await tx.commissionRecord.findMany({
-        where: {
-          id: { in: recordIds },
-          status: { in: ["ACCRUED", "PENDING_APPROVAL"] },
-          deletedAt: null,
-        },
-      });
+    const db = await supabaseServer();
 
-      if (records.length === 0) throw new Error("No commissions awaiting approval were selected.");
-
-      const now = new Date();
-      for (const r of records) {
-        // A record with a payout delay is approved but not yet payable.
-        const payable = !r.payableFromDate || r.payableFromDate <= now;
-        await tx.commissionRecord.update({
-          where: { id: r.id },
-          data: {
-            status: payable ? "PAYABLE" : "APPROVED",
-            approvedById: user.id,
-            approvedAt: now,
-            rejectionReason: null,
-          },
-        });
-        await writeAudit(tx, {
-          entityType: "CommissionRecord",
-          entityId: r.id,
-          fieldName: "status",
-          oldValue: r.status,
-          newValue: payable ? "PAYABLE" : "APPROVED",
-          changedById: user.id,
-        });
-      }
-
-      return records.length;
+    // The APPROVED-vs-PAYABLE decision stays in SQL: payableFromDate is a real
+    // date there. Comparing it here would compare a string to a Date, which is
+    // always false — every delayed commission would become immediately payable.
+    const { data: count, error } = await db.rpc("approve_commissions", {
+      p_record_ids: recordIds,
+      p_actor_id: user.id,
     });
+
+    if (error) throw new Error(error.message);
+    if (!count) {
+      return { ok: false, error: "No commissions awaiting approval were selected." };
+    }
 
     revalidatePath("/commissions");
     return { ok: true, data: { count } };
@@ -126,34 +92,17 @@ export async function rejectCommissions(
   }
 
   try {
-    const count = await prisma.$transaction(async (tx) => {
-      const records = await tx.commissionRecord.findMany({
-        where: {
-          id: { in: parsed.data.recordIds },
-          status: { in: ["ACCRUED", "PENDING_APPROVAL", "APPROVED"] },
-          deletedAt: null,
-        },
-      });
+    const db = await supabaseServer();
 
-      await tx.commissionRecord.updateMany({
-        where: { id: { in: records.map((r) => r.id) } },
-        data: { status: "REJECTED", rejectionReason: parsed.data.reason },
-      });
-
-      await tx.auditHistory.createMany({
-        data: records.map((r) => ({
-          entityType: "CommissionRecord",
-          entityId: r.id,
-          fieldName: "status",
-          oldValue: r.status,
-          newValue: "REJECTED",
-          changedById: user.id,
-          source: "UI",
-        })),
-      });
-
-      return records.length;
+    const { data: count, error } = await db.rpc("transition_commissions", {
+      p_record_ids: parsed.data.recordIds,
+      p_from_statuses: ["ACCRUED", "PENDING_APPROVAL", "APPROVED"],
+      p_to_status: "REJECTED",
+      p_actor_id: user.id,
+      p_reason: parsed.data.reason,
     });
+
+    if (error) throw new Error(error.message);
 
     revalidatePath("/commissions");
     return { ok: true, data: { count } };
@@ -188,59 +137,21 @@ export async function createPayout(
   const data = parsed.data;
 
   try {
-    const payout = await prisma.$transaction(async (tx) => {
-      const records = await tx.commissionRecord.findMany({
-        where: {
-          id: { in: data.recordIds },
-          partnerId: data.partnerId,
-          status: { in: ["APPROVED", "PAYABLE"] },
-          payoutId: null,
-          deletedAt: null,
-        },
-      });
+    const db = await supabaseServer();
 
-      if (records.length === 0) {
-        throw new Error("None of the selected commissions are approved and unpaid for this partner.");
-      }
-      if (records.length !== data.recordIds.length) {
-        throw new Error(
-          `${data.recordIds.length - records.length} of the selected commissions are not payable (wrong status, already in a payout, or belong to another partner).`,
-        );
-      }
-
-      const currencies = new Set(records.map((r) => r.currencyCode));
-      if (currencies.size > 1) {
-        throw new Error(
-          `Cannot batch commissions in ${[...currencies].join(" and ")} into one payout. Create a separate payout per currency.`,
-        );
-      }
-
-      const gross = records.reduce((s, r) => s.plus(r.commissionAmount), ZERO);
-      const wht = records.reduce((s, r) => s.plus(r.withholdingTaxAmount), ZERO);
-      const net = records.reduce((s, r) => s.plus(r.netPayableAmount), ZERO);
-
-      const created = await tx.commissionPayout.create({
-        data: {
-          payoutNumber: await nextNumber(SEQUENCES.PAYOUT, tx),
-          partnerId: data.partnerId,
-          status: "DRAFT",
-          periodStart: data.periodStart ?? null,
-          periodEnd: data.periodEnd ?? null,
-          grossAmount: gross,
-          withholdingTaxAmount: wht,
-          netAmount: net,
-          currencyCode: records[0].currencyCode,
-          notes: data.notes ?? null,
-        },
-      });
-
-      await tx.commissionRecord.updateMany({
-        where: { id: { in: records.map((r) => r.id) } },
-        data: { payoutId: created.id },
-      });
-
-      return created;
+    // Payout + record linkage in one transaction. Split apart, a failure
+    // between them leaves records unattached to the payout that already
+    // covers them — they would be batched again and paid twice. The status,
+    // ownership and single-currency checks run inside the same lock.
+    const { data: payout, error } = await db.rpc("create_commission_payout", {
+      p_partner_id: data.partnerId,
+      p_record_ids: data.recordIds,
+      p_period_start: data.periodStart ? data.periodStart.toISOString().slice(0, 10) : null,
+      p_period_end: data.periodEnd ? data.periodEnd.toISOString().slice(0, 10) : null,
+      p_notes: data.notes ?? null,
     });
+
+    if (error) return { ok: false, error: error.message };
 
     revalidatePath("/commissions");
     revalidatePath("/commissions/payouts");
@@ -257,26 +168,30 @@ export async function approvePayout(payoutId: string): Promise<ActionResult> {
   const user = _auth.user;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const payout = await tx.commissionPayout.findUniqueOrThrow({ where: { id: payoutId } });
-      if (payout.status !== "DRAFT" && payout.status !== "PENDING_APPROVAL") {
-        throw new Error(`Payout ${payout.payoutNumber} is ${payout.status.toLowerCase()} and cannot be approved.`);
-      }
+    const db = await supabaseServer();
 
-      await tx.commissionPayout.update({
-        where: { id: payoutId },
-        data: { status: "APPROVED", approvedById: user.id, approvedAt: new Date() },
-      });
+    const { data: payout } = await db
+      .from("commission_payout")
+      .select("status, payoutNumber")
+      .eq("id", payoutId)
+      .maybeSingle();
 
-      await writeAudit(tx, {
-        entityType: "CommissionPayout",
-        entityId: payoutId,
-        fieldName: "status",
-        oldValue: payout.status,
-        newValue: "APPROVED",
-        changedById: user.id,
-      });
-    });
+    if (!payout) return { ok: false, error: "Payout not found." };
+
+    if (payout.status !== "DRAFT" && payout.status !== "PENDING_APPROVAL") {
+      return {
+        ok: false,
+        error: `Payout ${payout.payoutNumber} is ${String(payout.status).toLowerCase()} and cannot be approved.`,
+      };
+    }
+
+    await updateRecord(
+      "commission_payout",
+      payoutId,
+      { status: "APPROVED", approvedById: user.id, approvedAt: new Date().toISOString() },
+      "CommissionPayout",
+      user.id,
+    );
 
     revalidatePath("/commissions/payouts");
     return { ok: true, data: undefined };
@@ -312,58 +227,22 @@ export async function markPayoutPaid(
   const data = parsed.data;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const payout = await tx.commissionPayout.findUniqueOrThrow({
-        where: { id: data.payoutId },
-        include: { partner: { select: { displayName: true } } },
-      });
+    const db = await supabaseServer();
 
-      if (payout.status !== "APPROVED") {
-        throw new Error(`Payout ${payout.payoutNumber} must be approved before it can be paid.`);
-      }
-
-      await tx.commissionPayout.update({
-        where: { id: data.payoutId },
-        data: {
-          status: "PAID",
-          paymentDate: data.paymentDate,
-          paymentMethod: data.paymentMethod,
-          bankAccountId: data.bankAccountId ?? null,
-          referenceNumber: data.referenceNumber ?? null,
-        },
-      });
-
-      await tx.commissionRecord.updateMany({
-        where: { payoutId: data.payoutId },
-        data: { status: "PAID", paidAt: data.paymentDate },
-      });
-
-      await tx.financialTransaction.create({
-        data: {
-          transactionNumber: await nextNumber(SEQUENCES.TRANSACTION, tx),
-          transactionDate: data.paymentDate,
-          transactionType: "COMMISSION_PAYOUT",
-          direction: "OUTGOING",
-          amount: payout.netAmount,
-          currencyCode: payout.currencyCode,
-          bankAccountId: data.bankAccountId ?? null,
-          sourceEntityType: "CommissionPayout",
-          sourceEntityId: payout.id,
-          status: "POSTED",
-          reference: data.referenceNumber ?? payout.payoutNumber,
-          description: `Partner commission payout ${payout.payoutNumber} to ${payout.partner.displayName}`,
-        },
-      });
-
-      await writeAudit(tx, {
-        entityType: "CommissionPayout",
-        entityId: payout.id,
-        fieldName: "status",
-        oldValue: "APPROVED",
-        newValue: "PAID",
-        changedById: user.id,
-      });
+    // Payout PAID + its records PAID + the outgoing FinancialTransaction, all
+    // in one transaction. A payout marked paid whose records stayed unpaid
+    // would show the partner as still owed money that has already left.
+    const { data: paid, error } = await db.rpc("mark_payout_paid", {
+      p_payout_id: data.payoutId,
+      p_payment_date: data.paymentDate.toISOString().slice(0, 10),
+      p_payment_method: data.paymentMethod,
+      p_bank_account_id: data.bankAccountId ?? null,
+      p_reference: data.referenceNumber ?? null,
+      p_actor_id: user.id,
     });
+
+    if (error) return { ok: false, error: error.message };
+    if (!paid) return { ok: false, error: "Payout not found." };
 
     revalidatePath("/commissions/payouts");
     revalidatePath("/commissions");
@@ -411,28 +290,42 @@ export async function listCommissions(filters?: {
 }) {
   await requirePermission(PERMISSIONS.COMMISSION_READ);
 
-  return prisma.commissionRecord.findMany({
-    where: {
-      deletedAt: null,
-      ...(filters?.status ? { status: filters.status as never } : {}),
-      ...(filters?.partnerId ? { partnerId: filters.partnerId } : {}),
-      ...(filters?.from || filters?.to
-        ? { earnedDate: { ...(filters.from ? { gte: filters.from } : {}), ...(filters.to ? { lte: filters.to } : {}) } }
-        : {}),
-    },
-    include: {
-      partner: { select: { id: true, displayName: true, partnerNumber: true, kind: true } },
-      opportunity: {
-        select: {
-          id: true, opportunityNumber: true, name: true, stage: true,
-          account: { select: { name: true } },
-        },
-      },
-      plan: { select: { name: true, basis: true, trigger: true } },
-      invoice: { select: { invoiceNumber: true } },
-      payout: { select: { id: true, payoutNumber: true, status: true } },
-    },
-    orderBy: [{ earnedDate: "desc" }, { createdAt: "desc" }],
+  const db = await supabaseServer();
+
+  let query = db
+    .from("commission_record")
+    .select(
+      `*,
+       partner ( id, displayName, partnerNumber, kind ),
+       opportunity ( id, opportunityNumber, name, stage, account ( name ) ),
+       plan:commission_plan ( name, basis, trigger ),
+       invoice ( invoiceNumber ),
+       payout:commission_payout ( id, payoutNumber, status )`,
+    )
+    .is("deletedAt", null)
+    .order("earnedDate", { ascending: false })
+    .order("createdAt", { ascending: false });
+
+  if (filters?.status) query = query.eq("status", filters.status);
+  if (filters?.partnerId) query = query.eq("partnerId", filters.partnerId);
+  if (filters?.from) query = query.gte("earnedDate", filters.from.toISOString().slice(0, 10));
+  if (filters?.to) query = query.lte("earnedDate", filters.to.toISOString().slice(0, 10));
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Could not load commissions: ${error.message}`);
+
+  return (data ?? []).map((r) => {
+    const opportunity = one(r.opportunity as never) as Record<string, unknown> | null;
+    return {
+      ...r,
+      partner: one(r.partner as never),
+      opportunity: opportunity
+        ? { ...opportunity, account: one(opportunity.account as never) }
+        : null,
+      plan: one(r.plan as never),
+      invoice: one(r.invoice as never),
+      payout: one(r.payout as never),
+    };
   });
 }
 
@@ -440,12 +333,34 @@ export async function listCommissions(filters?: {
 export async function getCommissionTotals() {
   await requirePermission(PERMISSIONS.COMMISSION_READ);
 
-  const rows = await prisma.commissionRecord.groupBy({
-    by: ["status", "currencyCode"],
-    where: { deletedAt: null },
-    _sum: { commissionAmount: true, netPayableAmount: true },
-    _count: true,
-  });
+  const db = await supabaseServer();
+
+  // PostgREST has no groupBy, so the rows are fetched and bucketed here.
+  const { data: raw, error } = await db
+    .from("commission_record")
+    .select("status, currencyCode, commissionAmount, netPayableAmount")
+    .is("deletedAt", null);
+
+  if (error) throw new Error(`Could not load commission totals: ${error.message}`);
+
+  const grouped = new Map<
+    string,
+    { status: string; _count: number; _sum: { netPayableAmount: Decimal } }
+  >();
+
+  for (const r of raw ?? []) {
+    const key = `${r.status}|${r.currencyCode}`;
+    const acc =
+      grouped.get(key) ??
+      { status: r.status as string, _count: 0, _sum: { netPayableAmount: toDecimal(0) } };
+    acc._count += 1;
+    acc._sum.netPayableAmount = acc._sum.netPayableAmount.plus(
+      toDecimal(r.netPayableAmount),
+    );
+    grouped.set(key, acc);
+  }
+
+  const rows = [...grouped.values()];
 
   const bucket = (statuses: string[]) =>
     rows
@@ -470,67 +385,140 @@ export async function getCommissionTotals() {
 export async function listPayouts(status?: string) {
   await requirePermission(PERMISSIONS.COMMISSION_READ);
 
-  return prisma.commissionPayout.findMany({
-    where: {
-      deletedAt: null,
-      ...(status ? { status: status as never } : {}),
+  const db = await supabaseServer();
+
+  let query = db
+    .from("commission_payout")
+    .select(
+      `*,
+       partner ( id, displayName, partnerNumber ),
+       approvedBy:app_user!commission_payout_approvedById_fkey ( fullName ),
+       bankAccount:bank_account ( name ),
+       records:commission_record ( count )`,
+    )
+    .is("deletedAt", null)
+    .order("createdAt", { ascending: false });
+
+  if (status) query = query.eq("status", status);
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Could not load payouts: ${error.message}`);
+
+  return (data ?? []).map((p) => ({
+    ...p,
+    partner: one(p.partner as never),
+    approvedBy: one(p.approvedBy as never),
+    bankAccount: one(p.bankAccount as never),
+    _count: {
+      records: (p.records as { count: number }[] | undefined)?.[0]?.count ?? 0,
     },
-    include: {
-      partner: { select: { id: true, displayName: true, partnerNumber: true } },
-      approvedBy: { select: { fullName: true } },
-      bankAccount: { select: { name: true } },
-      _count: { select: { records: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  }));
 }
 
 export async function getPayout(id: string) {
   await requirePermission(PERMISSIONS.COMMISSION_READ);
 
-  return prisma.commissionPayout.findUnique({
-    where: { id },
-    include: {
-      partner: true,
-      approvedBy: { select: { fullName: true } },
-      bankAccount: true,
-      records: {
-        include: {
-          opportunity: { select: { opportunityNumber: true, name: true, account: { select: { name: true } } } },
-        },
-        orderBy: { earnedDate: "asc" },
-      },
-    },
-  });
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("commission_payout")
+    .select(
+      `*,
+       partner ( * ),
+       approvedBy:app_user!commission_payout_approvedById_fkey ( fullName ),
+       bankAccount:bank_account ( * ),
+       records:commission_record (
+         *,
+         opportunity ( opportunityNumber, name, account ( name ) )
+       )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load payout: ${error.message}`);
+  if (!data) return null;
+
+  return {
+    ...data,
+    partner: one(data.partner as never),
+    approvedBy: one(data.approvedBy as never),
+    bankAccount: one(data.bankAccount as never),
+    // PostgREST cannot order an embedded relation inline.
+    records: ((data.records ?? []) as Record<string, unknown>[])
+      .map((r): Record<string, unknown> => {
+        const opportunity = one(r.opportunity as never) as Record<string, unknown> | null;
+        return {
+          ...r,
+          opportunity: opportunity
+            ? { ...opportunity, account: one(opportunity.account as never) }
+            : null,
+        };
+      })
+      .sort((a, b) =>
+        String(a.earnedDate ?? "").localeCompare(String(b.earnedDate ?? "")),
+      ),
+  };
 }
 
 /** Approved, unpaid commissions for one partner — the "ready to pay" queue. */
 export async function getPayableCommissions(partnerId: string) {
   await requirePermission(PERMISSIONS.COMMISSION_READ);
 
-  return prisma.commissionRecord.findMany({
-    where: {
-      partnerId,
-      status: { in: ["APPROVED", "PAYABLE"] },
-      payoutId: null,
-      deletedAt: null,
-    },
-    include: {
-      opportunity: { select: { opportunityNumber: true, name: true, account: { select: { name: true } } } },
-    },
-    orderBy: { earnedDate: "asc" },
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("commission_record")
+    .select(
+      `*,
+       opportunity ( opportunityNumber, name, account ( name ) )`,
+    )
+    .eq("partnerId", partnerId)
+    .in("status", ["APPROVED", "PAYABLE"])
+    .is("payoutId", null)
+    .is("deletedAt", null)
+    .order("earnedDate", { ascending: true });
+
+  if (error) throw new Error(`Could not load payable commissions: ${error.message}`);
+
+  return (data ?? []).map((r) => {
+    const opportunity = one(r.opportunity as never) as Record<string, unknown> | null;
+    return {
+      ...r,
+      opportunity: opportunity
+        ? { ...opportunity, account: one(opportunity.account as never) }
+        : null,
+    };
   });
 }
 
 export async function listCommissionPlans() {
   await requirePermission(PERMISSIONS.COMMISSION_READ);
 
-  return prisma.commissionPlan.findMany({
-    where: { deletedAt: null },
-    include: {
-      tiers: { orderBy: { sortOrder: "asc" } },
-      _count: { select: { partners: true, commissionRecords: true } },
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("commission_plan")
+    .select(
+      `*,
+       tiers:commission_tier ( * ),
+       partners:partner ( count ),
+       commissionRecords:commission_record ( count )`,
+    )
+    .is("deletedAt", null)
+    .order("name");
+
+  if (error) throw new Error(`Could not load commission plans: ${error.message}`);
+
+  const countOf = (v: unknown) => (v as { count: number }[] | undefined)?.[0]?.count ?? 0;
+
+  return (data ?? []).map((p) => ({
+    ...p,
+    tiers: ((p.tiers ?? []) as Record<string, unknown>[]).sort(
+      (a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0),
+    ),
+    _count: {
+      partners: countOf(p.partners),
+      commissionRecords: countOf(p.commissionRecords),
     },
-    orderBy: { name: "asc" },
-  });
+  }));
 }
