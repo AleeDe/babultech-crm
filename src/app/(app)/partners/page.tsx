@@ -2,7 +2,8 @@ import Link from "next/link";
 import { toDecimal } from "@/lib/decimal";
 import { Building2, User } from "lucide-react";
 import { listPartners } from "@/server/partners";
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
+import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Button, Card, Table, THead, TBody, TR, TH, TD,
@@ -21,26 +22,49 @@ export default async function PartnersPage({
   const params = await searchParams;
   const partners = await listPartners(params);
 
-  const [totals, payableAgg] = await Promise.all([
-    prisma.partner.groupBy({
-      by: ["kind"],
-      where: { deletedAt: null, status: "ACTIVE" },
-      _count: true,
-    }),
-    prisma.commissionRecord.aggregate({
-      where: { deletedAt: null, status: { in: ["APPROVED", "PAYABLE", "PARTIALLY_PAID"] } },
-      _sum: { netPayableAmount: true },
-    }),
+  const db = await supabaseServer();
+
+  // PostgREST has neither groupBy nor aggregate, so both are computed here.
+  const [kindRes, payableRes] = await Promise.all([
+    db
+      .from("partner")
+      .select("kind")
+      .is("deletedAt", null)
+      .eq("status", "ACTIVE"),
+    db
+      .from("commission_record")
+      .select("netPayableAmount")
+      .is("deletedAt", null)
+      .in("status", ["APPROVED", "PAYABLE", "PARTIALLY_PAID"]),
   ]);
 
-  const companies = totals.find((t) => t.kind === "COMPANY")?._count ?? 0;
-  const individuals = totals.find((t) => t.kind === "INDIVIDUAL")?._count ?? 0;
+  const kinds = kindRes.data ?? [];
+  const companies = kinds.filter((p) => p.kind === "COMPANY").length;
+  const individuals = kinds.filter((p) => p.kind === "INDIVIDUAL").length;
 
-  const sourcedPipeline = await prisma.opportunityPartner.findMany({
-    include: { opportunity: { select: { amount: true, stage: true } } },
-  });
+  const payableAgg = {
+    _sum: {
+      netPayableAmount: (payableRes.data ?? []).reduce(
+        (sum, r) => sum.plus(toDecimal(r.netPayableAmount)),
+        toDecimal(0),
+      ),
+    },
+  };
+
+  const { data: sourcedRows } = await db
+    .from("opportunity_partner")
+    .select("revenueSharePercent, opportunity ( amount, stage )");
+
+  const sourcedPipeline = (sourcedRows ?? []).map((d) => ({
+    ...d,
+    opportunity: one(d.opportunity as never) as unknown as {
+      amount: unknown;
+      stage: string;
+    },
+  }));
+
   const openSourced = sourcedPipeline
-    .filter((d) => !["CLOSED_WON", "CLOSED_LOST"].includes(d.opportunity.stage))
+    .filter((d) => !["CLOSED_WON", "CLOSED_LOST"].includes(d.opportunity?.stage))
     .reduce(
       (s, d) =>
         s.plus(

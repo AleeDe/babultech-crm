@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
+import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
@@ -11,22 +12,36 @@ import { formatMoney, formatDate, humanize } from "@/lib/utils";
 export default async function QuotationsPage() {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="quotations" />;
-  const quotes = await prisma.quotation.findMany({
-    where: { deletedAt: null },
-    include: {
-      account: { select: { id: true, name: true } },
-      opportunity: { select: { id: true, name: true, opportunityNumber: true } },
-      contact: { select: { firstName: true, lastName: true } },
-      _count: { select: { lines: true } },
-    },
-    orderBy: [{ quoteDate: "desc" }, { versionNumber: "desc" }],
-  });
+  const db = await supabaseServer();
+
+  const { data: quoteRows } = await db
+    .from("quotation")
+    .select(
+      `*,
+       account ( id, name ),
+       opportunity ( id, name, opportunityNumber ),
+       contact ( firstName, lastName ),
+       lines:quote_line ( count )`,
+    )
+    .is("deletedAt", null)
+    .order("quoteDate", { ascending: false })
+    .order("versionNumber", { ascending: false });
+
+  const quotes = (quoteRows ?? []).map((q) => ({
+    ...q,
+    account: one(q.account as never),
+    opportunity: one(q.opportunity as never),
+    contact: one(q.contact as never),
+    _count: { lines: (q.lines as { count: number }[] | undefined)?.[0]?.count ?? 0 },
+  }));
 
   const pendingApproval = quotes.filter((q) => q.approvalStatus === "PENDING");
+  // expiryDate is an ISO string under PostgREST, so it has to be parsed before
+  // comparing — `string < Date` is always false and this tile would read zero.
   const expiringSoon = quotes.filter(
     (q) =>
       ["SENT", "APPROVED"].includes(q.status) &&
-      q.expiryDate < new Date(Date.now() + 7 * 86_400_000),
+      new Date(q.expiryDate as string) < new Date(Date.now() + 7 * 86_400_000),
   );
   const accepted = quotes.filter((q) => q.status === "ACCEPTED");
 
