@@ -31,7 +31,7 @@ export default async function OpportunityDetailPage({
   if (!opp) notFound();
 
   const audit = await getAuditTrail("Opportunity", id, 15);
-  const acceptedQuote = opp.quotations.find((q) => q.status === "ACCEPTED");
+  const acceptedQuote = opp.quotations.find((q: Record<string, any>) => q.status === "ACCEPTED");
 
   return (
     <>
@@ -57,7 +57,7 @@ export default async function OpportunityDetailPage({
         <StatTile
           label="Commission accrued"
           value={formatMoney(
-            opp.commissionRecords.reduce((s, r) => s + Number(r.commissionAmount), 0),
+            opp.commissionRecords.reduce((s: any, r: Record<string, any>) => s + Number(r.commissionAmount), 0),
             opp.currencyCode,
           )}
           sublabel={`${opp.commissionRecords.length} record(s)`}
@@ -94,7 +94,7 @@ export default async function OpportunityDetailPage({
                     </TR>
                   </THead>
                   <TBody>
-                    {opp.lines.map((l) => (
+                    {opp.lines.map((l: Record<string, any>) => (
                       <TR key={l.id}>
                         <TD className="text-sm">
                           <Link href={`/products/${l.product.id}`} className="font-medium hover:underline">
@@ -141,7 +141,7 @@ export default async function OpportunityDetailPage({
                     </TR>
                   </THead>
                   <TBody>
-                    {opp.commissionRecords.map((r) => (
+                    {opp.commissionRecords.map((r: Record<string, any>) => (
                       <TR key={r.id}>
                         <TD className="font-mono text-xs">{r.commissionNumber}</TD>
                         <TD className="text-sm">
@@ -210,7 +210,7 @@ export default async function OpportunityDetailPage({
                   No quotes yet. A deal cannot be marked Closed Won without an accepted quotation.
                 </p>
               ) : (
-                opp.quotations.map((q) => (
+                opp.quotations.map((q: Record<string, any>) => (
                   <div key={q.id} className="flex items-center justify-between border-b pb-2 last:border-0">
                     <div>
                       <Link href={`/quotations/${q.id}`} className="font-mono text-xs hover:underline">
@@ -241,7 +241,7 @@ export default async function OpportunityDetailPage({
               {audit.length === 0 ? (
                 <p className="text-muted-foreground">No changes recorded.</p>
               ) : (
-                audit.map((a) => (
+                audit.map((a: Record<string, any>) => (
                   <div key={a.id}>
                     <p>
                       <span className="font-medium">{humanize(a.fieldName)}</span>{" "}
