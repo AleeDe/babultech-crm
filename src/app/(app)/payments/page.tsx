@@ -19,10 +19,10 @@ export default async function PaymentsPage({
   const { filter } = await searchParams;
   const payments = await listPayments({ unappliedOnly: filter === "unapplied" });
 
-  const cleared = payments.filter((p) => p.status === "CLEARED");
+  const cleared = payments.filter((p: Record<string, any>) => p.status === "CLEARED");
   const received = cleared.reduce((s, p) => s + Number(p.amount), 0);
   const unapplied = payments.reduce((s, p) => s + Number(p.unallocatedAmount), 0);
-  const pending = payments.filter((p) => p.status === "PENDING");
+  const pending = payments.filter((p: Record<string, any>) => p.status === "PENDING");
 
   return (
     <>
@@ -80,7 +80,7 @@ export default async function PaymentsPage({
               </TR>
             </THead>
             <TBody>
-              {payments.map((p) => (
+              {payments.map((p: Record<string, any>) => (
                 <TR key={p.id}>
                   <TD className="font-mono text-xs">
                     {p.paymentNumber}
@@ -108,7 +108,7 @@ export default async function PaymentsPage({
                       <span className="text-muted-foreground">Nothing</span>
                     ) : (
                       <div className="space-y-0.5">
-                        {p.allocations.map((a) => (
+                        {p.allocations.map((a: Record<string, any>) => (
                           <Link
                             key={a.id}
                             href={`/invoices/${a.invoice.id}`}

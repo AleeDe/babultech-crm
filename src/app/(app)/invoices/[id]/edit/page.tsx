@@ -49,7 +49,7 @@ export default async function EditInvoicePage({
     currencyCode: invoice.currencyCode,
     paymentTermsDays: invoice.paymentTermsDays,
     notes: invoice.notes,
-    lines: invoice.lines.map((l) => ({
+    lines: invoice.lines.map((l: Record<string, any>) => ({
       productId: l.productId,
       description: l.description,
       quantity: l.quantity,
