@@ -88,9 +88,9 @@ export default async function PortalDealsPage() {
                       </p>
                     </TD>
                     <TD className="text-sm">
-                      {d.opportunity.account.name}
-                      {d.opportunity.account.industry && (
-                        <p className="text-xs text-muted-foreground">{d.opportunity.account.industry}</p>
+                      {d.opportunity.account?.name}
+                      {d.opportunity.account?.industry && (
+                        <p className="text-xs text-muted-foreground">{d.opportunity.account?.industry}</p>
                       )}
                     </TD>
                     <TD>

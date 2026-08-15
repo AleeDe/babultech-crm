@@ -1,5 +1,13 @@
-import { prisma } from "./prisma";
-import { auth } from "./auth";
+import { supabaseServer, supabaseAdmin } from "./supabase";
+import { auth as nextAuthSession } from "./auth";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+/**
+ * The subset of the Supabase client these helpers use. Narrow on purpose: it
+ * lets a test pass a service-role client (no cookies, no request scope) without
+ * needing the full generic signature to line up.
+ */
+type SupabaseLike = Pick<SupabaseClient, "from">;
 
 /**
  * Row-level authorization (spec §14.2: "row-level authorization based on role,
@@ -36,29 +44,73 @@ export class AuthorizationError extends Error {
   }
 }
 
-/** Throws if there is no session. Use in every server action and page. */
+/**
+ * Throws if there is no session. Use in every server action and page.
+ *
+ * Identity comes from Supabase Auth; the profile (role, department, teams,
+ * partner link) is read from app_user, which shares its id with auth.users.
+ */
 export async function requireUser(): Promise<SessionUser> {
-  const session = await auth();
-  if (!session?.user?.id) throw new AuthorizationError("Not signed in.");
+  const db = await supabaseServer();
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    include: { role: true, teamMemberships: { select: { teamId: true } } },
-  });
+  // Identity can come from either provider while the port is in progress:
+  // Supabase Auth for the migrated modules, NextAuth for the rest. Both resolve
+  // to the same app_user row because auth.users.id === app_user.id (see
+  // scripts/migrate-auth-users.mjs), so the profile lookup below is identical.
+  const {
+    data: { user: supabaseUser },
+  } = await db.auth.getUser();
 
-  if (!user || user.status !== "ACTIVE" || user.deletedAt) {
+  let userId = supabaseUser?.id ?? null;
+  let viaNextAuth = false;
+
+  if (!userId) {
+    const session = await nextAuthSession();
+    userId = session?.user?.id ?? null;
+    viaNextAuth = Boolean(userId);
+  }
+
+  if (!userId) throw new AuthorizationError("Not signed in.");
+
+  // With a NextAuth session there is no Supabase JWT, so the anon client is
+  // blocked by RLS from reading app_user — including the caller's own row. The
+  // service-role client is used for this one lookup, keyed by an id that came
+  // from a verified NextAuth session, never from user input.
+  //
+  // Remove this branch once every module is on Supabase Auth.
+  const profileDb = viaNextAuth ? supabaseAdmin() : db;
+
+  const { data: user, error } = await profileDb
+    .from("app_user")
+    .select(
+      `id, fullName, email, status, deletedAt, departmentId, partnerId,
+       role:security_role!inner ( name, dataScope, permissions ),
+       teamMemberships:team_member ( teamId )`,
+    )
+    .eq("id", userId)
+    .single();
+
+  if (error || !user || user.status !== "ACTIVE" || user.deletedAt) {
     throw new AuthorizationError("Account is not active.");
   }
+
+  // PostgREST returns an embedded to-one relation as an object, but the
+  // generated types widen it to an array. Normalise before reading.
+  const role = (Array.isArray(user.role) ? user.role[0] : user.role) as {
+    name: string;
+    dataScope: string;
+    permissions: string[];
+  };
 
   return {
     id: user.id,
     fullName: user.fullName,
     email: user.email,
-    roleName: user.role.name,
-    dataScope: user.role.dataScope as DataScope,
-    permissions: user.role.permissions,
+    roleName: role.name,
+    dataScope: role.dataScope as DataScope,
+    permissions: role.permissions,
     departmentId: user.departmentId,
-    teamIds: user.teamMemberships.map((m) => m.teamId),
+    teamIds: (user.teamMemberships ?? []).map((m: { teamId: string }) => m.teamId),
     partnerId: user.partnerId,
   };
 }
@@ -123,25 +175,35 @@ export async function authorize(
 export async function scopeFilter(
   user: SessionUser,
   ownerField = "ownerUserId",
+  client?: SupabaseLike,
 ): Promise<Record<string, unknown>> {
   if (user.dataScope === "ALL") return {};
 
+  // The client is injectable so this stays testable: supabaseServer() reads
+  // cookies(), which only exists inside a request. Tests and background jobs
+  // pass their own client instead.
+  // Same RLS consideration as requireUser: without a Supabase JWT the anon
+  // client cannot read app_user/team_member. Service role for the lookup.
+  const db = client ?? supabaseAdmin();
+
   if (user.dataScope === "DEPARTMENT") {
     if (!user.departmentId) return { [ownerField]: user.id };
-    const peers = await prisma.user.findMany({
-      where: { departmentId: user.departmentId },
-      select: { id: true },
-    });
-    return { [ownerField]: { in: peers.map((p) => p.id) } };
+    const { data: peers } = await db
+      .from("app_user")
+      .select("id")
+      .eq("departmentId", user.departmentId);
+    return { [ownerField]: { in: (peers ?? []).map((p) => p.id) } };
   }
 
   if (user.dataScope === "TEAM") {
     if (user.teamIds.length === 0) return { [ownerField]: user.id };
-    const teammates = await prisma.teamMember.findMany({
-      where: { teamId: { in: user.teamIds } },
-      select: { userId: true },
-    });
-    const ids = Array.from(new Set([user.id, ...teammates.map((t) => t.userId)]));
+    const { data: teammates } = await db
+      .from("team_member")
+      .select("userId")
+      .in("teamId", user.teamIds);
+    const ids = Array.from(
+      new Set([user.id, ...(teammates ?? []).map((t) => t.userId)]),
+    );
     return { [ownerField]: { in: ids } };
   }
 
@@ -150,9 +212,12 @@ export async function scopeFilter(
 }
 
 /** Convenience wrapper: fetch the session and its scope filter in one call. */
-export async function scopedContext(ownerField = "ownerUserId") {
+export async function scopedContext(
+  ownerField = "ownerUserId",
+  client?: SupabaseLike,
+) {
   const user = await requireUser();
-  const where = await scopeFilter(user, ownerField);
+  const where = await scopeFilter(user, ownerField, client);
   return { user, where };
 }
 

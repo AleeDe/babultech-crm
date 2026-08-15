@@ -16,6 +16,14 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // Supabase serves DATABASE_URL through pgbouncer in transaction mode, which
+  // cannot run migrations (they need a real session). DIRECT_URL points at the
+  // 5432 session port for `migrate` / `db push` only.
+  //
+  // DIRECT_URL must always be set — Prisma errors with P1012 if it is missing,
+  // it does not fall back to DATABASE_URL. Against the local Docker Postgres
+  // just set it to the same value; see .env.example.
+  directUrl = env("DIRECT_URL")
 }
 
 // ============================================================================

@@ -1,7 +1,8 @@
-import { Prisma, type CommissionBasis, type CommissionPlan, type CommissionTier } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
-import { nextNumber, SEQUENCES } from "@/lib/numbering";
+import Decimal from "decimal.js";
+import { toDecimal, one } from "@/lib/decimal";
+import { supabaseServer } from "@/lib/supabase";
 import { writeAudit } from "@/lib/audit";
+import type { CommissionBasis, CommissionTier, PlanWithTiers } from "@/lib/types";
 
 /**
  * Commission engine.
@@ -23,29 +24,34 @@ import { writeAudit } from "@/lib/audit";
  *   3. Partner.defaultCommissionPercent
  */
 
-const D = (v: Prisma.Decimal | number | string) => new Prisma.Decimal(v.toString());
-const ZERO = new Prisma.Decimal(0);
-const HUNDRED = new Prisma.Decimal(100);
+/**
+ * Coerce to Decimal. Accepts null/undefined (-> 0) because PostgREST returns
+ * nullable numeric columns as null, where Prisma gave a Decimal or undefined.
+ */
+const D = (v: Decimal | number | string | null | undefined) =>
+  v === null || v === undefined ? new Decimal(0) : new Decimal(v.toString());
+const ZERO = new Decimal(0);
+const HUNDRED = new Decimal(100);
 
 export interface CommissionCalculation {
   basis: CommissionBasis;
-  basisAmount: Prisma.Decimal;
-  ratePercent: Prisma.Decimal | null;
-  commissionAmount: Prisma.Decimal;
-  withholdingTaxAmount: Prisma.Decimal;
-  netPayableAmount: Prisma.Decimal;
+  basisAmount: Decimal;
+  ratePercent: Decimal | null;
+  commissionAmount: Decimal;
+  withholdingTaxAmount: Decimal;
+  netPayableAmount: Decimal;
   notes: string;
 }
 
-type PlanWithTiers = CommissionPlan & { tiers: CommissionTier[] };
+
 
 /**
  * Applies tiered rates progressively: an amount of 1.5M against tiers
  * 0–1M @ 5% and 1M+ @ 8% yields 50,000 + 40,000 = 90,000 — not a flat 8%.
  */
-function tieredAmount(amount: Prisma.Decimal, tiers: CommissionTier[]): {
-  total: Prisma.Decimal;
-  effectiveRate: Prisma.Decimal;
+function tieredAmount(amount: Decimal, tiers: CommissionTier[]): {
+  total: Decimal;
+  effectiveRate: Decimal;
   breakdown: string[];
 } {
   const sorted = [...tiers].sort((a, b) => D(a.fromAmount).comparedTo(D(b.fromAmount)));
@@ -58,7 +64,7 @@ function tieredAmount(amount: Prisma.Decimal, tiers: CommissionTier[]): {
 
     if (amount.lessThanOrEqualTo(from)) break;
 
-    const upper = to === null ? amount : Prisma.Decimal.min(amount, to);
+    const upper = to === null ? amount : Decimal.min(amount, to);
     const slice = upper.minus(from);
     if (slice.lessThanOrEqualTo(ZERO)) continue;
 
@@ -82,13 +88,13 @@ function tieredAmount(amount: Prisma.Decimal, tiers: CommissionTier[]): {
  * revenue share is applied.
  */
 export function calculateCommission(input: {
-  grossAmount: Prisma.Decimal | number | string;
-  revenueSharePercent: Prisma.Decimal | number | string;
+  grossAmount: Decimal | number | string;
+  revenueSharePercent: Decimal | number | string;
   basis: CommissionBasis;
   plan: PlanWithTiers | null;
-  overridePercent?: Prisma.Decimal | number | string | null;
-  partnerDefaultPercent?: Prisma.Decimal | number | string | null;
-  withholdingTaxPercent?: Prisma.Decimal | number | string | null;
+  overridePercent?: Decimal | number | string | null;
+  partnerDefaultPercent?: Decimal | number | string | null;
+  withholdingTaxPercent?: Decimal | number | string | null;
 }): CommissionCalculation {
   const gross = D(input.grossAmount);
   const share = D(input.revenueSharePercent);
@@ -111,8 +117,8 @@ export function calculateCommission(input: {
     };
   }
 
-  let ratePercent: Prisma.Decimal | null = null;
-  let commission: Prisma.Decimal;
+  let ratePercent: Decimal | null = null;
+  let commission: Decimal;
 
   if (input.overridePercent !== null && input.overridePercent !== undefined) {
     ratePercent = D(input.overridePercent);
@@ -180,7 +186,7 @@ function addDays(date: Date, days: number): Date {
 interface AccrualContext {
   opportunityId: string;
   /** Amount that triggered this accrual. */
-  grossAmount: Prisma.Decimal | number | string;
+  grossAmount: Decimal | number | string;
   currencyCode: string;
   earnedDate: Date;
   invoiceId?: string | null;
@@ -196,139 +202,159 @@ interface AccrualContext {
  * unique index means re-running for the same triggering document is a no-op.
  */
 export async function accrue(ctx: AccrualContext) {
-  return prisma.$transaction(async (tx) => {
-    const opportunity = await tx.opportunity.findUnique({
-      where: { id: ctx.opportunityId },
-      include: {
-        partners: {
-          include: {
-            partner: { include: { commissionPlan: { include: { tiers: true } } } },
-            commissionPlan: { include: { tiers: true } },
-          },
-        },
-      },
-    });
+  const db = await supabaseServer();
 
-    if (!opportunity) throw new Error(`Opportunity ${ctx.opportunityId} not found.`);
-    if (opportunity.partners.length === 0) return [];
+  const { data: opportunity } = await db
+    .from("opportunity")
+    .select(
+      `id,
+       partners:opportunity_partner (
+         id, partnerId, revenueSharePercent, commissionPercentOverride,
+         registeredAt, registrationExpiresAt, commissionPlanId,
+         partner ( *, commissionPlan:commission_plan ( *, tiers:commission_tier ( * ) ) ),
+         commissionPlan:commission_plan ( *, tiers:commission_tier ( * ) )
+       )`,
+    )
+    .eq("id", ctx.opportunityId)
+    .maybeSingle();
 
-    const created = [];
+  if (!opportunity) throw new Error(`Opportunity ${ctx.opportunityId} not found.`);
 
-    for (const link of opportunity.partners) {
-      // The plan snapshotted at deal registration wins over the partner's
-      // current plan, so later plan edits never rewrite history.
-      const plan = link.commissionPlan ?? link.partner.commissionPlan;
+  const links = (opportunity.partners ?? []) as Array<Record<string, unknown>>;
+  if (links.length === 0) return [];
 
-      const effectiveTrigger = plan?.trigger ?? "ON_PAYMENT_RECEIVED";
-      if (effectiveTrigger !== ctx.trigger) continue;
+  const created: Array<{ id: string; commissionNumber: string }> = [];
 
-      if (plan && !plan.active) continue;
+  for (const link of links) {
+    const partner = one(link.partner as never) as unknown as Record<string, unknown>;
+    if (!partner) continue;
 
-      // Registration expiry — a lapsed claim earns nothing. Say so out loud:
-      // commission that quietly fails to accrue is far harder to notice than
-      // commission that accrues wrongly, and the partner will eventually ask.
-      if (link.registrationExpiresAt && link.registrationExpiresAt < ctx.earnedDate) {
-        await writeAudit(tx, {
+    // The plan snapshotted at deal registration wins over the partner's
+    // current plan, so later plan edits never rewrite history.
+    const linkPlan = one(link.commissionPlan as never) as PlanWithTiers | null;
+    const partnerPlan = one(partner.commissionPlan as never) as PlanWithTiers | null;
+    const plan = linkPlan ?? partnerPlan;
+
+    const effectiveTrigger = plan?.trigger ?? "ON_PAYMENT_RECEIVED";
+    if (effectiveTrigger !== ctx.trigger) continue;
+
+    if (plan && !plan.active) continue;
+
+    // Registration expiry — a lapsed claim earns nothing. Say so out loud:
+    // commission that quietly fails to accrue is far harder to notice than
+    // commission that accrues wrongly, and the partner will eventually ask.
+    //
+    // PostgREST returns dates as ISO strings, so parse before comparing —
+    // a string/Date comparison is silently always false.
+    const expiresAt = link.registrationExpiresAt
+      ? new Date(link.registrationExpiresAt as string)
+      : null;
+
+    if (expiresAt && expiresAt < ctx.earnedDate) {
+      await writeAudit(
+        {
           entityType: "Opportunity",
-          entityId: opportunity.id,
+          entityId: opportunity.id as string,
           fieldName: "commissionSkipped",
           oldValue: null,
           newValue:
-            `${link.partner.displayName}: no commission — deal registration lapsed on ` +
-            `${link.registrationExpiresAt.toISOString().slice(0, 10)}, before this was earned on ` +
+            `${partner.displayName}: no commission — deal registration lapsed on ` +
+            `${expiresAt.toISOString().slice(0, 10)}, before this was earned on ` +
             `${ctx.earnedDate.toISOString().slice(0, 10)}.`,
           changedById: ctx.actorUserId,
           source: "automation",
-        });
-        continue;
-      }
-
-      // Same for a partnership that has gone inactive since registration.
-      if (link.partner.status !== "ACTIVE") {
-        await writeAudit(tx, {
-          entityType: "Opportunity",
-          entityId: opportunity.id,
-          fieldName: "commissionSkipped",
-          oldValue: null,
-          newValue: `${link.partner.displayName}: no commission — partnership is ${link.partner.status.toLowerCase()}.`,
-          changedById: ctx.actorUserId,
-          source: "automation",
-        });
-        continue;
-      }
-
-      const calc = calculateCommission({
-        grossAmount: ctx.grossAmount,
-        revenueSharePercent: link.revenueSharePercent,
-        basis: plan?.basis ?? "OPPORTUNITY_AMOUNT",
-        plan: plan ?? null,
-        overridePercent: link.commissionPercentOverride,
-        partnerDefaultPercent: link.partner.defaultCommissionPercent,
-        withholdingTaxPercent: link.partner.withholdingTaxPercent,
-      });
-
-      if (calc.commissionAmount.lessThanOrEqualTo(ZERO)) continue;
-
-      const existing = await tx.commissionRecord.findFirst({
-        where: {
-          opportunityPartnerId: link.id,
-          invoiceId: ctx.invoiceId ?? null,
-          paymentId: ctx.paymentId ?? null,
         },
-      });
-      if (existing) continue;
-
-      const record = await tx.commissionRecord.create({
-        data: {
-          commissionNumber: await nextNumber(SEQUENCES.COMMISSION, tx),
-          partnerId: link.partnerId,
-          opportunityId: opportunity.id,
-          opportunityPartnerId: link.id,
-          planId: plan?.id ?? null,
-          invoiceId: ctx.invoiceId ?? null,
-          paymentId: ctx.paymentId ?? null,
-          status: "ACCRUED",
-          basis: calc.basis,
-          basisAmount: calc.basisAmount,
-          ratePercent: calc.ratePercent,
-          commissionAmount: calc.commissionAmount,
-          withholdingTaxAmount: calc.withholdingTaxAmount,
-          netPayableAmount: calc.netPayableAmount,
-          currencyCode: ctx.currencyCode,
-          earnedDate: ctx.earnedDate,
-          payableFromDate: addDays(ctx.earnedDate, plan?.payoutDelayDays ?? 0),
-          calculationNotes: calc.notes,
-        },
-      });
-
-      await writeAudit(tx, {
-        entityType: "CommissionRecord",
-        entityId: record.id,
-        fieldName: "status",
-        oldValue: null,
-        newValue: "ACCRUED",
-        changedById: ctx.actorUserId,
-        source: "automation",
-      });
-
-      created.push(record);
+        db,
+      );
+      continue;
     }
 
-    return created;
-  });
+    // Same for a partnership that has gone inactive since registration.
+    if (partner.status !== "ACTIVE") {
+      await writeAudit(
+        {
+          entityType: "Opportunity",
+          entityId: opportunity.id as string,
+          fieldName: "commissionSkipped",
+          oldValue: null,
+          newValue: `${partner.displayName}: no commission — partnership is ${String(
+            partner.status,
+          ).toLowerCase()}.`,
+          changedById: ctx.actorUserId,
+          source: "automation",
+        },
+        db,
+      );
+      continue;
+    }
+
+    const calc = calculateCommission({
+      grossAmount: ctx.grossAmount,
+      revenueSharePercent: toDecimal(link.revenueSharePercent),
+      basis: plan?.basis ?? "OPPORTUNITY_AMOUNT",
+      plan: plan ?? null,
+      overridePercent: link.commissionPercentOverride
+        ? toDecimal(link.commissionPercentOverride)
+        : null,
+      partnerDefaultPercent: partner.defaultCommissionPercent
+        ? toDecimal(partner.defaultCommissionPercent)
+        : null,
+      withholdingTaxPercent: partner.withholdingTaxPercent
+        ? toDecimal(partner.withholdingTaxPercent)
+        : null,
+    });
+
+    if (calc.commissionAmount.lessThanOrEqualTo(ZERO)) continue;
+
+    // Number allocation, insert and audit in one transaction. Returns null when
+    // a record already exists for this (link, invoice, payment) — the duplicate
+    // guard that stops a retry double-paying the partner.
+    const { data: record, error } = await db.rpc("accrue_commission", {
+      p_partner_id: link.partnerId,
+      p_opportunity_id: opportunity.id,
+      p_opportunity_partner_id: link.id,
+      p_plan_id: plan?.id ?? null,
+      p_invoice_id: ctx.invoiceId ?? null,
+      p_payment_id: ctx.paymentId ?? null,
+      p_basis: calc.basis,
+      p_basis_amount: calc.basisAmount.toFixed(2),
+      p_rate_percent: calc.ratePercent ? calc.ratePercent.toFixed(4) : null,
+      p_commission_amount: calc.commissionAmount.toFixed(2),
+      p_withholding_amount: calc.withholdingTaxAmount.toFixed(2),
+      p_net_payable: calc.netPayableAmount.toFixed(2),
+      p_currency: ctx.currencyCode,
+      p_earned_date: ctx.earnedDate.toISOString().slice(0, 10),
+      p_payable_from: addDays(ctx.earnedDate, plan?.payoutDelayDays ?? 0)
+        .toISOString()
+        .slice(0, 10),
+      p_notes: calc.notes,
+      p_actor_id: ctx.actorUserId,
+    });
+
+    if (error) throw new Error(error.message);
+    if (record) created.push(record as { id: string; commissionNumber: string });
+  }
+
+  return created;
 }
 
 /** Trigger: opportunity moved to CLOSED_WON. */
 export async function accrueForWonOpportunity(opportunityId: string, actorUserId: string) {
-  const opp = await prisma.opportunity.findUniqueOrThrow({
-    where: { id: opportunityId },
-    select: { amount: true, currencyCode: true, actualCloseDate: true },
-  });
+  const db = await supabaseServer();
+
+  const { data: opp, error } = await db
+    .from("opportunity")
+    .select("amount, currencyCode, actualCloseDate")
+    .eq("id", opportunityId)
+    .single();
+
+  if (error || !opp) throw new Error(`Opportunity ${opportunityId} not found.`);
+
   return accrue({
     opportunityId,
-    grossAmount: opp.amount,
+    grossAmount: toDecimal(opp.amount),
     currencyCode: opp.currencyCode,
-    earnedDate: opp.actualCloseDate ?? new Date(),
+    earnedDate: opp.actualCloseDate ? new Date(opp.actualCloseDate) : new Date(),
     trigger: "ON_CLOSE_WON",
     actorUserId,
   });
@@ -336,68 +362,80 @@ export async function accrueForWonOpportunity(opportunityId: string, actorUserId
 
 /** Trigger: invoice sent to the customer. */
 export async function accrueForInvoice(invoiceId: string, actorUserId: string) {
-  const invoice = await prisma.invoice.findUniqueOrThrow({
-    where: { id: invoiceId },
-    include: { project: { select: { opportunityId: true } }, contract: { select: { opportunityId: true } } },
-  });
+  const db = await supabaseServer();
 
-  const opportunityId = invoice.project?.opportunityId ?? invoice.contract?.opportunityId;
+  const { data: invoice, error } = await db
+    .from("invoice")
+    .select(
+      `id, totalAmount, taxAmount, currencyCode, invoiceDate,
+       project ( opportunityId ), contract ( opportunityId )`,
+    )
+    .eq("id", invoiceId)
+    .single();
+
+  if (error || !invoice) throw new Error(`Invoice ${invoiceId} not found.`);
+
+  const project = one(invoice.project as never) as { opportunityId?: string } | null;
+  const contract = one(invoice.contract as never) as { opportunityId?: string } | null;
+  const opportunityId = project?.opportunityId ?? contract?.opportunityId;
   if (!opportunityId) return [];
 
   return accrue({
     opportunityId,
     // Commission is earned on revenue, not on the tax you collect for the state.
-    grossAmount: new Prisma.Decimal(invoice.totalAmount).minus(invoice.taxAmount),
+    grossAmount: toDecimal(invoice.totalAmount).minus(toDecimal(invoice.taxAmount)),
     currencyCode: invoice.currencyCode,
-    earnedDate: invoice.invoiceDate,
+    earnedDate: new Date(invoice.invoiceDate),
     invoiceId: invoice.id,
     trigger: "ON_INVOICE_SENT",
     actorUserId,
   });
 }
 
-/**
- * Trigger: customer payment cleared. Accrues per allocated invoice so a
- * partial payment only earns partial commission.
- */
+/** Trigger: payment cleared. */
 export async function accrueForPayment(paymentId: string, actorUserId: string) {
-  const payment = await prisma.payment.findUniqueOrThrow({
-    where: { id: paymentId },
-    include: {
-      allocations: {
-        include: {
-          invoice: {
-            include: {
-              project: { select: { opportunityId: true } },
-              contract: { select: { opportunityId: true } },
-            },
-          },
-        },
-      },
-    },
-  });
+  const db = await supabaseServer();
 
+  const { data: payment, error } = await db
+    .from("payment")
+    .select(
+      `id, status, currencyCode, paymentDate,
+       allocations:payment_allocation (
+         allocatedAmount,
+         invoice ( id, totalAmount, taxAmount,
+           project ( opportunityId ), contract ( opportunityId ) )
+       )`,
+    )
+    .eq("id", paymentId)
+    .single();
+
+  if (error || !payment) throw new Error(`Payment ${paymentId} not found.`);
   if (payment.status !== "CLEARED") return [];
 
-  const results = [];
-  for (const alloc of payment.allocations) {
-    const inv = alloc.invoice;
-    const opportunityId = inv.project?.opportunityId ?? inv.contract?.opportunityId;
+  const results: Array<{ id: string; commissionNumber: string }> = [];
+
+  for (const alloc of (payment.allocations ?? []) as Array<Record<string, unknown>>) {
+    const inv = one(alloc.invoice as never) as Record<string, unknown> | null;
+    if (!inv) continue;
+
+    const project = one(inv.project as never) as { opportunityId?: string } | null;
+    const contract = one(inv.contract as never) as { opportunityId?: string } | null;
+    const opportunityId = project?.opportunityId ?? contract?.opportunityId;
     if (!opportunityId) continue;
 
     // Strip the tax portion from the allocated amount, pro rata.
-    const total = new Prisma.Decimal(inv.totalAmount);
+    const total = toDecimal(inv.totalAmount);
     const netRatio = total.isZero()
       ? ZERO
-      : total.minus(inv.taxAmount).dividedBy(total);
-    const netCollected = new Prisma.Decimal(alloc.allocatedAmount).times(netRatio);
+      : total.minus(toDecimal(inv.taxAmount)).dividedBy(total);
+    const netCollected = toDecimal(alloc.allocatedAmount).times(netRatio);
 
     const created = await accrue({
       opportunityId,
       grossAmount: netCollected,
       currencyCode: payment.currencyCode,
-      earnedDate: payment.paymentDate,
-      invoiceId: inv.id,
+      earnedDate: new Date(payment.paymentDate),
+      invoiceId: inv.id as string,
       paymentId: payment.id,
       trigger: "ON_PAYMENT_RECEIVED",
       actorUserId,
@@ -408,70 +446,24 @@ export async function accrueForPayment(paymentId: string, actorUserId: string) {
 }
 
 /**
- * Reverses commission when a won deal is later lost, refunded, or the customer
- * churns inside the plan's clawback window. Creates an offsetting negative
- * record rather than deleting — the ledger stays immutable (spec §13 Audit).
+ * Reverses a commission when the revenue behind it goes away.
  */
 export async function clawback(
   commissionRecordId: string,
   reason: string,
   actorUserId: string,
 ) {
-  return prisma.$transaction(async (tx) => {
-    const original = await tx.commissionRecord.findUniqueOrThrow({
-      where: { id: commissionRecordId },
-      include: { plan: true },
-    });
+  const db = await supabaseServer();
 
-    if (original.status === "CLAWED_BACK") {
-      throw new Error("This commission has already been clawed back.");
-    }
-
-    if (original.plan?.clawbackWindowDays) {
-      const deadline = addDays(original.earnedDate, original.plan.clawbackWindowDays);
-      if (new Date() > deadline) {
-        throw new Error(
-          `Clawback window closed on ${deadline.toISOString().slice(0, 10)} for ${original.commissionNumber}.`,
-        );
-      }
-    }
-
-    const reversal = await tx.commissionRecord.create({
-      data: {
-        commissionNumber: await nextNumber(SEQUENCES.COMMISSION, tx),
-        partnerId: original.partnerId,
-        opportunityId: original.opportunityId,
-        opportunityPartnerId: original.opportunityPartnerId,
-        planId: original.planId,
-        status: "CLAWED_BACK",
-        basis: original.basis,
-        basisAmount: new Prisma.Decimal(original.basisAmount).negated(),
-        ratePercent: original.ratePercent,
-        commissionAmount: new Prisma.Decimal(original.commissionAmount).negated(),
-        withholdingTaxAmount: new Prisma.Decimal(original.withholdingTaxAmount).negated(),
-        netPayableAmount: new Prisma.Decimal(original.netPayableAmount).negated(),
-        currencyCode: original.currencyCode,
-        earnedDate: new Date(),
-        reversesRecordId: original.id,
-        calculationNotes: `Clawback of ${original.commissionNumber}: ${reason}`,
-      },
-    });
-
-    await tx.commissionRecord.update({
-      where: { id: original.id },
-      data: { status: "CLAWED_BACK", rejectionReason: reason },
-    });
-
-    await writeAudit(tx, {
-      entityType: "CommissionRecord",
-      entityId: original.id,
-      fieldName: "status",
-      oldValue: original.status,
-      newValue: "CLAWED_BACK",
-      changedById: actorUserId,
-      source: "UI",
-    });
-
-    return reversal;
+  // Read, reverse, update and audit in one transaction — see
+  // prisma/rls/010_fn_clawback.sql. The window check and the "already clawed
+  // back" guard live there too, so two concurrent clawbacks cannot both pass.
+  const { data, error } = await db.rpc("claw_back_commission", {
+    p_record_id: commissionRecordId,
+    p_reason: reason,
+    p_actor_id: actorUserId,
   });
+
+  if (error) throw new Error(error.message);
+  return data as string;
 }

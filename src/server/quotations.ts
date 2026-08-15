@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
-import { nextNumber, SEQUENCES } from "@/lib/numbering";
+import Decimal from "decimal.js";
+import { toDecimal, one } from "@/lib/decimal";
+import { supabaseServer } from "@/lib/supabase";
+import { updateRecord } from "@/lib/db";
+import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
-import { auditChanges } from "@/lib/audit";
 import type { ActionResult } from "./partners";
 
 /**
@@ -46,12 +47,12 @@ const quotationSchema = z.object({
 });
 
 interface Totals {
-  subtotal: Prisma.Decimal;
-  discountAmount: Prisma.Decimal;
-  taxAmount: Prisma.Decimal;
-  totalAmount: Prisma.Decimal;
+  subtotal: Decimal;
+  discountAmount: Decimal;
+  taxAmount: Decimal;
+  totalAmount: Decimal;
   lines: {
-    lineTotal: Prisma.Decimal;
+    lineTotal: Decimal;
     productId: string | null;
     description: string;
     quantity: number;
@@ -66,22 +67,21 @@ interface Totals {
  * you do not charge sales tax on a discount you did not collect.
  */
 async function computeTotals(
-  tx: Prisma.TransactionClient,
   lines: z.infer<typeof lineSchema>[],
 ): Promise<Totals> {
   const taxRateIds = [...new Set(lines.map((l) => l.taxRateId).filter(Boolean))] as string[];
   const taxRates = taxRateIds.length
-    ? await tx.taxRate.findMany({ where: { id: { in: taxRateIds } }, select: { id: true, ratePercent: true } })
+    ? (await (await supabaseServer()).from("tax_rate").select("id, ratePercent").in("id", taxRateIds)).data ?? []
     : [];
   const rateOf = (id: string | null | undefined) =>
-    new Prisma.Decimal(taxRates.find((t) => t.id === id)?.ratePercent ?? 0);
+    toDecimal(taxRates.find((t) => t.id === id)?.ratePercent ?? 0);
 
-  let subtotal = new Prisma.Decimal(0);
-  let discountAmount = new Prisma.Decimal(0);
-  let taxAmount = new Prisma.Decimal(0);
+  let subtotal = toDecimal(0);
+  let discountAmount = toDecimal(0);
+  let taxAmount = toDecimal(0);
 
   const computed = lines.map((line) => {
-    const gross = new Prisma.Decimal(line.quantity).times(line.unitPrice);
+    const gross = toDecimal(line.quantity).times(line.unitPrice);
     const discount = gross.times(line.discountPercent ?? 0).dividedBy(100);
     const net = gross.minus(discount).toDecimalPlaces(2);
     const tax = net.times(rateOf(line.taxRateId)).dividedBy(100).toDecimalPlaces(2);
@@ -135,44 +135,54 @@ export async function createQuotation(
   }
 
   try {
-    const quote = await prisma.$transaction(async (tx) => {
-      const opportunity = await tx.opportunity.findUniqueOrThrow({
-        where: { id: data.opportunityId },
-        select: { accountId: true },
-      });
+    const db = await supabaseServer();
 
-      const last = await tx.quotation.findFirst({
-        where: { opportunityId: data.opportunityId },
-        orderBy: { versionNumber: "desc" },
-        select: { versionNumber: true },
-      });
+    const { data: opportunity, error: oppErr } = await db
+      .from("opportunity")
+      .select("accountId")
+      .eq("id", data.opportunityId)
+      .single();
 
-      const totals = await computeTotals(tx, data.lines);
+    if (oppErr || !opportunity) return { ok: false, error: "Opportunity not found." };
 
-      return tx.quotation.create({
-        data: {
-          quoteNumber: await nextNumber(SEQUENCES.QUOTATION, tx),
-          opportunityId: data.opportunityId,
-          accountId: opportunity.accountId,
-          contactId: data.contactId ?? null,
-          versionNumber: (last?.versionNumber ?? 0) + 1,
-          status: "DRAFT",
-          quoteDate: data.quoteDate,
-          expiryDate: data.expiryDate,
-          currencyCode: data.currencyCode,
-          subtotal: totals.subtotal,
-          discountAmount: totals.discountAmount,
-          taxAmount: totals.taxAmount,
-          totalAmount: totals.totalAmount,
-          paymentTerms: data.paymentTerms ?? null,
-          notes: data.notes ?? null,
-          termsAndConditions: data.termsAndConditions ?? null,
-          lines: {
-            create: totals.lines.map((l, i) => ({ ...l, sortOrder: i })),
-          },
-        },
-      });
+    const { data: last } = await db
+      .from("quotation")
+      .select("versionNumber")
+      .eq("opportunityId", data.opportunityId)
+      .order("versionNumber", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const totals = await computeTotals(data.lines);
+
+    // Quote + lines atomically: a quote with a total but no lines is not a quote.
+    const { data: quote, error } = await db.rpc("create_with_lines", {
+      p_table: "quotation",
+      p_payload: {
+        opportunityId: data.opportunityId,
+        accountId: opportunity.accountId,
+        contactId: data.contactId ?? null,
+        versionNumber: (last?.versionNumber ?? 0) + 1,
+        status: "DRAFT",
+        quoteDate: data.quoteDate.toISOString().slice(0, 10),
+        expiryDate: data.expiryDate.toISOString().slice(0, 10),
+        currencyCode: data.currencyCode,
+        subtotal: totals.subtotal.toFixed(2),
+        discountAmount: totals.discountAmount.toFixed(2),
+        taxAmount: totals.taxAmount.toFixed(2),
+        totalAmount: totals.totalAmount.toFixed(2),
+        paymentTerms: data.paymentTerms ?? null,
+        notes: data.notes ?? null,
+        termsAndConditions: data.termsAndConditions ?? null,
+      },
+      p_line_table: "quote_line",
+      p_lines: totals.lines.map((l) => ({ ...l, lineTotal: l.lineTotal.toFixed(2) })),
+      p_parent_field: "quotationId",
+      p_number_field: "quoteNumber",
+      p_sequence: SEQUENCES.QUOTATION,
     });
+
+    if (error) throw new Error(error.message);
 
     revalidatePath("/quotations");
     revalidatePath(`/opportunities/${data.opportunityId}`);
@@ -197,44 +207,53 @@ export async function updateQuotation(
   const data = parsed.data;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const before = await tx.quotation.findUniqueOrThrow({ where: { id } });
+    const db = await supabaseServer();
 
-      if (!(EDITABLE as readonly string[]).includes(before.status)) {
-        throw new Error(
-          `${before.quoteNumber} is ${before.status.toLowerCase().replace("_", " ")} and the customer has seen it. Create a revision instead of editing it.`,
-        );
-      }
+    const { data: before } = await db
+      .from("quotation")
+      .select("status, quoteNumber")
+      .eq("id", id)
+      .maybeSingle();
 
-      const totals = await computeTotals(tx, data.lines);
+    if (!before) return { ok: false, error: "Quote not found." };
 
-      await tx.quoteLine.deleteMany({ where: { quotationId: id } });
-      const after = await tx.quotation.update({
-        where: { id },
-        data: {
-          contactId: data.contactId ?? null,
-          quoteDate: data.quoteDate,
-          expiryDate: data.expiryDate,
-          currencyCode: data.currencyCode,
-          subtotal: totals.subtotal,
-          discountAmount: totals.discountAmount,
-          taxAmount: totals.taxAmount,
-          totalAmount: totals.totalAmount,
-          paymentTerms: data.paymentTerms ?? null,
-          notes: data.notes ?? null,
-          termsAndConditions: data.termsAndConditions ?? null,
-          lines: { create: totals.lines.map((l, i) => ({ ...l, sortOrder: i })) },
-        },
-      });
+    if (!(EDITABLE as readonly string[]).includes(before.status)) {
+      return {
+        ok: false,
+        error: `${before.quoteNumber} is ${before.status
+          .toLowerCase()
+          .replace("_", " ")} and the customer has seen it. Create a revision instead of editing it.`,
+      };
+    }
 
-      await auditChanges(tx, {
-        entityType: "Quotation",
-        entityId: id,
-        before,
-        after,
-        changedById: user.id,
-      });
+    const totals = await computeTotals(data.lines);
+
+    // Replaces the lines and updates the header in one transaction: a delete
+    // that lands without the re-insert would leave a quote with no body.
+    const { error } = await db.rpc("update_with_lines", {
+      p_table: "quotation",
+      p_id: id,
+      p_payload: {
+        contactId: data.contactId ?? null,
+        quoteDate: data.quoteDate.toISOString().slice(0, 10),
+        expiryDate: data.expiryDate.toISOString().slice(0, 10),
+        currencyCode: data.currencyCode,
+        subtotal: totals.subtotal.toFixed(2),
+        discountAmount: totals.discountAmount.toFixed(2),
+        taxAmount: totals.taxAmount.toFixed(2),
+        totalAmount: totals.totalAmount.toFixed(2),
+        paymentTerms: data.paymentTerms ?? null,
+        notes: data.notes ?? null,
+        termsAndConditions: data.termsAndConditions ?? null,
+      },
+      p_line_table: "quote_line",
+      p_lines: totals.lines.map((l) => ({ ...l, lineTotal: l.lineTotal.toFixed(2) })),
+      p_parent_field: "quotationId",
+      p_entity_type: "Quotation",
+      p_actor_id: user.id,
     });
+
+    if (error) throw new Error(error.message);
 
     revalidatePath("/quotations");
     revalidatePath(`/quotations/${id}`);
@@ -255,66 +274,15 @@ export async function reviseQuotation(id: string): Promise<ActionResult<{ id: st
   const user = _auth.user;
 
   try {
-    const revision = await prisma.$transaction(async (tx) => {
-      const original = await tx.quotation.findUniqueOrThrow({
-        where: { id },
-        include: { lines: { orderBy: { sortOrder: "asc" } } },
-      });
+    const db = await supabaseServer();
 
-      if (original.status === "ACCEPTED") {
-        throw new Error("An accepted quote cannot be revised — it is the basis of the deal.");
-      }
-
-      const last = await tx.quotation.findFirst({
-        where: { opportunityId: original.opportunityId },
-        orderBy: { versionNumber: "desc" },
-        select: { versionNumber: true },
-      });
-
-      const copy = await tx.quotation.create({
-        data: {
-          quoteNumber: await nextNumber(SEQUENCES.QUOTATION, tx),
-          opportunityId: original.opportunityId,
-          accountId: original.accountId,
-          contactId: original.contactId,
-          versionNumber: (last?.versionNumber ?? 0) + 1,
-          status: "DRAFT",
-          quoteDate: new Date(),
-          expiryDate: new Date(Date.now() + 30 * 86_400_000),
-          currencyCode: original.currencyCode,
-          subtotal: original.subtotal,
-          discountAmount: original.discountAmount,
-          taxAmount: original.taxAmount,
-          totalAmount: original.totalAmount,
-          paymentTerms: original.paymentTerms,
-          notes: original.notes,
-          termsAndConditions: original.termsAndConditions,
-          lines: {
-            create: original.lines.map((l, i) => ({
-              productId: l.productId,
-              description: l.description,
-              quantity: l.quantity,
-              unitPrice: l.unitPrice,
-              discountPercent: l.discountPercent,
-              taxRateId: l.taxRateId,
-              lineTotal: l.lineTotal,
-              sortOrder: i,
-            })),
-          },
-        },
-      });
-
-      const after = await tx.quotation.update({ where: { id }, data: { status: "REVISED" } });
-      await auditChanges(tx, {
-        entityType: "Quotation",
-        entityId: id,
-        before: original,
-        after,
-        changedById: user.id,
-      });
-
-      return copy;
+    // Copy + supersede in one transaction — see prisma/rls/023_fn_revise_quotation.sql.
+    const { data: revision, error } = await db.rpc("revise_quotation", {
+      p_id: id,
+      p_actor_id: user.id,
     });
+
+    if (error) return { ok: false, error: error.message };
 
     revalidatePath("/quotations");
     return { ok: true, data: { id: revision.id } };
@@ -330,48 +298,55 @@ export async function sendQuotation(id: string): Promise<ActionResult> {
   const user = _auth.user;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const before = await tx.quotation.findUniqueOrThrow({
-        where: { id },
-        include: { lines: { select: { id: true } } },
-      });
+    const db = await supabaseServer();
 
-      if (!(EDITABLE as readonly string[]).includes(before.status)) {
-        throw new Error(`${before.quoteNumber} has already been sent.`);
-      }
-      if (before.lines.length === 0) {
-        throw new Error("A quote with no lines cannot be sent.");
-      }
-      if (before.expiryDate < new Date()) {
-        throw new Error("This quote's expiry date has already passed. Extend it before sending.");
-      }
+    const { data: before } = await db
+      .from("quotation")
+      .select("status, quoteNumber, expiryDate, opportunityId, lines:quote_line ( id )")
+      .eq("id", id)
+      .maybeSingle();
 
-      const after = await tx.quotation.update({
-        where: { id },
-        data: { status: "SENT", sentAt: new Date() },
-      });
+    if (!before) return { ok: false, error: "Quote not found." };
 
-      await auditChanges(tx, {
-        entityType: "Quotation",
-        entityId: id,
-        before,
-        after,
-        changedById: user.id,
-      });
+    if (!(EDITABLE as readonly string[]).includes(before.status)) {
+      return { ok: false, error: before.quoteNumber + " has already been sent." };
+    }
+    if ((before.lines ?? []).length === 0) {
+      return { ok: false, error: "A quote with no lines cannot be sent." };
+    }
+    // PostgREST returns dates as ISO strings — parse before comparing, or this
+    // check is silently always false.
+    if (new Date(before.expiryDate as string) < new Date()) {
+      return {
+        ok: false,
+        error: "This quote's expiry date has already passed. Extend it before sending.",
+      };
+    }
 
-      const opp = await tx.opportunity.findUniqueOrThrow({
-        where: { id: before.opportunityId },
-        select: { stage: true },
-      });
-      const earlyStages = ["DISCOVERY", "QUALIFICATION", "REQUIREMENTS", "SOLUTION_PROPOSED"];
-      if (earlyStages.includes(opp.stage)) {
-        await tx.opportunity.update({
-          where: { id: before.opportunityId },
-          data: { stage: "QUOTE_SUBMITTED", probabilityPercent: 60 },
-        });
-      }
-    });
+    await updateRecord(
+      "quotation",
+      id,
+      { status: "SENT", sentAt: new Date().toISOString() },
+      "Quotation",
+      user.id,
+    );
 
+    const { data: opp } = await db
+      .from("opportunity")
+      .select("stage")
+      .eq("id", before.opportunityId)
+      .maybeSingle();
+
+    const earlyStages = ["DISCOVERY", "QUALIFICATION", "REQUIREMENTS", "SOLUTION_PROPOSED"];
+    if (opp && earlyStages.includes(opp.stage)) {
+      await updateRecord(
+        "opportunity",
+        before.opportunityId,
+        { stage: "QUOTE_SUBMITTED", probabilityPercent: 60 },
+        "Opportunity",
+        user.id,
+      );
+    }
     revalidatePath("/quotations");
     revalidatePath(`/quotations/${id}`);
     revalidatePath("/opportunities");
@@ -394,53 +369,64 @@ export async function decideQuotation(
   const user = _auth.user;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const before = await tx.quotation.findUniqueOrThrow({ where: { id } });
+    const db = await supabaseServer();
 
-      if (before.status !== "SENT") {
-        throw new Error("Only a quote that has been sent to the customer can be accepted or rejected.");
+    const { data: before } = await db
+      .from("quotation")
+      .select("status, opportunityId, quoteNumber, totalAmount")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (!before) return { ok: false, error: "Quote not found." };
+
+    if (before.status !== "SENT") {
+      return {
+        ok: false,
+        error: "Only a quote that has been sent to the customer can be accepted or rejected.",
+      };
+    }
+
+    if (decision === "ACCEPTED") {
+      // Backstopped by quotation_one_accepted_per_opportunity (a partial unique
+      // index), so a race still fails at the database rather than double-accepting.
+      const { data: alreadyAccepted } = await db
+        .from("quotation")
+        .select("quoteNumber")
+        .eq("opportunityId", before.opportunityId)
+        .eq("status", "ACCEPTED")
+        .is("deletedAt", null)
+        .limit(1)
+        .maybeSingle();
+
+      if (alreadyAccepted) {
+        return {
+          ok: false,
+          error: alreadyAccepted.quoteNumber + " is already the accepted quote on this deal. Only one quote per opportunity can be accepted.",
+        };
       }
+    }
 
-      if (decision === "ACCEPTED") {
-        const alreadyAccepted = await tx.quotation.findFirst({
-          where: { opportunityId: before.opportunityId, status: "ACCEPTED", deletedAt: null },
-          select: { quoteNumber: true },
-        });
-        if (alreadyAccepted) {
-          throw new Error(
-            `${alreadyAccepted.quoteNumber} is already the accepted quote on this deal. Only one quote per opportunity can be accepted.`,
-          );
-        }
-      }
+    await updateRecord(
+      "quotation",
+      id,
+      {
+        status: decision,
+        acceptedAt: decision === "ACCEPTED" ? new Date().toISOString() : null,
+      },
+      "Quotation",
+      user.id,
+    );
 
-      const after = await tx.quotation.update({
-        where: { id },
-        data: {
-          status: decision,
-          acceptedAt: decision === "ACCEPTED" ? new Date() : null,
-        },
-      });
-
-      await auditChanges(tx, {
-        entityType: "Quotation",
-        entityId: id,
-        before,
-        after,
-        changedById: user.id,
-      });
-
-      // An accepted quote is the customer's commitment — reflect it on the deal.
-      if (decision === "ACCEPTED") {
-        await tx.opportunity.update({
-          where: { id: before.opportunityId },
-          data: {
-            stage: "VERBAL_CONFIRMATION",
-            probabilityPercent: 90,
-            amount: before.totalAmount,
-          },
-        });
-      }
-    });
+    // An accepted quote is the customer's commitment — reflect it on the deal.
+    if (decision === "ACCEPTED") {
+      await updateRecord(
+        "opportunity",
+        before.opportunityId,
+        { stage: "VERBAL_CONFIRMATION", probabilityPercent: 90, amount: before.totalAmount },
+        "Opportunity",
+        user.id,
+      );
+    }
 
     revalidatePath("/quotations");
     revalidatePath(`/quotations/${id}`);
@@ -454,56 +440,66 @@ export async function decideQuotation(
 export async function getQuotation(id: string) {
   await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
 
-  return prisma.quotation.findUnique({
-    where: { id },
-    include: {
-      account: { select: { id: true, name: true } },
-      opportunity: { select: { id: true, name: true, opportunityNumber: true, accountId: true } },
-      lines: { orderBy: { sortOrder: "asc" } },
-    },
-  });
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("quotation")
+    .select(
+      `*,
+       opportunity ( id, opportunityNumber, name, stage ),
+       account ( id, name ),
+       contact ( id, firstName, lastName, email ),
+       lines:quote_line ( *, product ( id, name, productCode ), taxRate:tax_rate ( id, name, ratePercent ) )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load quote: ${error.message}`);
+  if (!data) return null;
+
+  // PostgREST cannot order an embedded relation inline, so sortOrder is applied
+  // here to preserve the original `orderBy: { sortOrder: "asc" }`.
+  const quoteLines = ((data.lines ?? []) as Array<Record<string, unknown>>)
+    .map((l) => ({ ...l, product: one(l.product), taxRate: one(l.taxRate) }))
+    .sort(
+      (a, b) =>
+        Number((a as { sortOrder?: number }).sortOrder ?? 0) -
+        Number((b as { sortOrder?: number }).sortOrder ?? 0),
+    );
+
+  return {
+    ...data,
+    opportunity: one(data.opportunity),
+    account: one(data.account),
+    contact: one(data.contact),
+    lines: quoteLines,
+  };
 }
 
 export async function getQuotationFormOptions(opportunityId?: string) {
   await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
 
-  const [opportunities, products, taxRates, currencies, contacts] = await Promise.all([
-    prisma.opportunity.findMany({
-      where: {
-        deletedAt: null,
-        ...(opportunityId ? {} : { stage: { notIn: ["CLOSED_WON", "CLOSED_LOST"] } }),
-      },
-      select: {
-        id: true, opportunityNumber: true, name: true, accountId: true,
-        currencyCode: true, account: { select: { name: true } },
-        lines: {
-          select: {
-            productId: true, quantity: true, unitPrice: true,
-            discountPercent: true, taxRateId: true,
-            product: { select: { name: true } },
-          },
-          orderBy: { sortOrder: "asc" },
-        },
-      },
-      orderBy: { expectedCloseDate: "asc" },
-    }),
-    prisma.product.findMany({
-      where: { deletedAt: null, active: true },
-      select: { id: true, name: true, productCode: true, standardPrice: true, defaultTaxRateId: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.taxRate.findMany({
-      where: { active: true },
-      select: { id: true, name: true, ratePercent: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.currency.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
-    prisma.contact.findMany({
-      where: { deletedAt: null, accountId: { not: null } },
-      select: { id: true, firstName: true, lastName: true, accountId: true },
-      orderBy: [{ lastName: "asc" }],
-    }),
+  const db = await supabaseServer();
+
+  const [opportunities, products, taxRates] = await Promise.all([
+    db
+      .from("opportunity")
+      .select("id, opportunityNumber, name, accountId, currencyCode, amount")
+      .is("deletedAt", null)
+      .not("stage", "in", '("CLOSED_WON","CLOSED_LOST")')
+      .order("createdAt", { ascending: false }),
+    db
+      .from("product")
+      .select("id, name, productCode, standardPrice, defaultTaxRateId")
+      .is("deletedAt", null)
+      .eq("active", true)
+      .order("name"),
+    db.from("tax_rate").select("id, name, ratePercent").eq("active", true).order("name"),
   ]);
 
-  return { opportunities, products, taxRates, currencies, contacts };
+  return {
+    opportunities: opportunities.data ?? [],
+    products: products.data ?? [],
+    taxRates: taxRates.data ?? [],
+  };
 }

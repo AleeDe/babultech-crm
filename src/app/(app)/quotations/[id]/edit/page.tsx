@@ -49,7 +49,7 @@ export default async function EditQuotationPage({
     paymentTerms: quote.paymentTerms,
     notes: quote.notes,
     termsAndConditions: quote.termsAndConditions,
-    lines: quote.lines.map((l) => ({
+    lines: quote.lines.map((l: Record<string, any>) => ({
       productId: l.productId,
       description: l.description,
       quantity: l.quantity,
