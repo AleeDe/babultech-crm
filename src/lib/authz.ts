@@ -62,23 +62,27 @@ export async function requireUser(): Promise<SessionUser> {
   } = await db.auth.getUser();
 
   let userId = supabaseUser?.id ?? null;
-  let viaNextAuth = false;
 
   if (!userId) {
     const session = await nextAuthSession();
     userId = session?.user?.id ?? null;
-    viaNextAuth = Boolean(userId);
   }
 
   if (!userId) throw new AuthorizationError("Not signed in.");
 
-  // With a NextAuth session there is no Supabase JWT, so the anon client is
-  // blocked by RLS from reading app_user — including the caller's own row. The
-  // service-role client is used for this one lookup, keyed by an id that came
-  // from a verified NextAuth session, never from user input.
+  // Always the service-role client, for either session type.
   //
-  // Remove this branch once every module is on Supabase Auth.
-  const profileDb = viaNextAuth ? supabaseAdmin() : db;
+  // This lookup joins security_role, which deliberately has no SELECT policy —
+  // only the SECURITY DEFINER helpers read it. Through the anon client the
+  // `!inner` join therefore matches nothing and the whole row disappears, so
+  // even a correctly signed-in user reads as "not active".
+  //
+  // Using the service role here is safe and is not a hole in row security:
+  // `userId` comes from a verified session (a Supabase JWT or a NextAuth
+  // cookie), never from user input, and the query is pinned to that single id.
+  // Every *data* query still runs through the caller's own client, where RLS
+  // applies.
+  const profileDb = supabaseAdmin();
 
   const { data: user, error } = await profileDb
     .from("app_user")
