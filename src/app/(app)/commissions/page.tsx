@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { listCommissions, getCommissionTotals } from "@/server/commissions";
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, StatTile, Button, Select, Input, Alert, Forbidden
@@ -21,11 +21,15 @@ export default async function CommissionsPage({
   const [records, totals, partners] = await Promise.all([
     listCommissions(params),
     getCommissionTotals(),
-    prisma.partner.findMany({
-      where: { deletedAt: null },
-      select: { id: true, displayName: true },
-      orderBy: { displayName: "asc" },
-    }),
+    (async () => {
+      const db = await supabaseServer();
+      const { data } = await db
+        .from("partner")
+        .select("id, displayName")
+        .is("deletedAt", null)
+        .order("displayName");
+      return data ?? [];
+    })(),
   ]);
 
   return (

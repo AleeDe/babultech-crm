@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
+import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
@@ -16,26 +17,43 @@ export default async function InvoicesPage() {
 
   await requireUser();
 
-  const invoices = await prisma.invoice.findMany({
-    where: { deletedAt: null },
-    include: {
-      account: { select: { id: true, name: true } },
-      project: { select: { id: true, name: true } },
-      _count: { select: { allocations: true } },
+  const db = await supabaseServer();
+
+  const { data: invoiceRows } = await db
+    .from("invoice")
+    .select(
+      `*,
+       account ( id, name ),
+       project ( id, name ),
+       allocations:payment_allocation ( count )`,
+    )
+    .is("deletedAt", null)
+    .order("dueDate");
+
+  const invoices = (invoiceRows ?? []).map((i) => ({
+    ...i,
+    account: one(i.account as never),
+    project: one(i.project as never),
+    _count: {
+      allocations: (i.allocations as { count: number }[] | undefined)?.[0]?.count ?? 0,
     },
-    orderBy: { dueDate: "asc" },
-  });
+  }));
 
   // Projects the billing run can act on — anything live with work to bill.
-  const billableProjects = await prisma.project.findMany({
-    where: { deletedAt: null, status: { in: ["PLANNING", "ACTIVE", "AT_RISK", "COMPLETED"] } },
-    select: { id: true, name: true, projectNumber: true },
-    orderBy: { name: "asc" },
-  });
+  const { data: billableProjectRows } = await db
+    .from("project")
+    .select("id, name, projectNumber")
+    .is("deletedAt", null)
+    .in("status", ["PLANNING", "ACTIVE", "AT_RISK", "COMPLETED"])
+    .order("name");
+
+  const billableProjects = billableProjectRows ?? [];
 
   const now = new Date();
   const live = invoices.filter((i) => !["DRAFT", "CANCELLED", "PAID", "WRITTEN_OFF"].includes(i.status));
-  const overdue = live.filter((i) => i.dueDate < now);
+  // dueDate arrives as an ISO string, not a Date. `string < Date` is always
+  // false, so without parsing the overdue tile would silently read zero.
+  const overdue = live.filter((i) => new Date(i.dueDate as string) < now);
   const outstanding = live.reduce((s, i) => s + Number(i.outstandingAmount), 0);
   const overdueTotal = overdue.reduce((s, i) => s + Number(i.outstandingAmount), 0);
 
