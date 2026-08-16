@@ -2,11 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
-import { nextNumber, SEQUENCES } from "@/lib/numbering";
+import { supabaseServer } from "@/lib/supabase";
+import { createRecord, updateRecord, applyScope } from "@/lib/db";
+import { one, toDecimal } from "@/lib/decimal";
+import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission, scopedContext } from "@/lib/authz";
-import { auditChanges } from "@/lib/audit";
 import { registrationExpiry, protectionDaysFor } from "@/lib/partner-policy";
 import type { ActionResult } from "./partners";
 
@@ -45,14 +45,10 @@ export async function createAccount(
   }
 
   try {
-    const account = await prisma.$transaction(async (tx) =>
-      tx.account.create({
-        data: {
-          ...parsed.data,
-          accountNumber: await nextNumber(SEQUENCES.ACCOUNT, tx),
-          billingAddress: (parsed.data.billingAddress ?? undefined) as Prisma.InputJsonValue | undefined,
-        },
-      }),
+    const account = await createRecord<{ id: string }>(
+      "account",
+      { ...parsed.data, billingAddress: parsed.data.billingAddress ?? null },
+      { field: "accountNumber", sequence: SEQUENCES.ACCOUNT },
     );
 
     revalidatePath("/accounts");
@@ -76,23 +72,15 @@ export async function updateAccount(
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const before = await tx.account.findUniqueOrThrow({ where: { id } });
-      const after = await tx.account.update({
-        where: { id },
-        data: {
-          ...parsed.data,
-          billingAddress: (parsed.data.billingAddress ?? undefined) as Prisma.InputJsonValue | undefined,
-        },
-      });
-      await auditChanges(tx, {
-        entityType: "Account",
-        entityId: id,
-        before,
-        after,
-        changedById: user.id,
-      });
-    });
+    // update_record reads, updates and writes the change history in one
+    // transaction — see supabase/functions-sql/014_fn_generic_write.sql.
+    await updateRecord(
+      "account",
+      id,
+      { ...parsed.data, billingAddress: parsed.data.billingAddress ?? null },
+      "Account",
+      user.id,
+    );
 
     revalidatePath("/accounts");
     revalidatePath(`/accounts/${id}`);
@@ -105,62 +93,127 @@ export async function updateAccount(
 export async function listAccounts(filters?: { search?: string; accountType?: string }) {
   const { where } = await scopedContext("ownerUserId");
 
-  return prisma.account.findMany({
-    where: {
-      deletedAt: null,
-      ...where,
-      ...(filters?.accountType ? { accountType: filters.accountType as never } : {}),
-      ...(filters?.search
-        ? {
-            OR: [
-              { name: { contains: filters.search, mode: "insensitive" as const } },
-              { accountNumber: { contains: filters.search, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
+  const db = await supabaseServer();
+
+  let query = db
+    .from("account")
+    .select(
+      `*,
+       owner:app_user!account_ownerUserId_fkey ( id, fullName ),
+       partner ( id, partnerNumber, partnerType, tier ),
+       contacts:contact ( count ),
+       opportunities:opportunity ( count ),
+       cases:support_case ( count ),
+       projects:project ( count )`,
+    )
+    .is("deletedAt", null)
+    .order("name", { ascending: true });
+
+  query = applyScope(query, where);
+
+  if (filters?.accountType) query = query.eq("accountType", filters.accountType);
+  if (filters?.search) {
+    // PostgREST's or() takes a comma-separated filter list; ilike with %
+    // wildcards is Prisma's `contains` + `mode: "insensitive"`.
+    const s = filters.search.replace(/[,()]/g, "");
+    query = query.or(`name.ilike.%${s}%,accountNumber.ilike.%${s}%`);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Could not load accounts: ${error.message}`);
+
+  // Reshape PostgREST's aggregate relations into the _count shape pages read.
+  // Reshape PostgREST's aggregate relations into the _count shape pages read,
+  // keeping the account's own columns on the result.
+  const countOf = (v: unknown) => (v as { count: number }[] | undefined)?.[0]?.count ?? 0;
+
+  return (data ?? []).map((row) => ({
+    ...row,
+    owner: one(row.owner as never),
+    partner: one(row.partner as never),
+    _count: {
+      contacts: countOf(row.contacts),
+      opportunities: countOf(row.opportunities),
+      cases: countOf(row.cases),
+      projects: countOf(row.projects),
     },
-    include: {
-      owner: { select: { id: true, fullName: true } },
-      partner: { select: { id: true, partnerNumber: true, partnerType: true, tier: true } },
-      _count: { select: { contacts: true, opportunities: true, cases: true, projects: true } },
-    },
-    orderBy: { name: "asc" },
-  });
+  }));
 }
 
 export async function getAccount(id: string) {
   await requirePermission(PERMISSIONS.ACCOUNT_READ);
 
-  return prisma.account.findUnique({
-    where: { id },
-    include: {
-      owner: { select: { id: true, fullName: true, email: true } },
-      parentAccount: { select: { id: true, name: true } },
-      childAccounts: { select: { id: true, name: true, accountType: true } },
-      partner: { include: { commissionPlan: { select: { name: true } } } },
-      contacts: { where: { deletedAt: null }, orderBy: [{ isPrimary: "desc" }, { lastName: "asc" }] },
-      opportunities: {
-        where: { deletedAt: null },
-        select: { id: true, opportunityNumber: true, name: true, stage: true, amount: true, currencyCode: true, expectedCloseDate: true },
-        orderBy: { expectedCloseDate: "desc" },
-        take: 20,
-      },
-      contracts: { where: { deletedAt: null }, orderBy: { endDate: "desc" }, take: 10 },
-      cases: {
-        where: { deletedAt: null },
-        select: { id: true, caseNumber: true, subject: true, status: true, priority: true, createdAt: true },
-        orderBy: { createdAt: "desc" },
-        take: 10,
-      },
-      projects: { where: { deletedAt: null }, select: { id: true, projectNumber: true, name: true, status: true, health: true } },
-      invoices: {
-        where: { deletedAt: null, status: { notIn: ["DRAFT", "CANCELLED"] } },
-        select: { id: true, invoiceNumber: true, totalAmount: true, outstandingAmount: true, dueDate: true, status: true, currencyCode: true },
-        orderBy: { invoiceDate: "desc" },
-        take: 10,
-      },
-    },
-  });
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("account")
+    .select(
+      `*,
+       owner:app_user!account_ownerUserId_fkey ( id, fullName, email ),
+       parentAccount:parentAccountId ( id, name ),
+       partner ( *, commissionPlan:commission_plan ( name ) ),
+       contacts:contact ( * ),
+       opportunities:opportunity ( id, opportunityNumber, name, stage, amount, currencyCode, expectedCloseDate, deletedAt ),
+       contracts:contract ( *, deletedAt ),
+       cases:support_case ( id, caseNumber, subject, status, priority, createdAt, deletedAt ),
+       projects:project ( id, projectNumber, name, status, health, deletedAt ),
+       invoices:invoice ( id, invoiceNumber, totalAmount, outstandingAmount, dueDate, status, currencyCode, invoiceDate, deletedAt )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load account: ${error.message}`);
+  if (!data) return null;
+
+  // PostgREST cannot embed the reverse side of a self-referencing FK
+  // (account.parentAccountId -> account.id), so children are a second query.
+  const { data: childAccounts } = await db
+    .from("account")
+    .select("id, name, accountType")
+    .eq("parentAccountId", id)
+    .is("deletedAt", null);
+
+  // PostgREST returns embedded collections unfiltered and unordered, so the
+  // per-relation where/orderBy/take from the Prisma query are applied here.
+  // Rows come back from PostgREST untyped; these helpers keep the shape the
+  // pages index into rather than collapsing it to never.
+  type Row = Record<string, unknown>;
+
+  const live = (rows: unknown): Row[] =>
+    ((rows as Row[] | null) ?? []).filter((r) => !r.deletedAt);
+
+  const byDesc = (rows: Row[], key: string): Row[] =>
+    rows
+      .slice()
+      .sort((a, b) => String(b[key] ?? "").localeCompare(String(a[key] ?? "")));
+
+  const contacts = live(data.contacts as { deletedAt?: unknown; isPrimary?: boolean; lastName?: string }[]).sort(
+    (a, b) =>
+      Number(b.isPrimary ?? false) - Number(a.isPrimary ?? false) ||
+      String(a.lastName ?? "").localeCompare(String(b.lastName ?? "")),
+  );
+
+  return {
+    ...data,
+    owner: one(data.owner as never),
+    parentAccount: one(data.parentAccount as never),
+    childAccounts: childAccounts ?? [],
+    partner: (() => {
+      const p = one(data.partner as never) as { commissionPlan?: unknown } | null;
+      return p ? { ...p, commissionPlan: one(p.commissionPlan as never) } : null;
+    })(),
+    contacts,
+    opportunities: byDesc(live(data.opportunities), "expectedCloseDate").slice(0, 20),
+    contracts: byDesc(live(data.contracts), "endDate" as never).slice(0, 10),
+    cases: byDesc(live(data.cases), "createdAt").slice(0, 10),
+    projects: live(data.projects),
+    invoices: byDesc(
+      live(data.invoices).filter(
+        (i) => !["DRAFT", "CANCELLED"].includes((i as { status?: string }).status ?? ""),
+      ),
+      "invoiceDate",
+    ).slice(0, 10),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -197,18 +250,13 @@ export async function createContact(
   const data = parsed.data;
 
   try {
-    const contact = await prisma.$transaction(async (tx) => {
-      // Only one primary contact per account.
-      if (data.isPrimary && data.accountId) {
-        await tx.contact.updateMany({
-          where: { accountId: data.accountId, isPrimary: true },
-          data: { isPrimary: false },
-        });
-      }
-      return tx.contact.create({
-        data: { ...data, accountId: data.accountId ?? null, email: data.email || null },
-      });
+    // create_contact demotes any existing primary and inserts in one
+    // transaction — see supabase/functions-sql/015_fn_contact_primary.sql.
+    const db = await supabaseServer();
+    const { data: contact, error } = await db.rpc("create_contact", {
+      p_payload: { ...data, accountId: data.accountId ?? null, email: data.email || null },
     });
+    if (error) throw new Error(error.message);
 
     revalidatePath("/contacts");
     if (data.accountId) revalidatePath(`/accounts/${data.accountId}`);
@@ -221,13 +269,26 @@ export async function createContact(
 export async function getContact(id: string) {
   await requirePermission(PERMISSIONS.ACCOUNT_READ);
 
-  return prisma.contact.findUnique({
-    where: { id },
-    include: {
-      account: { select: { id: true, name: true } },
-      partnerAsPerson: { select: { id: true, partnerNumber: true } },
-    },
-  });
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("contact")
+    .select(
+      `*,
+       account ( id, name ),
+       partnerAsPerson:partner ( id, partnerNumber )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load contact: ${error.message}`);
+  if (!data) return null;
+
+  return {
+    ...data,
+    account: one(data.account as never),
+    partnerAsPerson: one(data.partnerAsPerson as never),
+  };
 }
 
 export async function updateContact(
@@ -245,41 +306,35 @@ export async function updateContact(
   const data = parsed.data;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const before = await tx.contact.findUniqueOrThrow({ where: { id } });
+    const db = await supabaseServer();
 
-      // A contact that backs an individual partner must keep accountId null —
-      // the partner_identity_check trigger depends on it.
-      const isPartnerPerson = await tx.partner.findFirst({
-        where: { contactId: id, deletedAt: null },
-        select: { id: true },
-      });
-      if (isPartnerPerson && data.accountId) {
-        throw new Error(
+    // A contact that backs an individual partner must keep accountId null —
+    // the partner_identity_check constraint depends on it. Checked before the
+    // write rather than inside it, so the user gets this message rather than a
+    // raw constraint violation.
+    const { data: isPartnerPerson } = await db
+      .from("partner")
+      .select("id")
+      .eq("contactId", id)
+      .is("deletedAt", null)
+      .limit(1)
+      .maybeSingle();
+
+    if (isPartnerPerson && data.accountId) {
+      return {
+        ok: false,
+        error:
           "This contact is an individual partner and cannot be attached to a company account.",
-        );
-      }
+      };
+    }
 
-      if (data.isPrimary && data.accountId) {
-        await tx.contact.updateMany({
-          where: { accountId: data.accountId, isPrimary: true, id: { not: id } },
-          data: { isPrimary: false },
-        });
-      }
-
-      const after = await tx.contact.update({
-        where: { id },
-        data: { ...data, accountId: data.accountId ?? null, email: data.email || null },
-      });
-
-      await auditChanges(tx, {
-        entityType: "Contact",
-        entityId: id,
-        before,
-        after,
-        changedById: user.id,
-      });
+    // Demote-other-primaries + update + audit, atomically.
+    const { error } = await db.rpc("update_contact", {
+      p_id: id,
+      p_payload: { ...data, accountId: data.accountId ?? null, email: data.email || null },
+      p_actor_id: user.id,
     });
+    if (error) throw new Error(error.message);
 
     revalidatePath("/contacts");
     if (data.accountId) revalidatePath(`/accounts/${data.accountId}`);
@@ -292,27 +347,36 @@ export async function updateContact(
 export async function listContacts(filters?: { search?: string; accountId?: string; unaffiliatedOnly?: boolean }) {
   await requirePermission(PERMISSIONS.ACCOUNT_READ);
 
-  return prisma.contact.findMany({
-    where: {
-      deletedAt: null,
-      ...(filters?.accountId ? { accountId: filters.accountId } : {}),
-      ...(filters?.unaffiliatedOnly ? { accountId: null } : {}),
-      ...(filters?.search
-        ? {
-            OR: [
-              { firstName: { contains: filters.search, mode: "insensitive" as const } },
-              { lastName: { contains: filters.search, mode: "insensitive" as const } },
-              { email: { contains: filters.search, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
-    },
-    include: {
-      account: { select: { id: true, name: true } },
-      partnerAsPerson: { select: { id: true, partnerNumber: true, partnerType: true } },
-    },
-    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-  });
+  const db = await supabaseServer();
+
+  let query = db
+    .from("contact")
+    .select(
+      `*,
+       account ( id, name ),
+       partnerAsPerson:partner ( id, partnerNumber, partnerType )`,
+    )
+    .is("deletedAt", null)
+    .order("lastName")
+    .order("firstName");
+
+  if (filters?.accountId) query = query.eq("accountId", filters.accountId);
+  if (filters?.unaffiliatedOnly) query = query.is("accountId", null);
+  if (filters?.search) {
+    const s = filters.search.replace(/[,()]/g, "");
+    query = query.or(
+      `firstName.ilike.%${s}%,lastName.ilike.%${s}%,email.ilike.%${s}%`,
+    );
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Could not load contacts: ${error.message}`);
+
+  return (data ?? []).map((c) => ({
+    ...c,
+    account: one(c.account as never),
+    partnerAsPerson: one(c.partnerAsPerson as never),
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -351,14 +415,10 @@ export async function createLead(
   }
 
   try {
-    const lead = await prisma.$transaction(async (tx) =>
-      tx.lead.create({
-        data: {
-          ...parsed.data,
-          email: parsed.data.email || null,
-          leadNumber: await nextNumber(SEQUENCES.LEAD, tx),
-        },
-      }),
+    const lead = await createRecord<{ id: string }>(
+      "lead",
+      { ...parsed.data, email: parsed.data.email || null },
+      { field: "leadNumber", sequence: SEQUENCES.LEAD },
     );
 
     revalidatePath("/leads");
@@ -371,16 +431,32 @@ export async function createLead(
 export async function getLead(id: string) {
   await requirePermission(PERMISSIONS.LEAD_READ);
 
-  return prisma.lead.findUnique({
-    where: { id },
-    include: {
-      owner: { select: { id: true, fullName: true } },
-      campaign: { select: { id: true, name: true } },
-      referredByPartner: { select: { id: true, displayName: true } },
-      convertedAccount: { select: { id: true, name: true } },
-      convertedOpportunity: { select: { id: true, name: true } },
-    },
-  });
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("lead")
+    .select(
+      `*,
+       owner:app_user!lead_ownerUserId_fkey ( id, fullName ),
+       campaign ( id, name ),
+       referredByPartner:partner ( id, displayName ),
+       convertedAccount:account ( id, name ),
+       convertedOpportunity:opportunity ( id, name )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load lead: ${error.message}`);
+  if (!data) return null;
+
+  return {
+    ...data,
+    owner: one(data.owner as never),
+    campaign: one(data.campaign as never),
+    referredByPartner: one(data.referredByPartner as never),
+    convertedAccount: one(data.convertedAccount as never),
+    convertedOpportunity: one(data.convertedOpportunity as never),
+  };
 }
 
 const leadUpdateSchema = leadSchema.extend({
@@ -414,31 +490,37 @@ export async function updateLead(
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const before = await tx.lead.findUniqueOrThrow({ where: { id } });
+    const db = await supabaseServer();
 
-      // Spec §13: a converted lead is read-only.
-      if (before.status === "CONVERTED") {
-        throw new Error(`Lead ${before.leadNumber} has been converted and can no longer be edited.`);
-      }
+    const { data: before } = await db
+      .from("lead")
+      .select("status, leadNumber")
+      .eq("id", id)
+      .maybeSingle();
 
-      const after = await tx.lead.update({
-        where: { id },
-        data: {
-          ...data,
-          email: data.email || null,
-          disqualifiedReason: data.status === "DISQUALIFIED" ? data.disqualifiedReason : null,
-        },
-      });
+    if (!before) return { ok: false, error: "Lead not found." };
 
-      await auditChanges(tx, {
-        entityType: "Lead",
-        entityId: id,
-        before,
-        after,
-        changedById: user.id,
-      });
+    // Spec §13: a converted lead is read-only.
+    if (before.status === "CONVERTED") {
+      return {
+        ok: false,
+        error: `Lead ${before.leadNumber} has been converted and can no longer be edited.`,
+      };
+    }
+
+    const { error } = await db.rpc("update_record", {
+      p_table: "lead",
+      p_id: id,
+      p_payload: {
+        ...data,
+        email: data.email || null,
+        disqualifiedReason:
+          data.status === "DISQUALIFIED" ? data.disqualifiedReason : null,
+      },
+      p_entity_type: "Lead",
+      p_actor_id: user.id,
     });
+    if (error) throw new Error(error.message);
 
     revalidatePath("/leads");
     revalidatePath(`/leads/${id}`);
@@ -478,114 +560,54 @@ export async function convertLead(
   const data = parsed.data;
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      const lead = await tx.lead.findUniqueOrThrow({
-        where: { id: data.leadId },
-        include: { referredByPartner: true },
-      });
+    const db = await supabaseServer();
 
-      if (lead.status === "CONVERTED") {
-        throw new Error(`Lead ${lead.leadNumber} has already been converted.`);
-      }
+    // Protection runs from when the partner registered the deal, not from
+    // today — a slow internal review must not quietly extend their claim, and
+    // a fast one must not shorten it. The tier rules stay in partner-policy.ts,
+    // so the dates are computed here and passed to the function.
+    const { data: leadRow } = await db
+      .from("lead")
+      .select(
+        `status, leadNumber, createdAt, referredByPartnerId,
+         referredByPartner:partner ( tier, registrationProtectionDays )`,
+      )
+      .eq("id", data.leadId)
+      .maybeSingle();
 
-      const accountId =
-        data.accountId ??
-        (
-          await tx.account.create({
-            data: {
-              accountNumber: await nextNumber(SEQUENCES.ACCOUNT, tx),
-              name: lead.companyName ?? `${lead.firstName} ${lead.lastName}`,
-              accountType: "PROSPECT",
-              ownerUserId: lead.ownerUserId,
-              industry: lead.industry,
-              mainPhone: lead.phone,
-            },
-          })
-        ).id;
+    if (!leadRow) return { ok: false, error: "Lead not found." };
+    if (leadRow.status === "CONVERTED") {
+      return { ok: false, error: `Lead ${leadRow.leadNumber} has already been converted.` };
+    }
 
-      const contact = await tx.contact.create({
-        data: {
-          accountId,
-          firstName: lead.firstName,
-          lastName: lead.lastName,
-          jobTitle: lead.jobTitle,
-          email: lead.email,
-          phone: lead.phone,
-          whatsapp: lead.whatsapp,
-          isPrimary: true,
-          communicationConsent: true,
-        },
-      });
+    const referrer = one(leadRow.referredByPartner as never) as
+      | { tier?: string; registrationProtectionDays?: number }
+      | null;
 
-      let opportunityId: string | null = null;
-      if (data.createOpportunity) {
-        const opp = await tx.opportunity.create({
-          data: {
-            opportunityNumber: await nextNumber(SEQUENCES.OPPORTUNITY, tx),
-            name: data.opportunityName ?? `${lead.companyName ?? lead.lastName} — new business`,
-            accountId,
-            primaryContactId: contact.id,
-            ownerUserId: lead.ownerUserId,
-            campaignId: lead.campaignId,
-            stage: "QUALIFICATION",
-            amount: data.amount ?? lead.estimatedValue ?? 0,
-            probabilityPercent: 20,
-            expectedCloseDate:
-              data.expectedCloseDate ?? new Date(Date.now() + 60 * 86_400_000),
-            opportunityType: "NEW",
-            leadSource: lead.leadSource,
-          },
-        });
-        opportunityId = opp.id;
+    const registeredAt = new Date(leadRow.createdAt as string);
+    const days = protectionDaysFor(
+      referrer?.tier as never,
+      referrer?.registrationProtectionDays ?? null,
+    );
+    const expiresAt = registrationExpiry(registeredAt, days);
 
-        // Carry the referral credit onto the deal.
-        if (lead.referredByPartnerId) {
-          // Protection runs from when the partner registered the deal, not
-          // from today — a slow internal review must not quietly extend their
-          // claim, and a fast one must not shorten it.
-          const registeredAt = lead.createdAt;
-          const days = protectionDaysFor(
-            lead.referredByPartner?.tier,
-            lead.referredByPartner?.registrationProtectionDays,
-          );
-          const expiresAt = registrationExpiry(registeredAt, days);
-
-          await tx.opportunityPartner.create({
-            data: {
-              opportunityId: opp.id,
-              partnerId: lead.referredByPartnerId,
-              role: "SOURCED",
-              revenueSharePercent: 100,
-              commissionPlanId: lead.referredByPartner?.commissionPlanId ?? null,
-              registeredAt,
-              registrationExpiresAt: expiresAt,
-              notes: `Auto-attached on conversion of lead ${lead.leadNumber}. Registration protected for ${days} days, until ${expiresAt.toISOString().slice(0, 10)}.`,
-            },
-          });
-        }
-      }
-
-      const after = await tx.lead.update({
-        where: { id: lead.id },
-        data: {
-          status: "CONVERTED",
-          convertedAt: new Date(),
-          convertedAccountId: accountId,
-          convertedContactId: contact.id,
-          convertedOpportunityId: opportunityId,
-        },
-      });
-
-      await auditChanges(tx, {
-        entityType: "Lead",
-        entityId: lead.id,
-        before: lead,
-        after,
-        changedById: user.id,
-      });
-
-      return { accountId, contactId: contact.id, opportunityId };
+    // Five tables in one transaction — see supabase/functions-sql/016_fn_convert_lead.sql.
+    const { data: result, error } = await db.rpc("convert_lead", {
+      p_lead_id: data.leadId,
+      p_actor_id: user.id,
+      p_account_id: data.accountId ?? null,
+      p_create_opportunity: data.createOpportunity,
+      p_opportunity_name: data.opportunityName ?? null,
+      p_amount: data.amount ?? null,
+      p_expected_close: data.expectedCloseDate
+        ? data.expectedCloseDate.toISOString().slice(0, 10)
+        : null,
+      p_registered_at: registeredAt.toISOString(),
+      p_expires_at: expiresAt.toISOString(),
+      p_protection_days: days,
     });
+
+    if (error) throw new Error(error.message);
 
     revalidatePath("/leads");
     revalidatePath("/accounts");
@@ -599,31 +621,40 @@ export async function convertLead(
 export async function listLeads(filters?: { search?: string; status?: string; source?: string }) {
   const { where } = await scopedContext("ownerUserId");
 
-  return prisma.lead.findMany({
-    where: {
-      deletedAt: null,
-      ...where,
-      // Deals partners have registered through the portal, awaiting a decision.
-      ...(filters?.source === "partner" ? { referredByPartnerId: { not: null } } : {}),
-      ...(filters?.status ? { status: filters.status as never } : {}),
-      ...(filters?.search
-        ? {
-            OR: [
-              { firstName: { contains: filters.search, mode: "insensitive" as const } },
-              { lastName: { contains: filters.search, mode: "insensitive" as const } },
-              { companyName: { contains: filters.search, mode: "insensitive" as const } },
-              { leadNumber: { contains: filters.search, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
-    },
-    include: {
-      owner: { select: { id: true, fullName: true } },
-      campaign: { select: { id: true, name: true } },
-      referredByPartner: { select: { id: true, displayName: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const db = await supabaseServer();
+
+  let query = db
+    .from("lead")
+    .select(
+      `*,
+       owner:app_user!lead_ownerUserId_fkey ( id, fullName ),
+       campaign ( id, name ),
+       referredByPartner:partner ( id, displayName )`,
+    )
+    .is("deletedAt", null)
+    .order("createdAt", { ascending: false });
+
+  query = applyScope(query, where);
+
+  // Deals partners have registered through the portal, awaiting a decision.
+  if (filters?.source === "partner") query = query.not("referredByPartnerId", "is", null);
+  if (filters?.status) query = query.eq("status", filters.status);
+  if (filters?.search) {
+    const s = filters.search.replace(/[,()]/g, "");
+    query = query.or(
+      `firstName.ilike.%${s}%,lastName.ilike.%${s}%,companyName.ilike.%${s}%,leadNumber.ilike.%${s}%`,
+    );
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Could not load leads: ${error.message}`);
+
+  return (data ?? []).map((l) => ({
+    ...l,
+    owner: one(l.owner as never),
+    campaign: one(l.campaign as never),
+    referredByPartner: one(l.referredByPartner as never),
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -633,95 +664,152 @@ export async function listLeads(filters?: { search?: string; status?: string; so
 export async function listCampaigns() {
   await requirePermission(PERMISSIONS.LEAD_READ);
 
-  return prisma.campaign.findMany({
-    where: { deletedAt: null },
-    include: {
-      campaignType: true,
-      owner: { select: { fullName: true } },
-      _count: { select: { members: true, leads: true, opportunities: true } },
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("campaign")
+    .select(
+      `*,
+       campaignType:campaign_type ( * ),
+       owner:app_user!campaign_ownerUserId_fkey ( fullName ),
+       members:campaign_member ( count ),
+       leads:lead ( count ),
+       opportunities:opportunity ( count )`,
+    )
+    .is("deletedAt", null)
+    .order("startDate", { ascending: false });
+
+  if (error) throw new Error(`Could not load campaigns: ${error.message}`);
+
+  const countOf = (v: unknown) => (v as { count: number }[] | undefined)?.[0]?.count ?? 0;
+
+  return (data ?? []).map((row) => ({
+    ...row,
+    campaignType: one(row.campaignType as never),
+    owner: one(row.owner as never),
+    _count: {
+      members: countOf(row.members),
+      leads: countOf(row.leads),
+      opportunities: countOf(row.opportunities),
     },
-    orderBy: { startDate: "desc" },
-  });
+  }));
 }
 
 /** Campaign ROI straight from the v_campaign_performance view (spec §11). */
 export async function getCampaignPerformance() {
   await requirePermission(PERMISSIONS.LEAD_READ);
 
-  return prisma.$queryRaw<
-    Array<{
-      campaign_id: string;
-      campaign_name: string;
-      status: string;
-      actual_cost: Prisma.Decimal;
-      leads: bigint;
-      converted_leads: bigint;
-      opportunities: bigint;
-      pipeline_value: Prisma.Decimal;
-      won_value: Prisma.Decimal;
-      roi_percent: Prisma.Decimal | null;
-      cost_per_lead: Prisma.Decimal | null;
-    }>
-  >`SELECT * FROM v_campaign_performance ORDER BY won_value DESC NULLS LAST`;
+  const db = await supabaseServer();
+
+  // v_campaign_performance is a view (supabase/schema-sql/02_views.sql, applied to cloud
+  // as migration 20260815000006). PostgREST selects from views like tables.
+  const { data, error } = await db
+    .from("v_campaign_performance")
+    .select("*")
+    .order("won_value", { ascending: false, nullsFirst: false });
+
+  if (error) throw new Error(`Could not load campaign performance: ${error.message}`);
+
+  return (data ?? []) as Array<{
+    campaign_id: string;
+    campaign_name: string;
+    status: string;
+    actual_cost: number | string;
+    leads: number;
+    converted_leads: number;
+    opportunities: number;
+    pipeline_value: number | string;
+    won_value: number | string;
+    roi_percent: number | string | null;
+    cost_per_lead: number | string | null;
+  }>;
 }
 
 export async function listProducts(activeOnly = true) {
   await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
 
-  return prisma.product.findMany({
-    where: { deletedAt: null, ...(activeOnly ? { active: true } : {}) },
-    include: { defaultTaxRate: true },
-    orderBy: { name: "asc" },
-  });
+  const db = await supabaseServer();
+
+  let query = db
+    .from("product")
+    .select("*, defaultTaxRate:tax_rate ( * )")
+    .is("deletedAt", null)
+    .order("name");
+
+  if (activeOnly) query = query.eq("active", true);
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Could not load products: ${error.message}`);
+
+  return (data ?? []).map((p) => ({ ...p, defaultTaxRate: one(p.defaultTaxRate as never) }));
 }
 
 /** Option lists for form dropdowns. */
 export async function getFormOptions() {
   await requirePermission(PERMISSIONS.ACCOUNT_READ);
 
-  const [users, accounts, campaigns, plans, currencies, partners, contacts, products, taxRates] = await Promise.all([
-    prisma.user.findMany({
-      where: { status: "ACTIVE", deletedAt: null },
-      select: { id: true, fullName: true },
-      orderBy: { fullName: "asc" },
-    }),
-    prisma.account.findMany({
-      where: { deletedAt: null },
-      select: { id: true, name: true, accountType: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.campaign.findMany({
-      where: { deletedAt: null, status: { in: ["PLANNED", "ACTIVE"] } },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.commissionPlan.findMany({
-      where: { deletedAt: null, active: true },
-      select: { id: true, name: true, rateType: true, flatPercent: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.currency.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
-    prisma.partner.findMany({
-      where: { deletedAt: null, status: "ACTIVE" },
-      select: { id: true, displayName: true, partnerNumber: true, kind: true },
-      orderBy: { displayName: "asc" },
-    }),
-    prisma.contact.findMany({
-      where: { deletedAt: null },
-      select: { id: true, firstName: true, lastName: true, accountId: true },
-      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-    }),
-    prisma.product.findMany({
-      where: { deletedAt: null, active: true },
-      select: { id: true, name: true, productCode: true, standardPrice: true, defaultTaxRateId: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.taxRate.findMany({
-      where: { active: true },
-      select: { id: true, name: true, ratePercent: true },
-      orderBy: { name: "asc" },
-    }),
-  ]);
+  const db = await supabaseServer();
 
-  return { users, accounts, campaigns, plans, currencies, partners, contacts, products, taxRates };
+  const [users, accounts, campaigns, plans, currencies, partners, contacts, products, taxRates] =
+    await Promise.all([
+      db
+        .from("app_user")
+        .select("id, fullName")
+        .eq("status", "ACTIVE")
+        .is("deletedAt", null)
+        .order("fullName"),
+      db
+        .from("account")
+        .select("id, name, accountType")
+        .is("deletedAt", null)
+        .order("name"),
+      db
+        .from("campaign")
+        .select("id, name")
+        .is("deletedAt", null)
+        .in("status", ["PLANNED", "ACTIVE"])
+        .order("name"),
+      db
+        .from("commission_plan")
+        .select("id, name, rateType, flatPercent")
+        .is("deletedAt", null)
+        .eq("active", true)
+        .order("name"),
+      db.from("currency").select("*").eq("active", true).order("code"),
+      db
+        .from("partner")
+        .select("id, displayName, partnerNumber, kind")
+        .is("deletedAt", null)
+        .eq("status", "ACTIVE")
+        .order("displayName"),
+      db
+        .from("contact")
+        .select("id, firstName, lastName, accountId")
+        .is("deletedAt", null)
+        .order("lastName")
+        .order("firstName"),
+      db
+        .from("product")
+        .select("id, name, productCode, standardPrice, defaultTaxRateId")
+        .is("deletedAt", null)
+        .eq("active", true)
+        .order("name"),
+      db
+        .from("tax_rate")
+        .select("id, name, ratePercent")
+        .eq("active", true)
+        .order("name"),
+    ]);
+
+  return {
+    users: users.data ?? [],
+    accounts: accounts.data ?? [],
+    campaigns: campaigns.data ?? [],
+    plans: plans.data ?? [],
+    currencies: currencies.data ?? [],
+    partners: partners.data ?? [],
+    contacts: contacts.data ?? [],
+    products: products.data ?? [],
+    taxRates: taxRates.data ?? [],
+  };
 }

@@ -1,4 +1,5 @@
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
+import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
@@ -8,24 +9,33 @@ export default async function NewPaymentPage() {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.PAYMENT_WRITE)) return <Forbidden what="payments" />;
   const [accounts, currencies, openInvoices] = await Promise.all([
-    prisma.account.findMany({
-      where: { deletedAt: null },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.currency.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
-    prisma.invoice.findMany({
-      where: {
-        deletedAt: null,
-        status: { notIn: ["DRAFT", "CANCELLED", "PAID", "WRITTEN_OFF"] },
-        outstandingAmount: { gt: 0 },
-      },
-      select: {
-        id: true, accountId: true, invoiceNumber: true, invoiceDate: true, dueDate: true,
-        totalAmount: true, outstandingAmount: true, currencyCode: true, status: true,
-      },
-      orderBy: { dueDate: "asc" },
-    }),
+    (async () => {
+      const db = await supabaseServer();
+      const { data } = await db
+        .from("account")
+        .select("id, name")
+        .is("deletedAt", null)
+        .order("name");
+      return data ?? [];
+    })(),
+    (async () => {
+      const db = await supabaseServer();
+      const { data } = await db.from("currency").select("*").eq("active", true).order("code");
+      return data ?? [];
+    })(),
+    (async () => {
+      const db = await supabaseServer();
+      const { data } = await db
+        .from("invoice")
+        .select(
+          "id, accountId, invoiceNumber, invoiceDate, dueDate, totalAmount, outstandingAmount, currencyCode, status",
+        )
+        .is("deletedAt", null)
+        .not("status", "in", '("DRAFT","CANCELLED","PAID","WRITTEN_OFF")')
+        .gt("outstandingAmount", 0)
+        .order("dueDate");
+      return data ?? [];
+    })(),
   ]);
 
   // Grouped so the client can swap the invoice list instantly when the

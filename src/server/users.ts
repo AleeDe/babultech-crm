@@ -3,9 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
+import { createRecord, updateRecord } from "@/lib/db";
+import { one } from "@/lib/decimal";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
-import { auditChanges } from "@/lib/audit";
+import { writeAudit } from "@/lib/audit";
 import type { ActionResult } from "./partners";
 
 /**
@@ -59,10 +61,14 @@ async function validateAgainstRole(
   data: z.infer<typeof userSchema>,
   selfId?: string,
 ): Promise<ActionResult<never> | null> {
-  const role = await prisma.securityRole.findUnique({
-    where: { id: data.roleId },
-    select: { name: true },
-  });
+  const db = await supabaseServer();
+
+  const { data: role } = await db
+    .from("security_role")
+    .select("name")
+    .eq("id", data.roleId)
+    .maybeSingle();
+
   if (!role) return { ok: false, error: "That role no longer exists." };
 
   if (role.name === PARTNER_ROLE) {
@@ -73,10 +79,14 @@ async function validateAgainstRole(
         fieldErrors: { partnerId: ["Choose the partner this login belongs to."] },
       };
     }
-    const taken = await prisma.user.findFirst({
-      where: { partnerId: data.partnerId, ...(selfId ? { id: { not: selfId } } : {}) },
-      select: { fullName: true },
-    });
+    let takenQuery = db
+      .from("app_user")
+      .select("fullName")
+      .eq("partnerId", data.partnerId);
+
+    if (selfId) takenQuery = takenQuery.neq("id", selfId);
+
+    const { data: taken } = await takenQuery.limit(1).maybeSingle();
     if (taken) {
       return {
         ok: false,
@@ -111,8 +121,15 @@ export async function createUser(
   if (invalid) return invalid;
 
   try {
+    const db = await supabaseServer();
     const email = data.email.toLowerCase();
-    const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+
+    const { data: existing } = await db
+      .from("app_user")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+
     if (existing) {
       return {
         ok: false,
@@ -121,12 +138,14 @@ export async function createUser(
       };
     }
 
-    const user = await prisma.user.create({
-      data: {
-        ...data,
-        email,
-        passwordHash: await bcrypt.hash(password, BCRYPT_ROUNDS),
-      },
+    // The bcrypt hash on app_user is still what NextAuth checks at sign-in, so
+    // it is written here as before. New users are not yet mirrored into
+    // Supabase Auth — see docs/SUPABASE-MIGRATION.md; that happens when the
+    // login path moves over, and scripts/migrate-auth-users.mjs backfills.
+    const user = await createRecord<{ id: string }>("app_user", {
+      ...data,
+      email,
+      passwordHash: await bcrypt.hash(password, BCRYPT_ROUNDS),
     });
 
     revalidatePath("/users");
@@ -155,10 +174,15 @@ export async function updateUser(
 
   try {
     const email = data.email.toLowerCase();
-    const clash = await prisma.user.findFirst({
-      where: { email, id: { not: id } },
-      select: { id: true },
-    });
+    const db = await supabaseServer();
+
+    const { data: clash } = await db
+      .from("app_user")
+      .select("id")
+      .eq("email", email)
+      .neq("id", id)
+      .limit(1)
+      .maybeSingle();
     if (clash) {
       return {
         ok: false,
@@ -167,55 +191,54 @@ export async function updateUser(
       };
     }
 
-    await prisma.$transaction(async (tx) => {
-      const before = await tx.user.findUniqueOrThrow({ where: { id } });
+    const { data: before } = await db
+      .from("app_user")
+      .select("roleId, status")
+      .eq("id", id)
+      .maybeSingle();
 
-      // Locking yourself out, or demoting the last administrator, are both
-      // easy accidents with no way back through the UI.
-      if (id === actor.id && data.status !== "ACTIVE") {
-        throw new Error("You cannot deactivate your own account.");
-      }
-      if (before.roleId !== data.roleId || before.status !== data.status) {
-        const adminRole = await tx.securityRole.findFirst({
-          where: { permissions: { has: "*" } },
-          select: { id: true },
-        });
-        if (adminRole && before.roleId === adminRole.id) {
-          const remaining = await tx.user.count({
-            where: {
-              roleId: adminRole.id,
-              status: "ACTIVE",
-              deletedAt: null,
-              id: { not: id },
-            },
-          });
-          const stillAdmin = data.roleId === adminRole.id && data.status === "ACTIVE";
-          if (remaining === 0 && !stillAdmin) {
-            throw new Error(
+    if (!before) return { ok: false, error: "User not found." };
+
+    // Locking yourself out, or demoting the last administrator, are both easy
+    // accidents with no way back through the UI.
+    if (id === actor.id && data.status !== "ACTIVE") {
+      return { ok: false, error: "You cannot deactivate your own account." };
+    }
+
+    if (before.roleId !== data.roleId || before.status !== data.status) {
+      const { data: adminRole } = await db
+        .from("security_role")
+        .select("id")
+        .contains("permissions", ["*"])
+        .limit(1)
+        .maybeSingle();
+
+      if (adminRole && before.roleId === adminRole.id) {
+        const { count: remaining } = await db
+          .from("app_user")
+          .select("id", { count: "exact", head: true })
+          .eq("roleId", adminRole.id)
+          .eq("status", "ACTIVE")
+          .is("deletedAt", null)
+          .neq("id", id);
+
+        const stillAdmin = data.roleId === adminRole.id && data.status === "ACTIVE";
+        if ((remaining ?? 0) === 0 && !stillAdmin) {
+          return {
+            ok: false,
+            error:
               "This is the last active administrator. Promote someone else before changing this account.",
-            );
-          }
+          };
         }
       }
+    }
 
-      // A manager cannot report to themselves, directly or in a short cycle.
-      if (data.managerUserId === id) {
-        throw new Error("Someone cannot be their own manager.");
-      }
+    // A manager cannot report to themselves, directly or in a short cycle.
+    if (data.managerUserId === id) {
+      return { ok: false, error: "Someone cannot be their own manager." };
+    }
 
-      const after = await tx.user.update({
-        where: { id },
-        data: { ...data, email },
-      });
-
-      await auditChanges(tx, {
-        entityType: "User",
-        entityId: id,
-        before,
-        after,
-        changedById: actor.id,
-      });
-    });
+    await updateRecord("app_user", id, { ...data, email }, "User", actor.id);
 
     revalidatePath("/users");
     revalidatePath(`/users/${id}`);
@@ -241,23 +264,34 @@ export async function setUserPassword(id: string, password: string): Promise<Act
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const user = await tx.user.findUniqueOrThrow({ where: { id }, select: { id: true } });
-      await tx.user.update({
-        where: { id: user.id },
-        data: { passwordHash: await bcrypt.hash(parsed.data, BCRYPT_ROUNDS) },
-      });
-      await tx.auditHistory.create({
-        data: {
-          entityType: "User",
-          entityId: id,
-          fieldName: "passwordHash",
-          oldValue: null,
-          newValue: "reset",
-          changedById: actor.id,
-          source: "UI",
-        },
-      });
+    const db = await supabaseServer();
+
+    const { data: user } = await db
+      .from("app_user")
+      .select("id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (!user) return { ok: false, error: "User not found." };
+
+    const { error } = await db
+      .from("app_user")
+      .update({
+        passwordHash: await bcrypt.hash(parsed.data, BCRYPT_ROUNDS),
+        updatedAt: new Date().toISOString(),
+      })
+      .eq("id", user.id);
+
+    if (error) throw new Error(error.message);
+
+    // The hash itself is never recorded — only that a reset happened.
+    await writeAudit({
+      entityType: "User",
+      entityId: id,
+      fieldName: "passwordHash",
+      oldValue: null,
+      newValue: "reset",
+      changedById: actor.id,
     });
 
     revalidatePath(`/users/${id}`);
@@ -286,11 +320,15 @@ export async function changeOwnPassword(
   }
 
   try {
-    const user = await prisma.user.findUniqueOrThrow({
-      where: { id: actor.id },
-      select: { passwordHash: true },
-    });
-    if (!user.passwordHash || !(await bcrypt.compare(currentPassword, user.passwordHash))) {
+    const db = await supabaseServer();
+
+    const { data: user } = await db
+      .from("app_user")
+      .select("passwordHash")
+      .eq("id", actor.id)
+      .maybeSingle();
+
+    if (!user?.passwordHash || !(await bcrypt.compare(currentPassword, user.passwordHash))) {
       return {
         ok: false,
         error: "That is not your current password.",
@@ -298,10 +336,15 @@ export async function changeOwnPassword(
       };
     }
 
-    await prisma.user.update({
-      where: { id: actor.id },
-      data: { passwordHash: await bcrypt.hash(parsed.data, BCRYPT_ROUNDS) },
-    });
+    const { error } = await db
+      .from("app_user")
+      .update({
+        passwordHash: await bcrypt.hash(parsed.data, BCRYPT_ROUNDS),
+        updatedAt: new Date().toISOString(),
+      })
+      .eq("id", actor.id);
+
+    if (error) throw new Error(error.message);
 
     return { ok: true, data: undefined };
   } catch (err) {
@@ -312,89 +355,160 @@ export async function changeOwnPassword(
 export async function listUsers(filters?: { search?: string; roleId?: string; status?: string }) {
   await requirePermission(PERMISSIONS.ADMIN);
 
-  return prisma.user.findMany({
-    where: {
-      deletedAt: null,
-      ...(filters?.roleId ? { roleId: filters.roleId } : {}),
-      ...(filters?.status ? { status: filters.status as never } : {}),
-      ...(filters?.search
-        ? {
-            OR: [
-              { fullName: { contains: filters.search, mode: "insensitive" as const } },
-              { email: { contains: filters.search, mode: "insensitive" as const } },
-              { employeeNumber: { contains: filters.search, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
+  const db = await supabaseServer();
+
+  let query = db
+    .from("app_user")
+    .select(
+      `*,
+       role:security_role ( id, name, dataScope, permissions ),
+       department:app_user_departmentId_fkey ( id, name ),
+       manager:managerUserId ( id, fullName ),
+       partner:app_user_partnerId_fkey ( id, partnerNumber, displayName ),
+       projectMemberships:project_member ( count ),
+       ownedAccounts:account!account_ownerUserId_fkey ( count ),
+       assignedTasks:project_task!project_task_assignedUserId_fkey ( count )`,
+    )
+    .is("deletedAt", null)
+    .order("status")
+    .order("fullName");
+
+  if (filters?.roleId) query = query.eq("roleId", filters.roleId);
+  if (filters?.status) query = query.eq("status", filters.status);
+  if (filters?.search) {
+    const s = filters.search.replace(/[,()]/g, "");
+    query = query.or(
+      `fullName.ilike.%${s}%,email.ilike.%${s}%,employeeNumber.ilike.%${s}%`,
+    );
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Could not load users: ${error.message}`);
+
+  const countOf = (v: unknown) => (v as { count: number }[] | undefined)?.[0]?.count ?? 0;
+
+  return (data ?? []).map((u) => ({
+    ...u,
+    role: one(u.role as never),
+    department: one(u.department as never),
+    manager: one(u.manager as never),
+    partner: one(u.partner as never),
+    _count: {
+      projectMemberships: countOf(u.projectMemberships),
+      ownedAccounts: countOf(u.ownedAccounts),
+      assignedTasks: countOf(u.assignedTasks),
     },
-    include: {
-      role: { select: { id: true, name: true, dataScope: true, permissions: true } },
-      department: { select: { id: true, name: true } },
-      manager: { select: { id: true, fullName: true } },
-      partner: { select: { id: true, partnerNumber: true, displayName: true } },
-      _count: { select: { projectMemberships: true, ownedAccounts: true, assignedTasks: true } },
-    },
-    orderBy: [{ status: "asc" }, { fullName: "asc" }],
-  });
+  }));
 }
 
 export async function getUser(id: string) {
   await requirePermission(PERMISSIONS.ADMIN);
 
-  return prisma.user.findUnique({
-    where: { id },
-    include: {
-      role: true,
-      department: { select: { id: true, name: true } },
-      manager: { select: { id: true, fullName: true } },
-      partner: { select: { id: true, partnerNumber: true, displayName: true } },
-      reports: { select: { id: true, fullName: true, jobTitle: true, status: true } },
-      teamMemberships: { include: { team: { select: { id: true, name: true } } } },
-      projectMemberships: {
-        where: { active: true },
-        include: { project: { select: { id: true, name: true, projectNumber: true, status: true } } },
-      },
-    },
-  });
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("app_user")
+    .select(
+      `*,
+       role:security_role ( * ),
+       department:app_user_departmentId_fkey ( id, name ),
+       manager:managerUserId ( id, fullName ),
+       partner:app_user_partnerId_fkey ( id, partnerNumber, displayName ),
+       teamMemberships:team_member ( *, team ( id, name ) ),
+       projectMemberships:project_member (
+         *,
+         project ( id, name, projectNumber, status )
+       )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load user: ${error.message}`);
+  if (!data) return null;
+
+  // PostgREST cannot embed the reverse side of a self-referencing FK
+  // (app_user.managerUserId -> app_user.id), so direct reports are a second query.
+  const { data: reports } = await db
+    .from("app_user")
+    .select("id, fullName, jobTitle, status")
+    .eq("managerUserId", id)
+    .is("deletedAt", null);
+
+  return {
+    ...data,
+    role: one(data.role as never),
+    department: one(data.department as never),
+    manager: one(data.manager as never),
+    partner: one(data.partner as never),
+    reports: reports ?? [],
+    teamMemberships: ((data.teamMemberships ?? []) as Record<string, unknown>[]).map(
+      (m) => ({ ...m, team: one(m.team as never) }),
+    ),
+    // Prisma filtered the memberships in the query; PostgREST returns them all.
+    projectMemberships: ((data.projectMemberships ?? []) as Record<string, unknown>[])
+      .filter((m) => m.active)
+      .map((m) => ({ ...m, project: one(m.project as never) })),
+  };
 }
 
 export async function getUserFormOptions() {
   await requirePermission(PERMISSIONS.ADMIN);
 
-  const [roles, departments, managers, partners] = await Promise.all([
-    prisma.securityRole.findMany({
-      where: { active: true },
-      select: { id: true, name: true, description: true, dataScope: true, permissions: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.department.findMany({
-      where: { deletedAt: null, active: true },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.user.findMany({
-      where: { status: "ACTIVE", deletedAt: null },
-      select: { id: true, fullName: true, jobTitle: true },
-      orderBy: { fullName: "asc" },
-    }),
-    // Only partners without a login yet — one portal account each.
-    prisma.partner.findMany({
-      where: { deletedAt: null, portalUser: null },
-      select: { id: true, partnerNumber: true, displayName: true, kind: true },
-      orderBy: { displayName: "asc" },
-    }),
-  ]);
+  const db = await supabaseServer();
 
-  return { roles, departments, managers, partners };
+  const [rolesRes, departmentsRes, managersRes, partnersRes, takenRes] =
+    await Promise.all([
+      db
+        .from("security_role")
+        .select("id, name, description, dataScope, permissions")
+        .eq("active", true)
+        .order("name"),
+      db
+        .from("department")
+        .select("id, name")
+        .is("deletedAt", null)
+        .eq("active", true)
+        .order("name"),
+      db
+        .from("app_user")
+        .select("id, fullName, jobTitle")
+        .eq("status", "ACTIVE")
+        .is("deletedAt", null)
+        .order("fullName"),
+      db
+        .from("partner")
+        .select("id, partnerNumber, displayName, kind")
+        .is("deletedAt", null)
+        .order("displayName"),
+      // Prisma expressed "no portal login yet" as `portalUser: null`. PostgREST
+      // has no not-exists filter on an embedded relation, so the partner ids
+      // that already have a login are fetched and excluded below.
+      db.from("app_user").select("partnerId").not("partnerId", "is", null),
+    ]);
+
+  const taken = new Set((takenRes.data ?? []).map((u) => u.partnerId));
+
+  return {
+    roles: rolesRes.data ?? [],
+    departments: departmentsRes.data ?? [],
+    managers: managersRes.data ?? [],
+    // One portal account per partner.
+    partners: (partnersRes.data ?? []).filter((p) => !taken.has(p.id)),
+  };
 }
 
 /** All partners, including those already holding a login — for the edit form. */
 export async function getAllPartners() {
   await requirePermission(PERMISSIONS.ADMIN);
 
-  return prisma.partner.findMany({
-    where: { deletedAt: null },
-    select: { id: true, partnerNumber: true, displayName: true, kind: true },
-    orderBy: { displayName: "asc" },
-  });
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("partner")
+    .select("id, partnerNumber, displayName, kind")
+    .is("deletedAt", null)
+    .order("displayName");
+
+  if (error) throw new Error(`Could not load partners: ${error.message}`);
+  return data ?? [];
 }

@@ -2,9 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
-import { nextNumber, SEQUENCES } from "@/lib/numbering";
+import Decimal from "decimal.js";
+import { toDecimal, one } from "@/lib/decimal";
+import { supabaseServer } from "@/lib/supabase";
+import { updateRecord, applyScope } from "@/lib/db";
+import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission, scopedContext } from "@/lib/authz";
 import { auditChanges } from "@/lib/audit";
 import { accrueForWonOpportunity } from "./commission-engine";
@@ -58,8 +60,8 @@ const opportunitySchema = z.object({
   lines: z.array(lineSchema).optional(),
 });
 
-function lineTotal(line: z.infer<typeof lineSchema>): Prisma.Decimal {
-  const gross = new Prisma.Decimal(line.quantity).times(line.unitPrice);
+function lineTotal(line: z.infer<typeof lineSchema>): Decimal {
+  const gross = toDecimal(line.quantity).times(line.unitPrice);
   const discount = gross.times(line.discountPercent ?? 0).dividedBy(100);
   return gross.minus(discount).toDecimalPlaces(2);
 }
@@ -77,44 +79,43 @@ export async function createOpportunity(
   const data = parsed.data;
 
   try {
-    const opp = await prisma.$transaction(async (tx) => {
-      const created = await tx.opportunity.create({
-        data: {
-          opportunityNumber: await nextNumber(SEQUENCES.OPPORTUNITY, tx),
-          name: data.name,
-          accountId: data.accountId,
-          primaryContactId: data.primaryContactId ?? null,
-          ownerUserId: data.ownerUserId,
-          campaignId: data.campaignId ?? null,
-          stage: data.stage,
-          amount: data.amount,
-          currencyCode: data.currencyCode,
-          probabilityPercent: data.probabilityPercent ?? STAGE_PROBABILITY[data.stage] ?? 10,
-          expectedCloseDate: data.expectedCloseDate,
-          opportunityType: data.opportunityType,
-          leadSource: data.leadSource ?? null,
-          nextStep: data.nextStep ?? null,
-          description: data.description ?? null,
-        },
-      });
+    const db = await supabaseServer();
 
-      if (data.lines?.length) {
-        await tx.opportunityProduct.createMany({
-          data: data.lines.map((line, i) => ({
-            opportunityId: created.id,
-            productId: line.productId,
-            quantity: line.quantity,
-            unitPrice: line.unitPrice,
-            discountPercent: line.discountPercent ?? null,
-            taxRateId: line.taxRateId ?? null,
-            lineTotal: lineTotal(line),
-            sortOrder: i,
-          })),
-        });
-      }
-
-      return created;
+    // Deal + its product lines atomically — a deal whose lines failed to write
+    // shows a total that reconciles against nothing.
+    const { data: opp, error } = await db.rpc("create_with_lines", {
+      p_table: "opportunity",
+      p_payload: {
+        name: data.name,
+        accountId: data.accountId,
+        primaryContactId: data.primaryContactId ?? null,
+        ownerUserId: data.ownerUserId,
+        campaignId: data.campaignId ?? null,
+        stage: data.stage,
+        amount: data.amount,
+        currencyCode: data.currencyCode,
+        probabilityPercent: data.probabilityPercent ?? STAGE_PROBABILITY[data.stage] ?? 10,
+        expectedCloseDate: data.expectedCloseDate.toISOString().slice(0, 10),
+        opportunityType: data.opportunityType,
+        leadSource: data.leadSource ?? null,
+        nextStep: data.nextStep ?? null,
+        description: data.description ?? null,
+      },
+      p_line_table: "opportunity_product",
+      p_lines: (data.lines ?? []).map((line) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        discountPercent: line.discountPercent ?? null,
+        taxRateId: line.taxRateId ?? null,
+        lineTotal: lineTotal(line).toFixed(2),
+      })),
+      p_parent_field: "opportunityId",
+      p_number_field: "opportunityNumber",
+      p_sequence: SEQUENCES.OPPORTUNITY,
     });
+
+    if (error) throw new Error(error.message);
 
     revalidatePath("/opportunities");
     return { ok: true, data: { id: opp.id } };
@@ -142,68 +143,63 @@ export async function updateOpportunity(
   const data = parsed.data;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const before = await tx.opportunity.findUniqueOrThrow({
-        where: { id },
-        include: { _count: { select: { commissionRecords: true } } },
-      });
+    const db = await supabaseServer();
 
-      // Commission has already been calculated off this amount. Changing it
-      // now would silently desync the ledger — clawback is the correct path.
-      if (
-        before._count.commissionRecords > 0 &&
-        !new Prisma.Decimal(before.amount).equals(new Prisma.Decimal(data.amount))
-      ) {
-        throw new Error(
+    const { data: before } = await db
+      .from("opportunity")
+      .select("amount, probabilityPercent, commissionRecords:commission_record ( id )")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (!before) return { ok: false, error: "Opportunity not found." };
+
+    // Commission has already been calculated off this amount. Changing it now
+    // would silently desync the ledger — clawback is the correct path.
+    const accrued = ((before.commissionRecords ?? []) as unknown[]).length;
+    if (accrued > 0 && !toDecimal(before.amount).equals(toDecimal(data.amount))) {
+      return {
+        ok: false,
+        error:
           "Commission has already accrued on this deal, so its amount is locked. Claw the commission back first if the value was wrong.",
-        );
-      }
+      };
+    }
 
-      const after = await tx.opportunity.update({
-        where: { id },
-        data: {
-          name: data.name,
-          accountId: data.accountId,
-          primaryContactId: data.primaryContactId ?? null,
-          ownerUserId: data.ownerUserId,
-          campaignId: data.campaignId ?? null,
-          amount: data.amount,
-          currencyCode: data.currencyCode,
-          probabilityPercent: data.probabilityPercent ?? before.probabilityPercent,
-          expectedCloseDate: data.expectedCloseDate,
-          opportunityType: data.opportunityType,
-          leadSource: data.leadSource ?? null,
-          nextStep: data.nextStep ?? null,
-          description: data.description ?? null,
-        },
-      });
-
-      // Line items are replaced wholesale — simpler than diffing, and the
-      // lines carry no downstream references of their own.
-      await tx.opportunityProduct.deleteMany({ where: { opportunityId: id } });
-      if (data.lines?.length) {
-        await tx.opportunityProduct.createMany({
-          data: data.lines.map((line, i) => ({
-            opportunityId: id,
-            productId: line.productId,
-            quantity: line.quantity,
-            unitPrice: line.unitPrice,
-            discountPercent: line.discountPercent ?? null,
-            taxRateId: line.taxRateId ?? null,
-            lineTotal: lineTotal(line),
-            sortOrder: i,
-          })),
-        });
-      }
-
-      await auditChanges(tx, {
-        entityType: "Opportunity",
-        entityId: id,
-        before,
-        after,
-        changedById: user.id,
-      });
+    // Line items are replaced wholesale — simpler than diffing, and the lines
+    // carry no downstream references of their own. update_with_lines does the
+    // delete, re-insert and audit in one transaction.
+    const { error: updErr } = await db.rpc("update_with_lines", {
+      p_table: "opportunity",
+      p_id: id,
+      p_payload: {
+        name: data.name,
+        accountId: data.accountId,
+        primaryContactId: data.primaryContactId ?? null,
+        ownerUserId: data.ownerUserId,
+        campaignId: data.campaignId ?? null,
+        amount: data.amount,
+        currencyCode: data.currencyCode,
+        probabilityPercent: data.probabilityPercent ?? before.probabilityPercent,
+        expectedCloseDate: data.expectedCloseDate.toISOString().slice(0, 10),
+        opportunityType: data.opportunityType,
+        leadSource: data.leadSource ?? null,
+        nextStep: data.nextStep ?? null,
+        description: data.description ?? null,
+      },
+      p_line_table: "opportunity_product",
+      p_lines: (data.lines ?? []).map((line) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        discountPercent: line.discountPercent ?? null,
+        taxRateId: line.taxRateId ?? null,
+        lineTotal: lineTotal(line).toFixed(2),
+      })),
+      p_parent_field: "opportunityId",
+      p_entity_type: "Opportunity",
+      p_actor_id: user.id,
     });
+
+    if (updErr) throw new Error(updErr.message);
 
     revalidatePath("/opportunities");
     revalidatePath(`/opportunities/${id}`);
@@ -244,48 +240,55 @@ export async function changeStage(
   const data = parsed.data;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const before = await tx.opportunity.findUniqueOrThrow({
-        where: { id: data.id },
-        include: { quotations: { where: { status: "ACCEPTED" }, select: { id: true } } },
-      });
+    const db = await supabaseServer();
 
-      if (data.stage === "CLOSED_LOST" && !data.lossReason) {
-        throw new Error("A loss reason is required to mark a deal Closed Lost.");
+    const { data: before } = await db
+      .from("opportunity")
+      .select(
+        "amount, probabilityPercent, competitorName, quotations:quotation ( id, status )",
+      )
+      .eq("id", data.id)
+      .maybeSingle();
+
+    if (!before) return { ok: false, error: "Opportunity not found." };
+
+    if (data.stage === "CLOSED_LOST" && !data.lossReason) {
+      return { ok: false, error: "A loss reason is required to mark a deal Closed Lost." };
+    }
+
+    if (data.stage === "CLOSED_WON") {
+      if (toDecimal(before.amount).lessThanOrEqualTo(0)) {
+        return { ok: false, error: "A won deal needs an amount greater than zero." };
       }
-
-      if (data.stage === "CLOSED_WON") {
-        if (new Prisma.Decimal(before.amount).lessThanOrEqualTo(0)) {
-          throw new Error("A won deal needs an amount greater than zero.");
-        }
-        if (before.quotations.length === 0) {
-          throw new Error(
+      // Prisma filtered the embedded quotations in the query; PostgREST returns
+      // them all, so the ACCEPTED filter is applied here.
+      const accepted = ((before.quotations ?? []) as { status: string }[]).filter(
+        (q) => q.status === "ACCEPTED",
+      );
+      if (accepted.length === 0) {
+        return {
+          ok: false,
+          error:
             "A won deal needs an accepted quotation. Accept the customer's quote first, or record an approved exception.",
-          );
-        }
+        };
       }
+    }
 
-      const isClosing = data.stage === "CLOSED_WON" || data.stage === "CLOSED_LOST";
+    const isClosing = data.stage === "CLOSED_WON" || data.stage === "CLOSED_LOST";
 
-      const after = await tx.opportunity.update({
-        where: { id: data.id },
-        data: {
-          stage: data.stage,
-          probabilityPercent: STAGE_PROBABILITY[data.stage] ?? before.probabilityPercent,
-          lossReason: data.stage === "CLOSED_LOST" ? data.lossReason : null,
-          competitorName: data.competitorName ?? before.competitorName,
-          actualCloseDate: isClosing ? new Date() : null,
-        },
-      });
-
-      await auditChanges(tx, {
-        entityType: "Opportunity",
-        entityId: data.id,
-        before,
-        after,
-        changedById: user.id,
-      });
-    });
+    await updateRecord(
+      "opportunity",
+      data.id,
+      {
+        stage: data.stage,
+        probabilityPercent: STAGE_PROBABILITY[data.stage] ?? before.probabilityPercent,
+        lossReason: data.stage === "CLOSED_LOST" ? data.lossReason : null,
+        competitorName: data.competitorName ?? before.competitorName,
+        actualCloseDate: isClosing ? new Date().toISOString().slice(0, 10) : null,
+      },
+      "Opportunity",
+      user.id,
+    );
 
     // Accrual runs in its own transaction so a commission-config problem can
     // never roll back a legitimate stage change.
@@ -307,81 +310,169 @@ export async function changeStage(
 export async function listOpportunities(filters?: { stage?: string; search?: string; ownerUserId?: string }) {
   const { where } = await scopedContext("ownerUserId");
 
-  return prisma.opportunity.findMany({
-    where: {
-      deletedAt: null,
-      ...where,
-      ...(filters?.stage ? { stage: filters.stage as never } : {}),
-      ...(filters?.ownerUserId ? { ownerUserId: filters.ownerUserId } : {}),
-      ...(filters?.search
-        ? {
-            OR: [
-              { name: { contains: filters.search, mode: "insensitive" as const } },
-              { opportunityNumber: { contains: filters.search, mode: "insensitive" as const } },
-              { account: { name: { contains: filters.search, mode: "insensitive" as const } } },
-            ],
-          }
-        : {}),
+  const db = await supabaseServer();
+
+  let query = db
+    .from("opportunity")
+    .select(
+      `*,
+       account ( id, name ),
+       owner:app_user!opportunity_ownerUserId_fkey ( id, fullName ),
+       primaryContact:contact ( firstName, lastName ),
+       partners:opportunity_partner ( *, partner ( id, displayName, kind ) ),
+       quotations:quotation ( count ),
+       commissionRecords:commission_record ( count )`,
+    )
+    .is("deletedAt", null)
+    .order("expectedCloseDate", { ascending: true });
+
+  query = applyScope(query, where);
+
+  if (filters?.stage) query = query.eq("stage", filters.stage);
+  if (filters?.ownerUserId) query = query.eq("ownerUserId", filters.ownerUserId);
+  if (filters?.search) {
+    // Prisma's OR also matched the related account's name. PostgREST cannot OR
+    // across an embedded table ("failed to parse logic tree"), so the matching
+    // account ids are resolved first and folded into the same or() clause —
+    // dropping the clause would silently narrow the search.
+    const s = filters.search.replace(/[,()]/g, "");
+
+    const { data: matchingAccounts } = await db
+      .from("account")
+      .select("id")
+      .ilike("name", `%${s}%`)
+      .is("deletedAt", null);
+
+    const accountIds = (matchingAccounts ?? []).map((a) => a.id);
+
+    const clauses = [`name.ilike.%${s}%`, `opportunityNumber.ilike.%${s}%`];
+    if (accountIds.length) clauses.push(`accountId.in.(${accountIds.join(",")})`);
+
+    query = query.or(clauses.join(","));
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Could not load opportunities: ${error.message}`);
+
+  const countOf = (v: unknown) => (v as { count: number }[] | undefined)?.[0]?.count ?? 0;
+
+  return (data ?? []).map((row) => ({
+    ...row,
+    account: one(row.account as never),
+    owner: one(row.owner as never),
+    primaryContact: one(row.primaryContact as never),
+    partners: ((row.partners ?? []) as Record<string, unknown>[]).map((p) => ({
+      ...p,
+      partner: one(p.partner as never),
+    })),
+    _count: {
+      quotations: countOf(row.quotations),
+      commissionRecords: countOf(row.commissionRecords),
     },
-    include: {
-      account: { select: { id: true, name: true } },
-      owner: { select: { id: true, fullName: true } },
-      primaryContact: { select: { firstName: true, lastName: true } },
-      partners: { include: { partner: { select: { id: true, displayName: true, kind: true } } } },
-      _count: { select: { quotations: true, commissionRecords: true } },
-    },
-    orderBy: { expectedCloseDate: "asc" },
-  });
+  }));
 }
 
 export async function getOpportunity(id: string) {
   await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
 
-  return prisma.opportunity.findUnique({
-    where: { id },
-    include: {
-      account: true,
-      primaryContact: true,
-      owner: { select: { id: true, fullName: true, email: true } },
-      campaign: { select: { id: true, name: true } },
-      lines: { include: { product: true, taxRate: true }, orderBy: { sortOrder: "asc" } },
-      quotations: { orderBy: { versionNumber: "desc" } },
-      contracts: true,
-      projects: { select: { id: true, projectNumber: true, name: true, status: true } },
-      partners: {
-        include: {
-          partner: {
-            select: {
-              id: true, partnerNumber: true, displayName: true, kind: true,
-              partnerType: true, defaultCommissionPercent: true,
-              commissionPlan: { select: { name: true, flatPercent: true, rateType: true } },
-            },
-          },
-        },
-      },
-      commissionRecords: {
-        where: { deletedAt: null },
-        include: { partner: { select: { id: true, displayName: true } } },
-        orderBy: { earnedDate: "desc" },
-      },
-    },
-  });
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("opportunity")
+    .select(
+      `*,
+       account ( * ),
+       primaryContact:contact ( * ),
+       owner:app_user!opportunity_ownerUserId_fkey ( id, fullName, email ),
+       campaign ( id, name ),
+       lines:opportunity_product ( *, product ( * ), taxRate:tax_rate ( * ) ),
+       quotations:quotation ( * ),
+       contracts:contract ( * ),
+       projects:project ( id, projectNumber, name, status ),
+       partners:opportunity_partner (
+         *,
+         partner (
+           id, partnerNumber, displayName, kind, partnerType,
+           defaultCommissionPercent,
+           commissionPlan:commission_plan ( name, flatPercent, rateType )
+         )
+       ),
+       commissionRecords:commission_record ( *, partner ( id, displayName ) )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load opportunity: ${error.message}`);
+  if (!data) return null;
+
+  // PostgREST returns embedded collections unordered and unfiltered, so the
+  // per-relation orderBy/where from the Prisma query are applied here.
+  type Row = Record<string, unknown>;
+  const rows = (v: unknown) => ((v as Row[] | null) ?? []);
+  const num = (v: unknown) => Number(v ?? 0);
+
+  return {
+    ...data,
+    account: one(data.account as never),
+    primaryContact: one(data.primaryContact as never),
+    owner: one(data.owner as never),
+    campaign: one(data.campaign as never),
+    lines: rows(data.lines)
+      .map((l): Row => ({ ...l, product: one(l.product as never), taxRate: one(l.taxRate as never) }))
+      .sort((a, b) => num(a.sortOrder) - num(b.sortOrder)),
+    quotations: rows(data.quotations).sort(
+      (a, b) => num(b.versionNumber) - num(a.versionNumber),
+    ),
+    contracts: rows(data.contracts),
+    projects: rows(data.projects),
+    partners: rows(data.partners).map((p) => {
+      const partner = one(p.partner as never) as Row | null;
+      return {
+        ...p,
+        partner: partner
+          ? { ...partner, commissionPlan: one(partner.commissionPlan as never) }
+          : null,
+      };
+    }),
+    commissionRecords: rows(data.commissionRecords)
+      .filter((r) => !r.deletedAt)
+      .map((r): Row => ({ ...r, partner: one(r.partner as never) }))
+      .sort((a, b) => String(b.earnedDate ?? "").localeCompare(String(a.earnedDate ?? ""))),
+  };
 }
 
 /** Pipeline grouped by stage, for the kanban board. */
 export async function getPipelineByStage() {
   const { where } = await scopedContext("ownerUserId");
 
-  const rows = await prisma.opportunity.groupBy({
-    by: ["stage"],
-    where: { deletedAt: null, ...where },
-    _sum: { amount: true },
-    _count: true,
-  });
+  const db = await supabaseServer();
+
+  // PostgREST has no groupBy, so the scoped rows are fetched and aggregated
+  // here. Pipeline-sized, not report-sized — a larger version would want a view.
+  let q = db.from("opportunity").select("stage, amount").is("deletedAt", null);
+  q = applyScope(q, where);
+
+  const { data: raw, error } = await q;
+  if (error) throw new Error(`Could not load pipeline: ${error.message}`);
+
+  const byStage = new Map<string, { count: number; total: Decimal }>();
+  for (const r of raw ?? []) {
+    const key = r.stage as string;
+    const acc = byStage.get(key) ?? { count: 0, total: toDecimal(0) };
+    acc.count += 1;
+    acc.total = acc.total.plus(toDecimal(r.amount));
+    byStage.set(key, acc);
+  }
+
+  const rows = [...byStage.entries()].map(([stage, v]) => ({
+    stage,
+    _count: v.count,
+    _sum: { amount: v.total },
+  }));
 
   return rows.map((r) => ({
     stage: r.stage,
     count: r._count,
-    total: r._sum.amount ?? new Prisma.Decimal(0),
+    total: r._sum.amount ?? toDecimal(0),
   }));
 }

@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { nextNumber, SEQUENCES } from "@/lib/numbering";
+import { supabaseServer } from "@/lib/supabase";
+import { createRecord, updateRecord } from "@/lib/db";
+import { one } from "@/lib/decimal";
+import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
-import { auditChanges } from "@/lib/audit";
 import type { ActionResult } from "./partners";
 
 /**
@@ -53,11 +54,17 @@ async function slaDeadlines(
   priority: string,
   from: Date,
 ): Promise<{ slaPolicyId: string | null; firstResponseDueAt: Date | null; resolutionDueAt: Date | null }> {
-  const policy = slaPolicyId
-    ? await prisma.slaPolicy.findUnique({ where: { id: slaPolicyId } })
-    : await prisma.slaPolicy.findFirst({
-        where: { active: true, priority: priority as never },
-      });
+  const db = await supabaseServer();
+
+  const { data: policy } = slaPolicyId
+    ? await db.from("sla_policy").select("*").eq("id", slaPolicyId).maybeSingle()
+    : await db
+        .from("sla_policy")
+        .select("*")
+        .eq("active", true)
+        .eq("priority", priority)
+        .limit(1)
+        .maybeSingle();
 
   if (!policy) return { slaPolicyId: null, firstResponseDueAt: null, resolutionDueAt: null };
 
@@ -89,43 +96,47 @@ export async function createCase(
   }
 
   try {
-    const created = await prisma.$transaction(async (tx) => {
-      const contact = await tx.contact.findUnique({
-        where: { id: data.contactId },
-        select: { accountId: true, firstName: true, lastName: true },
-      });
-      if (!contact) throw new Error("That contact no longer exists.");
-      if (contact.accountId !== data.accountId) {
-        throw new Error(
-          `${contact.firstName} ${contact.lastName} does not belong to the selected account.`,
-        );
-      }
+    const db = await supabaseServer();
 
-      const now = new Date();
-      const sla = await slaDeadlines(data.slaPolicyId, data.priority, now);
+    const { data: contact } = await db
+      .from("contact")
+      .select("accountId, firstName, lastName")
+      .eq("id", data.contactId)
+      .maybeSingle();
 
-      return tx.case.create({
-        data: {
-          caseNumber: await nextNumber(SEQUENCES.CASE, tx),
-          subject: data.subject,
-          description: data.description,
-          accountId: data.accountId,
-          contactId: data.contactId,
-          categoryId: data.categoryId ?? null,
-          ownerUserId: data.ownerUserId ?? null,
-          teamId: data.teamId ?? null,
-          projectId: data.projectId ?? null,
-          contractId: data.contractId ?? null,
-          caseType: data.caseType,
-          priority: data.priority,
-          source: data.source,
-          status: data.ownerUserId ? "ASSIGNED" : "NEW",
-          slaPolicyId: sla.slaPolicyId,
-          firstResponseDueAt: sla.firstResponseDueAt,
-          resolutionDueAt: sla.resolutionDueAt,
-        },
-      });
-    });
+    if (!contact) return { ok: false, error: "That contact no longer exists." };
+    if (contact.accountId !== data.accountId) {
+      return {
+        ok: false,
+        error: `${contact.firstName} ${contact.lastName} does not belong to the selected account.`,
+      };
+    }
+
+    const now = new Date();
+    const sla = await slaDeadlines(data.slaPolicyId, data.priority, now);
+
+    const created = await createRecord<{ id: string }>(
+      "support_case",
+      {
+        subject: data.subject,
+        description: data.description,
+        accountId: data.accountId,
+        contactId: data.contactId,
+        categoryId: data.categoryId ?? null,
+        ownerUserId: data.ownerUserId ?? null,
+        teamId: data.teamId ?? null,
+        projectId: data.projectId ?? null,
+        contractId: data.contractId ?? null,
+        caseType: data.caseType,
+        priority: data.priority,
+        source: data.source,
+        status: data.ownerUserId ? "ASSIGNED" : "NEW",
+        slaPolicyId: sla.slaPolicyId,
+        firstResponseDueAt: sla.firstResponseDueAt?.toISOString() ?? null,
+        resolutionDueAt: sla.resolutionDueAt?.toISOString() ?? null,
+      },
+      { field: "caseNumber", sequence: SEQUENCES.CASE },
+    );
 
     revalidatePath("/cases");
     revalidatePath(`/accounts/${data.accountId}`);
@@ -177,59 +188,77 @@ export async function updateCase(
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const before = await tx.case.findUniqueOrThrow({ where: { id } });
+    const db = await supabaseServer();
 
-      const contact = await tx.contact.findUnique({
-        where: { id: data.contactId },
-        select: { accountId: true },
-      });
-      if (!contact || contact.accountId !== data.accountId) {
-        throw new Error("The contact must belong to the selected account.");
-      }
+    const { data: before } = await db
+      .from("support_case")
+      .select("status, resolvedAt, closedAt, reopenCount, resolutionDueAt, slaBreached")
+      .eq("id", id)
+      .maybeSingle();
 
-      const now = new Date();
-      const reopening = before.status !== "REOPENED" && data.status === "REOPENED";
-      const resolving = !before.resolvedAt && (data.status === "RESOLVED" || data.status === "CLOSED");
+    if (!before) return { ok: false, error: "Case not found." };
 
-      const after = await tx.case.update({
-        where: { id },
-        data: {
-          subject: data.subject,
-          description: data.description,
-          accountId: data.accountId,
-          contactId: data.contactId,
-          categoryId: data.categoryId ?? null,
-          ownerUserId: data.ownerUserId ?? null,
-          teamId: data.teamId ?? null,
-          projectId: data.projectId ?? null,
-          contractId: data.contractId ?? null,
-          caseType: data.caseType,
-          priority: data.priority,
-          source: data.source,
-          status: data.status,
-          rootCause: data.rootCause ?? null,
-          resolution: data.resolution ?? null,
-          satisfactionScore: data.satisfactionScore ?? null,
-          resolvedAt: resolving ? now : data.status === "REOPENED" ? null : before.resolvedAt,
-          closedAt: data.status === "CLOSED" ? now : data.status === "REOPENED" ? null : before.closedAt,
-          reopenCount: reopening ? before.reopenCount + 1 : before.reopenCount,
-          // §10.3: record whether the SLA was actually met, not just its deadline.
-          slaBreached:
-            resolving && before.resolutionDueAt
-              ? now > before.resolutionDueAt
-              : before.slaBreached,
-        },
-      });
+    const { data: contact } = await db
+      .from("contact")
+      .select("accountId")
+      .eq("id", data.contactId)
+      .maybeSingle();
 
-      await auditChanges(tx, {
-        entityType: "Case",
-        entityId: id,
-        before,
-        after,
-        changedById: user.id,
-      });
-    });
+    if (!contact || contact.accountId !== data.accountId) {
+      return { ok: false, error: "The contact must belong to the selected account." };
+    }
+
+    const now = new Date();
+    const reopening = before.status !== "REOPENED" && data.status === "REOPENED";
+    const resolving =
+      !before.resolvedAt && (data.status === "RESOLVED" || data.status === "CLOSED");
+
+    // PostgREST returns timestamps as ISO strings — parse before comparing, or
+    // `now > before.resolutionDueAt` compares a Date to a string and is always
+    // false, so a breached SLA would silently record as met.
+    const resolutionDueAt = before.resolutionDueAt
+      ? new Date(before.resolutionDueAt as string)
+      : null;
+
+    await updateRecord(
+      "support_case",
+      id,
+      {
+        subject: data.subject,
+        description: data.description,
+        accountId: data.accountId,
+        contactId: data.contactId,
+        categoryId: data.categoryId ?? null,
+        ownerUserId: data.ownerUserId ?? null,
+        teamId: data.teamId ?? null,
+        projectId: data.projectId ?? null,
+        contractId: data.contractId ?? null,
+        caseType: data.caseType,
+        priority: data.priority,
+        source: data.source,
+        status: data.status,
+        rootCause: data.rootCause ?? null,
+        resolution: data.resolution ?? null,
+        satisfactionScore: data.satisfactionScore ?? null,
+        resolvedAt: resolving
+          ? now.toISOString()
+          : data.status === "REOPENED"
+            ? null
+            : before.resolvedAt,
+        closedAt:
+          data.status === "CLOSED"
+            ? now.toISOString()
+            : data.status === "REOPENED"
+              ? null
+              : before.closedAt,
+        reopenCount: reopening ? Number(before.reopenCount ?? 0) + 1 : before.reopenCount,
+        // §10.3: record whether the SLA was actually met, not just its deadline.
+        slaBreached:
+          resolving && resolutionDueAt ? now > resolutionDueAt : before.slaBreached,
+      },
+      "Case",
+      user.id,
+    );
 
     revalidatePath("/cases");
     revalidatePath(`/cases/${id}`);
@@ -246,29 +275,38 @@ export async function recordFirstResponse(id: string): Promise<ActionResult> {
   const user = _auth.user;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const before = await tx.case.findUniqueOrThrow({ where: { id } });
-      if (before.firstRespondedAt) throw new Error("First response is already recorded.");
+    const db = await supabaseServer();
 
-      const now = new Date();
-      const after = await tx.case.update({
-        where: { id },
-        data: {
-          firstRespondedAt: now,
-          status: before.status === "NEW" ? "IN_PROGRESS" : before.status,
-          slaBreached:
-            before.firstResponseDueAt && now > before.firstResponseDueAt ? true : before.slaBreached,
-        },
-      });
+    const { data: before } = await db
+      .from("support_case")
+      .select("status, firstRespondedAt, firstResponseDueAt, slaBreached")
+      .eq("id", id)
+      .maybeSingle();
 
-      await auditChanges(tx, {
-        entityType: "Case",
-        entityId: id,
-        before,
-        after,
-        changedById: user.id,
-      });
-    });
+    if (!before) return { ok: false, error: "Case not found." };
+    if (before.firstRespondedAt) {
+      return { ok: false, error: "First response is already recorded." };
+    }
+
+    const now = new Date();
+    // Parse before comparing: PostgREST returns an ISO string, and Date > string
+    // is always false, which would record a missed first response as on time.
+    const firstResponseDueAt = before.firstResponseDueAt
+      ? new Date(before.firstResponseDueAt as string)
+      : null;
+
+    await updateRecord(
+      "support_case",
+      id,
+      {
+        firstRespondedAt: now.toISOString(),
+        status: before.status === "NEW" ? "IN_PROGRESS" : before.status,
+        slaBreached:
+          firstResponseDueAt && now > firstResponseDueAt ? true : before.slaBreached,
+      },
+      "Case",
+      user.id,
+    );
 
     revalidatePath(`/cases/${id}`);
     revalidatePath("/cases");
@@ -281,53 +319,76 @@ export async function recordFirstResponse(id: string): Promise<ActionResult> {
 export async function getCase(id: string) {
   await requirePermission(PERMISSIONS.CASE_READ);
 
-  return prisma.case.findUnique({
-    where: { id },
-    include: {
-      account: { select: { id: true, name: true, accountNumber: true } },
-      contact: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
-      owner: { select: { id: true, fullName: true, email: true } },
-      team: { select: { id: true, name: true } },
-      category: { select: { id: true, name: true } },
-      slaPolicy: { select: { id: true, name: true, firstResponseMinutes: true, resolutionMinutes: true } },
-      project: { select: { id: true, projectNumber: true, name: true } },
-      contract: { select: { id: true, contractNumber: true } },
-    },
-  });
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("support_case")
+    .select(
+      `*,
+       account ( id, name, accountNumber ),
+       contact ( id, firstName, lastName, email, phone ),
+       owner:app_user!support_case_ownerUserId_fkey ( id, fullName, email ),
+       team ( id, name ),
+       category:case_category ( id, name ),
+       slaPolicy:sla_policy ( id, name, firstResponseMinutes, resolutionMinutes ),
+       project ( id, projectNumber, name ),
+       contract ( id, contractNumber )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load case: ${error.message}`);
+  if (!data) return null;
+
+  return {
+    ...data,
+    account: one(data.account as never),
+    contact: one(data.contact as never),
+    owner: one(data.owner as never),
+    team: one(data.team as never),
+    category: one(data.category as never),
+    slaPolicy: one(data.slaPolicy as never),
+    project: one(data.project as never),
+    contract: one(data.contract as never),
+  };
 }
 
 /** Everything the case form's dropdowns need. */
 export async function getCaseFormOptions() {
   await requirePermission(PERMISSIONS.CASE_READ);
 
+  const db = await supabaseServer();
+
   const [accounts, contacts, users, teams, categories, slaPolicies] = await Promise.all([
-    prisma.account.findMany({
-      where: { deletedAt: null },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.contact.findMany({
-      where: { deletedAt: null, accountId: { not: null } },
-      select: { id: true, firstName: true, lastName: true, email: true, accountId: true },
-      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-    }),
-    prisma.user.findMany({
-      where: { status: "ACTIVE", deletedAt: null },
-      select: { id: true, fullName: true },
-      orderBy: { fullName: "asc" },
-    }),
-    prisma.team.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    prisma.caseCategory.findMany({
-      where: { active: true },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.slaPolicy.findMany({
-      where: { active: true },
-      select: { id: true, name: true, priority: true, firstResponseMinutes: true, resolutionMinutes: true },
-      orderBy: { priority: "asc" },
-    }),
+    db.from("account").select("id, name").is("deletedAt", null).order("name"),
+    db
+      .from("contact")
+      .select("id, firstName, lastName, email, accountId")
+      .is("deletedAt", null)
+      .not("accountId", "is", null)
+      .order("lastName")
+      .order("firstName"),
+    db
+      .from("app_user")
+      .select("id, fullName")
+      .eq("status", "ACTIVE")
+      .is("deletedAt", null)
+      .order("fullName"),
+    db.from("team").select("id, name").order("name"),
+    db.from("case_category").select("id, name").eq("active", true).order("name"),
+    db
+      .from("sla_policy")
+      .select("id, name, priority, firstResponseMinutes, resolutionMinutes")
+      .eq("active", true)
+      .order("priority"),
   ]);
 
-  return { accounts, contacts, users, teams, categories, slaPolicies };
+  return {
+    accounts: accounts.data ?? [],
+    contacts: contacts.data ?? [],
+    users: users.data ?? [],
+    teams: teams.data ?? [],
+    categories: categories.data ?? [],
+    slaPolicies: slaPolicies.data ?? [],
+  };
 }

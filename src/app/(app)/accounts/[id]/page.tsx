@@ -21,9 +21,9 @@ export default async function AccountDetailPage({
   if (!account) notFound();
 
   const openPipeline = account.opportunities
-    .filter((o) => !["CLOSED_WON", "CLOSED_LOST"].includes(o.stage))
-    .reduce((s, o) => s + Number(o.amount), 0);
-  const outstanding = account.invoices.reduce((s, i) => s + Number(i.outstandingAmount), 0);
+    .filter((o: Record<string, any>) => !["CLOSED_WON", "CLOSED_LOST"].includes(o.stage as string))
+    .reduce((s: number, o: Record<string, any>) => s + Number(o.amount), 0);
+  const outstanding = account.invoices.reduce((s: number, i: Record<string, any>) => s + Number(i.outstandingAmount), 0);
 
   return (
     <>
@@ -64,7 +64,7 @@ export default async function AccountDetailPage({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Open pipeline" value={formatMoney(openPipeline)} sublabel={`${account.opportunities.length} deals`} />
         <StatTile label="Outstanding" value={formatMoney(outstanding)} sublabel={`${account.invoices.length} open invoices`} tone={outstanding > 0 ? "warning" : "neutral"} />
-        <StatTile label="Open cases" value={String(account.cases.filter((c) => !["CLOSED", "CANCELLED"].includes(c.status)).length)} href="/cases" />
+        <StatTile label="Open cases" value={String(account.cases.filter((c: Record<string, any>) => !["CLOSED", "CANCELLED"].includes(c.status as string)).length)} href="/cases" />
         <StatTile label="Projects" value={String(account.projects.length)} />
       </div>
 
@@ -118,7 +118,7 @@ export default async function AccountDetailPage({
                   </TR>
                 </THead>
                 <TBody>
-                  {account.contacts.map((c) => (
+                  {account.contacts.map((c: Record<string, any>) => (
                     <TR key={c.id}>
                       <TD className="text-sm font-medium">
                         <Link href={`/contacts/${c.id}/edit`} className="hover:underline">
@@ -161,7 +161,7 @@ export default async function AccountDetailPage({
                 </TR>
               </THead>
               <TBody>
-                {account.opportunities.map((o) => (
+                {account.opportunities.map((o: Record<string, any>) => (
                   <TR key={o.id}>
                     <TD>
                       <Link href={`/opportunities/${o.id}`} className="text-sm font-medium hover:underline">
@@ -192,7 +192,7 @@ export default async function AccountDetailPage({
               <p className="px-5 pb-2 text-sm text-muted-foreground">No support cases.</p>
             ) : (
               <ul className="divide-y">
-                {account.cases.map((c) => (
+                {account.cases.map((c: Record<string, any>) => (
                   <li key={c.id} className="flex items-center justify-between px-5 py-2.5">
                     <div className="min-w-0">
                       <Link href={`/cases/${c.id}`} className="truncate text-sm font-medium hover:underline">
@@ -228,7 +228,7 @@ export default async function AccountDetailPage({
                   </TR>
                 </THead>
                 <TBody>
-                  {account.invoices.map((i) => (
+                  {account.invoices.map((i: Record<string, any>) => (
                     <TR key={i.id}>
                       <TD className="font-mono text-xs">
                         <Link href={`/invoices/${i.id}`} className="hover:underline">{i.invoiceNumber}</Link>

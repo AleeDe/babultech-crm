@@ -2,10 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { nextNumber, SEQUENCES } from "@/lib/numbering";
+import { supabaseServer } from "@/lib/supabase";
+import { createRecord, updateRecord } from "@/lib/db";
+import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
-import { auditChanges } from "@/lib/audit";
 import type { ActionResult } from "./partners";
 
 /**
@@ -75,10 +75,14 @@ export async function createContract(
   if (invalid) return invalid;
 
   try {
-    const contract = await prisma.$transaction(async (tx) =>
-      tx.contract.create({
-        data: { ...parsed.data, contractNumber: await nextNumber(SEQUENCES.CONTRACT, tx) },
-      }),
+    const contract = await createRecord<{ id: string }>(
+      "contract",
+      {
+        ...parsed.data,
+        startDate: parsed.data.startDate.toISOString().slice(0, 10),
+        endDate: parsed.data.endDate.toISOString().slice(0, 10),
+      },
+      { field: "contractNumber", sequence: SEQUENCES.CONTRACT },
     );
 
     revalidatePath("/contracts");
@@ -104,33 +108,36 @@ export async function updateContract(
   if (invalid) return invalid;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const before = await tx.contract.findUniqueOrThrow({
-        where: { id },
-        include: { _count: { select: { invoices: true, projects: true } } },
-      });
+    const db = await supabaseServer();
 
-      if (parsed.data.status === "TERMINATED" && before._count.projects > 0) {
-        const live = await tx.project.count({
-          where: { contractId: id, status: { in: ["PLANNING", "ACTIVE", "AT_RISK"] } },
-        });
-        if (live > 0) {
-          throw new Error(
-            `${live} project(s) are still running under this contract. Close them before terminating it.`,
-          );
-        }
+    // Terminating a contract while projects still run under it would orphan
+    // them, so the check comes before the write rather than inside it.
+    if (parsed.data.status === "TERMINATED") {
+      const { count: live } = await db
+        .from("project")
+        .select("id", { count: "exact", head: true })
+        .eq("contractId", id)
+        .in("status", ["PLANNING", "ACTIVE", "AT_RISK"]);
+
+      if ((live ?? 0) > 0) {
+        return {
+          ok: false,
+          error: `${live} project(s) are still running under this contract. Close them before terminating it.`,
+        };
       }
+    }
 
-      const after = await tx.contract.update({ where: { id }, data: parsed.data });
-
-      await auditChanges(tx, {
-        entityType: "Contract",
-        entityId: id,
-        before,
-        after,
-        changedById: user.id,
-      });
-    });
+    await updateRecord(
+      "contract",
+      id,
+      {
+        ...parsed.data,
+        startDate: parsed.data.startDate.toISOString().slice(0, 10),
+        endDate: parsed.data.endDate.toISOString().slice(0, 10),
+      },
+      "Contract",
+      user.id,
+    );
 
     revalidatePath("/contracts");
     revalidatePath(`/contracts/${id}`);
@@ -142,38 +149,46 @@ export async function updateContract(
 
 export async function getContract(id: string) {
   await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
-  return prisma.contract.findUnique({ where: { id } });
+  const db = await supabaseServer();
+  const { data } = await db.from("contract").select("*").eq("id", id).maybeSingle();
+  return data;
 }
 
 export async function getContractFormOptions() {
   await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
 
-  const [accounts, users, opportunities, quotations, currencies] = await Promise.all([
-    prisma.account.findMany({
-      where: { deletedAt: null },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.user.findMany({
-      where: { status: "ACTIVE", deletedAt: null },
-      select: { id: true, fullName: true },
-      orderBy: { fullName: "asc" },
-    }),
-    prisma.opportunity.findMany({
-      where: { deletedAt: null },
-      select: { id: true, opportunityNumber: true, name: true, accountId: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.quotation.findMany({
-      where: { deletedAt: null, status: "ACCEPTED" },
-      select: {
-        id: true, quoteNumber: true, versionNumber: true, accountId: true,
-        opportunityId: true, totalAmount: true, currencyCode: true,
-      },
-      orderBy: { quoteNumber: "asc" },
-    }),
-    prisma.currency.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
-  ]);
+  const db = await supabaseServer();
+
+  const [accountsRes, usersRes, opportunitiesRes, quotationsRes, currenciesRes] =
+    await Promise.all([
+      db.from("account").select("id, name").is("deletedAt", null).order("name"),
+      db
+        .from("app_user")
+        .select("id, fullName")
+        .eq("status", "ACTIVE")
+        .is("deletedAt", null)
+        .order("fullName"),
+      db
+        .from("opportunity")
+        .select("id, opportunityNumber, name, accountId")
+        .is("deletedAt", null)
+        .order("name"),
+      db
+        .from("quotation")
+        .select(
+          "id, quoteNumber, versionNumber, accountId, opportunityId, totalAmount, currencyCode",
+        )
+        .is("deletedAt", null)
+        .eq("status", "ACCEPTED")
+        .order("quoteNumber"),
+      db.from("currency").select("*").eq("active", true).order("code"),
+    ]);
+
+  const accounts = accountsRes.data ?? [];
+  const users = usersRes.data ?? [];
+  const opportunities = opportunitiesRes.data ?? [];
+  const quotations = quotationsRes.data ?? [];
+  const currencies = currenciesRes.data ?? [];
 
   return { accounts, users, opportunities, quotations, currencies };
 }

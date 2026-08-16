@@ -1,4 +1,8 @@
 import type { Config } from "tailwindcss";
+// Imported rather than require()d: Next 15 loads this config as ESM, where
+// `require` is not defined — on Node 24 that fails outright with
+// "ReferenceError: require is not defined" while compiling the first page.
+import tailwindcssAnimate from "tailwindcss-animate";
 
 export default {
   darkMode: ["class"],
@@ -26,5 +30,5 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [tailwindcssAnimate],
 } satisfies Config;

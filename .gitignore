@@ -2,4 +2,6 @@ node_modules
 .next
 .env
 *.tsbuildinfo
+dev.log
 next-env.d.ts
+.env.backup*

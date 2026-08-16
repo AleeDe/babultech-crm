@@ -36,7 +36,7 @@ export default async function EditOpportunityPage({
     leadSource: opp.leadSource,
     nextStep: opp.nextStep,
     description: opp.description,
-    lines: opp.lines.map((l) => ({
+    lines: opp.lines.map((l: Record<string, any>) => ({
       productId: l.productId,
       quantity: l.quantity,
       unitPrice: l.unitPrice,

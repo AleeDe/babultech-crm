@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import Decimal from "decimal.js";
+import { toDecimal, one } from "@/lib/decimal";
+import { supabaseServer } from "@/lib/supabase";
+import { createRecord, updateRecord } from "@/lib/db";
 import { PERMISSIONS, authorize, requirePermission, requireUser } from "@/lib/authz";
-import { auditChanges } from "@/lib/audit";
 import type { ActionResult } from "./partners";
 
 /**
@@ -72,63 +73,72 @@ export async function logTime(
   }
 
   try {
-    const created = await prisma.$transaction(async (tx) => {
-      // A task implies its project, even if the form only sent the task.
-      let projectId = data.projectId ?? null;
-      if (data.projectTaskId) {
-        const task = await tx.projectTask.findUniqueOrThrow({
-          where: { id: data.projectTaskId },
-          select: { projectId: true, billable: true },
-        });
-        projectId = task.projectId;
+    const db = await supabaseServer();
+
+    // A task implies its project, even if the form only sent the task.
+    let projectId = data.projectId ?? null;
+    if (data.projectTaskId) {
+      const { data: task } = await db
+        .from("project_task")
+        .select("projectId, billable")
+        .eq("id", data.projectTaskId)
+        .maybeSingle();
+
+      if (!task) return { ok: false, error: "That task no longer exists." };
+      projectId = task.projectId;
+    }
+
+    const base = {
+      userId: user.id,
+      caseId: data.caseId ?? null,
+      workDate: data.workDate.toISOString().slice(0, 10),
+      hours: data.hours,
+      description: data.description,
+      billable: data.billable,
+      approvalStatus: "DRAFT",
+    };
+
+    let created: { id: string; projectId?: string | null };
+
+    if (projectId) {
+      // The rate snapshot comes from the project membership, so a later rate
+      // change cannot rewrite what already-logged time was worth.
+      const { data: member } = await db
+        .from("project_member")
+        .select("active, billingRate, costRate")
+        .eq("projectId", projectId)
+        .eq("userId", user.id)
+        .maybeSingle();
+
+      if (!member || !member.active) {
+        return {
+          ok: false,
+          error:
+            "You are not an active member of that project, so you cannot book time to it.",
+        };
       }
 
-      if (projectId) {
-        const member = await tx.projectMember.findUnique({
-          where: { projectId_userId: { projectId, userId: user.id } },
-          select: { active: true, billingRate: true, costRate: true },
-        });
-        if (!member || !member.active) {
-          throw new Error("You are not an active member of that project, so you cannot book time to it.");
-        }
-
-        return tx.timeLog.create({
-          data: {
-            userId: user.id,
-            projectId,
-            projectTaskId: data.projectTaskId ?? null,
-            caseId: data.caseId ?? null,
-            workDate: data.workDate,
-            hours: data.hours,
-            description: data.description,
-            billable: data.billable,
-            billingRate: member.billingRate,
-            costRate: member.costRate,
-            approvalStatus: "DRAFT",
-          },
-        });
-      }
-
+      created = await createRecord<{ id: string; projectId: string | null }>("time_log", {
+        ...base,
+        projectId,
+        projectTaskId: data.projectTaskId ?? null,
+        billingRate: member.billingRate,
+        costRate: member.costRate,
+      });
+    } else {
       // Support-case time: no project membership, so fall back to standing rates.
-      const person = await tx.user.findUniqueOrThrow({
-        where: { id: user.id },
-        select: { costRate: true, defaultBillingRate: true },
-      });
+      const { data: person } = await db
+        .from("app_user")
+        .select("costRate, defaultBillingRate")
+        .eq("id", user.id)
+        .maybeSingle();
 
-      return tx.timeLog.create({
-        data: {
-          userId: user.id,
-          caseId: data.caseId ?? null,
-          workDate: data.workDate,
-          hours: data.hours,
-          description: data.description,
-          billable: data.billable,
-          billingRate: person.defaultBillingRate,
-          costRate: person.costRate,
-          approvalStatus: "DRAFT",
-        },
+      created = await createRecord<{ id: string; projectId: string | null }>("time_log", {
+        ...base,
+        billingRate: person?.defaultBillingRate ?? null,
+        costRate: person?.costRate ?? null,
       });
-    });
+    }
 
     revalidatePath("/timesheets");
     if (created.projectId) revalidatePath(`/projects/${created.projectId}`);
@@ -152,7 +162,15 @@ export async function updateTimeLog(
   }
 
   try {
-    const existing = await prisma.timeLog.findUniqueOrThrow({ where: { id } });
+    const db = await supabaseServer();
+
+    const { data: existing } = await db
+      .from("time_log")
+      .select("userId, approvalStatus")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (!existing) return { ok: false, error: "That entry no longer exists." };
     if (existing.userId !== user.id) {
       return { ok: false, error: "You can only edit your own time entries." };
     }
@@ -160,16 +178,21 @@ export async function updateTimeLog(
       return { ok: false, error: "Approved time is locked. Ask your approver to reject it first." };
     }
 
-    await prisma.timeLog.update({
-      where: { id },
-      data: {
-        workDate: parsed.data.workDate,
+    // Editing resets the entry to DRAFT, so a changed entry cannot keep a
+    // stale approval.
+    const { error } = await db
+      .from("time_log")
+      .update({
+        workDate: parsed.data.workDate.toISOString().slice(0, 10),
         hours: parsed.data.hours,
         description: parsed.data.description,
         billable: parsed.data.billable,
         approvalStatus: "DRAFT",
-      },
-    });
+        updatedAt: new Date().toISOString(),
+      })
+      .eq("id", id);
+
+    if (error) throw new Error(error.message);
 
     revalidatePath("/timesheets");
     return { ok: true, data: undefined };
@@ -184,7 +207,15 @@ export async function deleteTimeLog(id: string): Promise<ActionResult> {
   const user = _auth.user;
 
   try {
-    const existing = await prisma.timeLog.findUniqueOrThrow({ where: { id } });
+    const db = await supabaseServer();
+
+    const { data: existing } = await db
+      .from("time_log")
+      .select("userId, approvalStatus, invoiceLineId")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (!existing) return { ok: false, error: "That entry no longer exists." };
     if (existing.userId !== user.id) {
       return { ok: false, error: "You can only delete your own time entries." };
     }
@@ -195,7 +226,8 @@ export async function deleteTimeLog(id: string): Promise<ActionResult> {
       return { ok: false, error: "This time has already been invoiced." };
     }
 
-    await prisma.timeLog.delete({ where: { id } });
+    const { error } = await db.from("time_log").delete().eq("id", id);
+    if (error) throw new Error(error.message);
     revalidatePath("/timesheets");
     return { ok: true, data: undefined };
   } catch (err) {
@@ -211,14 +243,20 @@ export async function submitWeek(weekStartISO: string): Promise<ActionResult<{ c
   const { from, to } = weekBounds(new Date(weekStartISO));
 
   try {
-    const result = await prisma.timeLog.updateMany({
-      where: {
-        userId: user.id,
-        workDate: { gte: from, lt: to },
-        approvalStatus: { in: ["DRAFT", "REJECTED"] },
-      },
-      data: { approvalStatus: "SUBMITTED" },
-    });
+    const db = await supabaseServer();
+
+    const { data: rows, error } = await db
+      .from("time_log")
+      .update({ approvalStatus: "SUBMITTED", updatedAt: new Date().toISOString() })
+      .eq("userId", user.id)
+      .gte("workDate", from.toISOString().slice(0, 10))
+      .lt("workDate", to.toISOString().slice(0, 10))
+      .in("approvalStatus", ["DRAFT", "REJECTED"])
+      .select("id");
+
+    if (error) throw new Error(error.message);
+
+    const result = { count: (rows ?? []).length };
 
     if (result.count === 0) {
       return { ok: false, error: "There is nothing to submit for that week." };
@@ -239,41 +277,41 @@ export async function approveTimeLogs(ids: string[]): Promise<ActionResult<{ cou
   if (ids.length === 0) return { ok: false, error: "Nothing selected." };
 
   try {
-    const logs = await prisma.timeLog.findMany({
-      where: { id: { in: ids } },
-      select: { id: true, userId: true, approvalStatus: true, projectId: true },
-    });
+    const db = await supabaseServer();
 
-    if (logs.some((l) => l.userId === user.id)) {
+    const { data: logs } = await db
+      .from("time_log")
+      .select("id, userId, approvalStatus, projectId")
+      .in("id", ids);
+
+    const entries = logs ?? [];
+
+    if (entries.some((l) => l.userId === user.id)) {
       return { ok: false, error: "You cannot approve your own time." };
     }
-    if (logs.some((l) => l.approvalStatus !== "SUBMITTED")) {
+    if (entries.some((l) => l.approvalStatus !== "SUBMITTED")) {
       return { ok: false, error: "Only submitted entries can be approved." };
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.timeLog.updateMany({
-        where: { id: { in: ids } },
-        data: { approvalStatus: "APPROVED", approvedById: user.id, approvedAt: new Date() },
-      });
-
-      for (const log of logs) {
-        await auditChanges(tx, {
-          entityType: "TimeLog",
-          entityId: log.id,
-          before: { approvalStatus: log.approvalStatus },
-          after: { approvalStatus: "APPROVED" },
-          changedById: user.id,
-        });
-      }
+    // Status change, approver stamp and one audit row per entry, atomically.
+    // The status filter is inside the function, so a retry cannot overwrite the
+    // original approver.
+    const { error } = await db.rpc("transition_time_logs", {
+      p_ids: ids,
+      p_from_statuses: ["SUBMITTED"],
+      p_to_status: "APPROVED",
+      p_actor_id: user.id,
+      p_set_approver: true,
     });
+
+    if (error) throw new Error(error.message);
 
     revalidatePath("/timesheets/approvals");
     revalidatePath("/timesheets");
-    for (const p of new Set(logs.map((l) => l.projectId).filter(Boolean))) {
+    for (const p of new Set(entries.map((l) => l.projectId).filter(Boolean))) {
       revalidatePath(`/projects/${p}`);
     }
-    return { ok: true, data: { count: logs.length } };
+    return { ok: true, data: { count: entries.length } };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Could not approve the time." };
   }
@@ -287,34 +325,42 @@ export async function rejectTimeLogs(ids: string[], reason: string): Promise<Act
   if (!reason.trim()) return { ok: false, error: "Give a reason so the person knows what to fix." };
 
   try {
-    const logs = await prisma.timeLog.findMany({
-      where: { id: { in: ids } },
-      select: { id: true, description: true, approvalStatus: true },
-    });
+    const db = await supabaseServer();
+
+    const { data: fetched } = await db
+      .from("time_log")
+      .select("id, description, approvalStatus")
+      .in("id", ids);
+
+    const logs = fetched ?? [];
+
     if (logs.some((l) => l.approvalStatus !== "SUBMITTED")) {
       return { ok: false, error: "Only submitted entries can be rejected." };
     }
 
-    await prisma.$transaction(async (tx) => {
-      for (const log of logs) {
-        await tx.timeLog.update({
-          where: { id: log.id },
-          data: {
-            approvalStatus: "REJECTED",
-            approvedById: user.id,
-            approvedAt: new Date(),
-            description: `${log.description}\n\n[Rejected by ${user.fullName}: ${reason.trim()}]`,
-          },
-        });
-        await auditChanges(tx, {
-          entityType: "TimeLog",
-          entityId: log.id,
-          before: { approvalStatus: log.approvalStatus },
-          after: { approvalStatus: "REJECTED" },
-          changedById: user.id,
-        });
-      }
+    // Status + approver stamp + audit, atomically.
+    const { error } = await db.rpc("transition_time_logs", {
+      p_ids: ids,
+      p_from_statuses: ["SUBMITTED"],
+      p_to_status: "REJECTED",
+      p_actor_id: user.id,
+      p_set_approver: true,
     });
+
+    if (error) throw new Error(error.message);
+
+    // The reason is appended per entry, so each description differs — done
+    // after the transition rather than inside it, since a failure here leaves
+    // the rejection itself intact and only loses the appended note.
+    for (const log of logs) {
+      await db
+        .from("time_log")
+        .update({
+          description: `${log.description}\n\n[Rejected by ${user.fullName}: ${reason.trim()}]`,
+          updatedAt: new Date().toISOString(),
+        })
+        .eq("id", log.id);
+    }
 
     revalidatePath("/timesheets/approvals");
     revalidatePath("/timesheets");
@@ -332,15 +378,30 @@ export async function getMyWeek(weekStartISO: string) {
   const user = await requireUser();
   const { from, to } = weekBounds(new Date(weekStartISO));
 
-  const entries = await prisma.timeLog.findMany({
-    where: { userId: user.id, workDate: { gte: from, lt: to } },
-    include: {
-      project: { select: { id: true, name: true, projectNumber: true } },
-      projectTask: { select: { id: true, name: true } },
-      case: { select: { id: true, caseNumber: true, subject: true } },
-    },
-    orderBy: [{ workDate: "asc" }, { createdAt: "asc" }],
-  });
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("time_log")
+    .select(
+      `*,
+       project ( id, name, projectNumber ),
+       projectTask:project_task ( id, name ),
+       case:support_case ( id, caseNumber, subject )`,
+    )
+    .eq("userId", user.id)
+    .gte("workDate", from.toISOString().slice(0, 10))
+    .lt("workDate", to.toISOString().slice(0, 10))
+    .order("workDate")
+    .order("createdAt");
+
+  if (error) throw new Error(`Could not load the week: ${error.message}`);
+
+  const entries = (data ?? []).map((e) => ({
+    ...e,
+    project: one(e.project as never),
+    projectTask: one(e.projectTask as never),
+    case: one(e.case as never),
+  }));
 
   return { entries, from, to };
 }
@@ -349,48 +410,71 @@ export async function getMyWeek(weekStartISO: string) {
 export async function getTimeEntryOptions() {
   const user = await requireUser();
 
-  const [memberships, cases] = await Promise.all([
-    prisma.projectMember.findMany({
-      where: { userId: user.id, active: true, project: { deletedAt: null, status: { in: ["PLANNING", "ACTIVE", "AT_RISK"] } } },
-      select: {
-        project: {
-          select: {
-            id: true,
-            name: true,
-            projectNumber: true,
-            tasks: {
-              where: { status: { notIn: ["COMPLETED", "CANCELLED"] } },
-              select: { id: true, name: true, billable: true, assignedUserId: true },
-              orderBy: { sortOrder: "asc" },
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.case.findMany({
-      where: { deletedAt: null, ownerUserId: user.id, status: { notIn: ["CLOSED", "CANCELLED"] } },
-      select: { id: true, caseNumber: true, subject: true },
-      orderBy: { createdAt: "desc" },
-    }),
+  const db = await supabaseServer();
+
+  const [membershipsRes, casesRes] = await Promise.all([
+    db
+      .from("project_member")
+      .select(
+        `project!inner (
+           id, name, projectNumber, status, deletedAt,
+           tasks:project_task ( id, name, billable, assignedUserId, status, sortOrder )
+         )`,
+      )
+      .eq("userId", user.id)
+      .eq("active", true)
+      .is("project.deletedAt", null)
+      .in("project.status", ["PLANNING", "ACTIVE", "AT_RISK"])
+      .order("createdAt", { ascending: false }),
+    db
+      .from("support_case")
+      .select("id, caseNumber, subject")
+      .is("deletedAt", null)
+      .eq("ownerUserId", user.id)
+      .not("status", "in", '("CLOSED","CANCELLED")')
+      .order("createdAt", { ascending: false }),
   ]);
 
-  return { projects: memberships.map((m) => m.project), cases };
+  // PostgREST returns embedded tasks unfiltered and unordered, so the
+  // open-task filter and sort order are applied here.
+  const projects = (membershipsRes.data ?? []).map((m) => {
+    const project = one(m.project as never) as unknown as Record<string, unknown>;
+    const tasks = ((project?.tasks ?? []) as Record<string, unknown>[])
+      .filter((t) => !["COMPLETED", "CANCELLED"].includes(String(t.status)))
+      .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0));
+    return { ...project, tasks };
+  });
+
+  return { projects, cases: casesRes.data ?? [] };
 }
 
 export async function getPendingApprovals() {
   const user = await requirePermission(PERMISSIONS.TIME_APPROVE);
 
-  return prisma.timeLog.findMany({
-    where: { approvalStatus: "SUBMITTED", userId: { not: user.id } },
-    include: {
-      user: { select: { id: true, fullName: true } },
-      project: { select: { id: true, name: true, projectNumber: true } },
-      projectTask: { select: { id: true, name: true } },
-      case: { select: { id: true, caseNumber: true } },
-    },
-    orderBy: [{ workDate: "asc" }],
-  });
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("time_log")
+    .select(
+      `*,
+       user:app_user!time_log_userId_fkey ( id, fullName ),
+       project ( id, name, projectNumber ),
+       projectTask:project_task ( id, name ),
+       case:support_case ( id, caseNumber )`,
+    )
+    .eq("approvalStatus", "SUBMITTED")
+    .neq("userId", user.id)
+    .order("workDate");
+
+  if (error) throw new Error(`Could not load approvals: ${error.message}`);
+
+  return (data ?? []).map((e) => ({
+    ...e,
+    user: one(e.user as never),
+    project: one(e.project as never),
+    projectTask: one(e.projectTask as never),
+    case: one(e.case as never),
+  }));
 }
 
 /**
@@ -408,31 +492,59 @@ export async function getUtilisation(weeks = 4) {
   from.setDate(from.getDate() - weeks * 7);
 
   const STANDARD_WEEKLY_HOURS = 40;
-  const capacityHours = new Prisma.Decimal(STANDARD_WEEKLY_HOURS * weeks);
+  const capacityHours = toDecimal(STANDARD_WEEKLY_HOURS * weeks);
 
-  const [users, memberships, logs] = await Promise.all([
-    prisma.user.findMany({
-      where: { status: "ACTIVE", deletedAt: null },
-      select: {
-        id: true, fullName: true, jobTitle: true, costRate: true, defaultBillingRate: true,
-        department: { select: { id: true, name: true } },
-      },
-      orderBy: { fullName: "asc" },
-    }),
-    prisma.projectMember.findMany({
-      where: { active: true, project: { deletedAt: null, status: { in: ["PLANNING", "ACTIVE", "AT_RISK"] } } },
-      select: {
-        userId: true,
-        allocationPercent: true,
-        project: { select: { id: true, name: true, projectNumber: true } },
-      },
-    }),
-    prisma.timeLog.groupBy({
-      by: ["userId", "billable"],
-      where: { workDate: { gte: from, lte: to }, approvalStatus: { not: "REJECTED" } },
-      _sum: { hours: true },
-    }),
+  const db = await supabaseServer();
+
+  const [usersRes, membershipsRes, logsRes] = await Promise.all([
+    db
+      .from("app_user")
+      .select(
+        `id, fullName, jobTitle, costRate, defaultBillingRate,
+         department:app_user_departmentId_fkey ( id, name )`,
+      )
+      .eq("status", "ACTIVE")
+      .is("deletedAt", null)
+      .order("fullName"),
+    db
+      .from("project_member")
+      .select(
+        `userId, allocationPercent,
+         project!inner ( id, name, projectNumber, status, deletedAt )`,
+      )
+      .eq("active", true)
+      .is("project.deletedAt", null)
+      .in("project.status", ["PLANNING", "ACTIVE", "AT_RISK"]),
+    // PostgREST has no groupBy, so the raw hours are fetched and summed below.
+    db
+      .from("time_log")
+      .select("userId, billable, hours")
+      .gte("workDate", from.toISOString().slice(0, 10))
+      .lte("workDate", to.toISOString().slice(0, 10))
+      .neq("approvalStatus", "REJECTED"),
   ]);
+
+  const users = (usersRes.data ?? []).map((u) => ({
+    ...u,
+    department: one(u.department as never) as unknown as { id: string; name: string } | null,
+  }));
+
+  const memberships = (membershipsRes.data ?? []).map((m) => ({
+    ...m,
+    project: one(m.project as never),
+  }));
+
+  // Bucket by (userId, billable), matching the shape the report below reads.
+  const grouped = new Map<string, { userId: string; billable: boolean; _sum: { hours: Decimal } }>();
+  for (const l of logsRes.data ?? []) {
+    const key = `${l.userId}|${l.billable}`;
+    const acc =
+      grouped.get(key) ??
+      { userId: l.userId as string, billable: Boolean(l.billable), _sum: { hours: toDecimal(0) } };
+    acc._sum.hours = acc._sum.hours.plus(toDecimal(l.hours));
+    grouped.set(key, acc);
+  }
+  const logs = [...grouped.values()];
 
   return {
     from,
@@ -445,24 +557,32 @@ export async function getUtilisation(weeks = 4) {
         (s, m) => s + Number(m.allocationPercent ?? 0),
         0,
       );
-      const billable = logs.find((l) => l.userId === u.id && l.billable)?._sum.hours ?? new Prisma.Decimal(0);
-      const nonBillable = logs.find((l) => l.userId === u.id && !l.billable)?._sum.hours ?? new Prisma.Decimal(0);
-      const logged = new Prisma.Decimal(billable).plus(nonBillable);
+      const billable = logs.find((l) => l.userId === u.id && l.billable)?._sum.hours ?? toDecimal(0);
+      const nonBillable = logs.find((l) => l.userId === u.id && !l.billable)?._sum.hours ?? toDecimal(0);
+      const logged = toDecimal(billable).plus(nonBillable);
 
       return {
         user: u,
-        projects: theirProjects.map((m) => ({ ...m.project, allocationPercent: m.allocationPercent })),
+        projects: theirProjects.map((m) => {
+          const proj = (m.project ?? {}) as { id?: string; name?: string; projectNumber?: string };
+          return {
+            id: proj.id ?? '',
+            name: proj.name ?? '',
+            projectNumber: proj.projectNumber ?? '',
+            allocationPercent: m.allocationPercent,
+          };
+        }),
         allocatedPercent,
         loggedHours: logged,
-        billableHours: new Prisma.Decimal(billable),
-        nonBillableHours: new Prisma.Decimal(nonBillable),
+        billableHours: toDecimal(billable),
+        nonBillableHours: toDecimal(nonBillable),
         /** Logged against a 40h week — the standard utilisation ratio. */
         utilisationPercent: capacityHours.isZero()
           ? 0
           : Number(logged.dividedBy(capacityHours).times(100).toDecimalPlaces(1)),
         billableUtilisationPercent: capacityHours.isZero()
           ? 0
-          : Number(new Prisma.Decimal(billable).dividedBy(capacityHours).times(100).toDecimalPlaces(1)),
+          : Number(toDecimal(billable).dividedBy(capacityHours).times(100).toDecimalPlaces(1)),
       };
     }),
   };

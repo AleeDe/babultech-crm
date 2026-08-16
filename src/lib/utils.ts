@@ -1,17 +1,17 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { Prisma } from "@prisma/client";
+import Decimal from "decimal.js";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-type Numeric = Prisma.Decimal | number | string | null | undefined;
+type Numeric = Decimal | number | string | null | undefined;
 
-/** Decimal-safe conversion. Never use Number() directly on a Prisma Decimal in money math. */
-export function toDecimal(value: Numeric): Prisma.Decimal {
-  if (value === null || value === undefined) return new Prisma.Decimal(0);
-  return new Prisma.Decimal(value.toString());
+/** Decimal-safe conversion. Never use Number() directly on a Decimal in money math. */
+export function toDecimal(value: Numeric): Decimal {
+  if (value === null || value === undefined) return new Decimal(0);
+  return new Decimal(value.toString());
 }
 
 export function formatMoney(value: Numeric, currency = "PKR"): string {
@@ -126,12 +126,12 @@ export function entityHref(
   return `${base}/${entityId}`;
 }
 
-/** Prisma Decimals don't survive the server→client boundary. Flatten first. */
+/** Decimals do not survive the server→client boundary. Flatten first. */
 export function serialize<T>(value: T): T {
   return JSON.parse(
     JSON.stringify(value, (_key, v) => {
       if (typeof v === "bigint") return v.toString();
-      if (v instanceof Prisma.Decimal) return v.toString();
+      if (v instanceof Decimal) return v.toString();
       return v;
     }),
   );

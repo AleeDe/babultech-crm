@@ -1,35 +1,27 @@
-import { Prisma } from "@prisma/client";
-import { prisma } from "./prisma";
+import { supabaseServer } from "./supabase";
 
 /**
  * Human-readable record numbers (spec §1.1: "separate unique fields generated
- * by controlled sequences"). Uses a row lock so two concurrent creates can
- * never collide on the same number.
+ * by controlled sequences").
+ *
+ * The allocation itself lives in the database — `next_sequence_number()` in
+ * supabase/functions-sql/009_fn_numbering.sql — because it must happen in the same
+ * transaction as the insert it numbers. Allocating here and inserting in a
+ * separate HTTP call would burn a number whenever the insert failed.
+ *
+ * Prefer `createRecord(table, payload, { field, sequence })` from lib/db, which
+ * does both in one call. Use this directly only when a number is needed without
+ * an immediate insert.
  */
-export async function nextNumber(
-  entityType: string,
-  tx: Prisma.TransactionClient = prisma,
-): Promise<string> {
-  const seq = await tx.numberSequence.findUnique({ where: { entityType } });
-  if (!seq) {
-    throw new Error(
-      `No number sequence configured for "${entityType}". Add one in prisma/seed.ts.`,
-    );
-  }
+export async function nextNumber(entityType: string): Promise<string> {
+  const db = await supabaseServer();
 
-  // Atomic increment — returns the row as it was AFTER the update.
-  const updated = await tx.numberSequence.update({
-    where: { entityType },
-    data: { nextValue: { increment: 1 } },
+  const { data, error } = await db.rpc("next_sequence_number", {
+    p_entity_type: entityType,
   });
 
-  const value = updated.nextValue - 1;
-  const padded = String(value).padStart(seq.paddingLength, "0");
-  const year = new Date().getFullYear();
-
-  return seq.includeYear
-    ? `${seq.prefix}-${year}-${padded}`
-    : `${seq.prefix}-${padded}`;
+  if (error) throw new Error(error.message);
+  return data as string;
 }
 
 export const SEQUENCES = {

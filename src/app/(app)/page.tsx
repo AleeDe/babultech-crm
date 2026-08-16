@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { toDecimal } from "@/lib/decimal";
+import { supabaseServer } from "@/lib/supabase";
 import { requireUser } from "@/lib/authz";
 import { getPipelineByStage } from "@/server/opportunities";
 import { getCommissionTotals } from "@/server/commissions";
@@ -17,35 +17,85 @@ export default async function DashboardPage() {
     await Promise.all([
       getPipelineByStage(),
       getCommissionTotals(),
-      prisma.case.count({
-        where: { deletedAt: null, status: { notIn: ["CLOSED", "CANCELLED", "RESOLVED"] } },
-      }),
-      prisma.project.count({ where: { deletedAt: null, status: "ACTIVE" } }),
-      prisma.invoice.aggregate({
-        where: {
-          deletedAt: null,
-          status: { notIn: ["DRAFT", "CANCELLED", "PAID", "WRITTEN_OFF"] },
-          dueDate: { lt: new Date() },
-        },
-        _sum: { outstandingAmount: true },
-        _count: true,
-      }),
-      prisma.partner.findMany({
-        where: { deletedAt: null, status: "ACTIVE" },
-        include: {
-          _count: { select: { opportunities: true } },
-          commissionRecords: {
-            where: { deletedAt: null },
-            select: { commissionAmount: true, status: true },
+      (async () => {
+        const db = await supabaseServer();
+        const { count } = await db
+          .from("support_case")
+          .select("id", { count: "exact", head: true })
+          .is("deletedAt", null)
+          .not("status", "in", '("CLOSED","CANCELLED","RESOLVED")');
+        return count ?? 0;
+      })(),
+      (async () => {
+        const db = await supabaseServer();
+        const { count } = await db
+          .from("project")
+          .select("id", { count: "exact", head: true })
+          .is("deletedAt", null)
+          .eq("status", "ACTIVE");
+        return count ?? 0;
+      })(),
+      // PostgREST has no aggregate, so the overdue rows are fetched and summed.
+      // The dueDate cut-off is passed as a date string, which is what the
+      // column is — comparing in JS against an ISO string would be the trap
+      // this migration keeps hitting.
+      (async () => {
+        const db = await supabaseServer();
+        const { data } = await db
+          .from("invoice")
+          .select("outstandingAmount")
+          .is("deletedAt", null)
+          .not("status", "in", '("DRAFT","CANCELLED","PAID","WRITTEN_OFF")')
+          .lt("dueDate", new Date().toISOString().slice(0, 10));
+        const rows = data ?? [];
+        return {
+          _count: rows.length,
+          _sum: {
+            outstandingAmount: rows.reduce(
+              (sum, r) => sum.plus(toDecimal(r.outstandingAmount)),
+              toDecimal(0),
+            ),
           },
-        },
-        take: 6,
-      }),
-      prisma.activity.findMany({
-        where: { ownerUserId: user.id, status: "OPEN", deletedAt: null },
-        orderBy: { dueAt: "asc" },
-        take: 6,
-      }),
+        };
+      })(),
+      (async () => {
+        const db = await supabaseServer();
+        const { data } = await db
+          .from("partner")
+          .select(
+            `*,
+             opportunities:opportunity_partner ( count ),
+             commissionRecords:commission_record ( commissionAmount, status, deletedAt )`,
+          )
+          .is("deletedAt", null)
+          .eq("status", "ACTIVE")
+          .limit(6);
+
+        // Prisma filtered the embedded records in the query; PostgREST returns
+        // them all, so the soft-delete filter is applied here.
+        return (data ?? []).map((p: Record<string, any>) => ({
+          ...p,
+          _count: {
+            opportunities:
+              (p.opportunities as { count: number }[] | undefined)?.[0]?.count ?? 0,
+          },
+          commissionRecords: (
+            (p.commissionRecords ?? []) as { deletedAt: string | null }[]
+          ).filter((r: Record<string, any>) => !r.deletedAt),
+        }));
+      })(),
+      (async () => {
+        const db = await supabaseServer();
+        const { data } = await db
+          .from("activity")
+          .select("*")
+          .eq("ownerUserId", user.id)
+          .eq("status", "OPEN")
+          .is("deletedAt", null)
+          .order("dueAt")
+          .limit(6);
+        return data ?? [];
+      })(),
     ]);
 
   const openStages = pipeline.filter(
@@ -53,21 +103,22 @@ export default async function DashboardPage() {
   );
   const openPipelineTotal = openStages.reduce(
     (s, p) => s.plus(p.total),
-    new Prisma.Decimal(0),
+    toDecimal(0),
   );
   const wonTotal =
-    pipeline.find((p) => p.stage === "CLOSED_WON")?.total ?? new Prisma.Decimal(0);
+    pipeline.find((p: Record<string, any>) => p.stage === "CLOSED_WON")?.total ?? toDecimal(0);
   const maxStage = openStages.reduce(
     (m, p) => (p.total.greaterThan(m) ? p.total : m),
-    new Prisma.Decimal(1),
+    toDecimal(1),
   );
 
   const partnersRanked = topPartners
-    .map((p) => ({
+    .map((p: Record<string, any>) => ({
       ...p,
       earned: p.commissionRecords.reduce(
-        (s, r) => s.plus(r.commissionAmount),
-        new Prisma.Decimal(0),
+        (s: ReturnType<typeof toDecimal>, r: Record<string, any>) =>
+          s.plus(toDecimal(r.commissionAmount)),
+        toDecimal(0),
       ),
     }))
     .sort((a, b) => b.earned.comparedTo(a.earned));
@@ -83,13 +134,13 @@ export default async function DashboardPage() {
         <StatTile
           label="Open pipeline"
           value={formatCompactMoney(openPipelineTotal)}
-          sublabel={`${openStages.reduce((s, p) => s + p.count, 0)} live deals`}
+          sublabel={`${openStages.reduce((s: any, p: Record<string, any>) => s + p.count, 0)} live deals`}
           href="/opportunities"
         />
         <StatTile
           label="Closed won"
           value={formatCompactMoney(wonTotal)}
-          sublabel={`${pipeline.find((p) => p.stage === "CLOSED_WON")?.count ?? 0} deals`}
+          sublabel={`${pipeline.find((p: Record<string, any>) => p.stage === "CLOSED_WON")?.count ?? 0} deals`}
           tone="success"
           href="/opportunities?stage=CLOSED_WON"
         />
@@ -119,7 +170,7 @@ export default async function DashboardPage() {
               <EmptyState title="No open deals yet" description="Convert a lead or create an opportunity to get started." />
             ) : (
               <div className="space-y-2.5">
-                {openStages.map((s) => (
+                {openStages.map((s: Record<string, any>) => (
                   <div key={s.stage} className="flex items-center gap-3">
                     <span className="w-44 shrink-0 truncate text-sm">{humanize(s.stage)}</span>
                     <div className="h-6 flex-1 overflow-hidden rounded bg-muted">
@@ -153,7 +204,7 @@ export default async function DashboardPage() {
               { label: "Pending approval", data: commissions.pendingApproval, tone: "warning" as const },
               { label: "Payable", data: commissions.payable, tone: "warning" as const },
               { label: "Paid", data: commissions.paid, tone: "success" as const },
-            ].map((row) => (
+            ].map((row: Record<string, any>) => (
               <div key={row.label} className="flex items-center justify-between border-b pb-2 last:border-0">
                 <div>
                   <p className="text-sm font-medium">{row.label}</p>
@@ -195,7 +246,7 @@ export default async function DashboardPage() {
                   </TR>
                 </THead>
                 <TBody>
-                  {partnersRanked.map((p) => (
+                  {partnersRanked.map((p: Record<string, any>) => (
                     <TR key={p.id}>
                       <TD>
                         <Link href={`/partners/${p.id}`} className="font-medium hover:underline">
@@ -233,7 +284,7 @@ export default async function DashboardPage() {
                 <div className="px-5 pb-2 text-sm text-muted-foreground">Nothing scheduled. Enjoy it.</div>
               ) : (
                 <ul className="divide-y">
-                  {myActivities.map((a) => (
+                  {myActivities.map((a: Record<string, any>) => (
                     <li key={a.id} className="flex items-center justify-between px-5 py-2.5">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{a.subject}</p>

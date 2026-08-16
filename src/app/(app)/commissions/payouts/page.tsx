@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { listPayouts } from "@/server/commissions";
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
@@ -15,11 +15,15 @@ export default async function PayoutsPage() {
 
   const [payouts, bankAccounts] = await Promise.all([
     listPayouts(),
-    prisma.bankAccount.findMany({
-      where: { active: true },
-      select: { id: true, name: true, currencyCode: true },
-      orderBy: { name: "asc" },
-    }),
+    (async () => {
+      const db = await supabaseServer();
+      const { data } = await db
+        .from("bank_account")
+        .select("id, name, currencyCode")
+        .eq("active", true)
+        .order("name");
+      return data ?? [];
+    })(),
   ]);
 
   const drafts = payouts.filter((p) => p.status === "DRAFT" || p.status === "APPROVED");

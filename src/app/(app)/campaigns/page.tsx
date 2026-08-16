@@ -13,7 +13,7 @@ export default async function CampaignsPage() {
 
   const campaigns = await listCampaigns();
 
-  // The ROI view only exists once prisma/sql/02_views.sql has been applied.
+  // The ROI view only exists once supabase/schema-sql/02_views.sql has been applied.
   let performance: Awaited<ReturnType<typeof getCampaignPerformance>> = [];
   let viewMissing = false;
   try {
@@ -45,7 +45,7 @@ export default async function CampaignsPage() {
         <div className="mt-6">
           <Alert tone="warning">
             Campaign ROI is computed by the <code>v_campaign_performance</code> view. Apply{" "}
-            <code>prisma/sql/02_views.sql</code> to your database to populate the performance table below.
+            <code>supabase/schema-sql/02_views.sql</code> to your database to populate the performance table below.
           </Alert>
         </div>
       )}

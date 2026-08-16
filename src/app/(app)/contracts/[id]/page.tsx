@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
+import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
@@ -16,41 +17,50 @@ export default async function ContractDetailPage({
   const { id } = await params;
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="contracts" />;
-  const contract = await prisma.contract.findUnique({
-    where: { id },
-    include: {
-      account: { select: { id: true, name: true, accountNumber: true } },
-      owner: { select: { id: true, fullName: true } },
-      opportunity: { select: { id: true, opportunityNumber: true, name: true } },
-      quotation: { select: { id: true, quoteNumber: true, versionNumber: true } },
-      projects: {
-        select: {
-          id: true, projectNumber: true, name: true, status: true, health: true,
-          completionPercent: true,
-        },
-      },
-      cases: {
-        select: { id: true, caseNumber: true, subject: true, status: true, priority: true },
-        orderBy: { createdAt: "desc" },
-        take: 20,
-      },
-      invoices: {
-        select: {
-          id: true, invoiceNumber: true, invoiceDate: true, dueDate: true, status: true,
-          totalAmount: true, outstandingAmount: true, currencyCode: true,
-        },
-        orderBy: { invoiceDate: "desc" },
-      },
-    },
-  });
+  const db = await supabaseServer();
+
+  const { data: contractRow } = await db
+    .from("contract")
+    .select(
+      `*,
+       account ( id, name, accountNumber ),
+       owner:app_user!contract_ownerUserId_fkey ( id, fullName ),
+       opportunity ( id, opportunityNumber, name ),
+       quotation ( id, quoteNumber, versionNumber ),
+       projects:project ( id, projectNumber, name, status, health, completionPercent ),
+       cases:support_case ( id, caseNumber, subject, status, priority, createdAt ),
+       invoices:invoice ( id, invoiceNumber, invoiceDate, dueDate, status, totalAmount, outstandingAmount, currencyCode )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  type Row = Record<string, unknown>;
+  const desc = (a: unknown, b: unknown) => String(b ?? "").localeCompare(String(a ?? ""));
+
+  const contract = contractRow
+    ? {
+        ...contractRow,
+        account: one(contractRow.account as never),
+        owner: one(contractRow.owner as never),
+        opportunity: one(contractRow.opportunity as never),
+        quotation: one(contractRow.quotation as never),
+        projects: (contractRow.projects ?? []) as Row[],
+        cases: ((contractRow.cases ?? []) as Row[])
+          .sort((a, b) => desc(a.createdAt, b.createdAt))
+          .slice(0, 20),
+        invoices: ((contractRow.invoices ?? []) as Row[]).sort((a, b) =>
+          desc(a.invoiceDate, b.invoiceDate),
+        ),
+      }
+    : null;
 
   if (!contract) notFound();
 
   const daysToEnd = daysBetween(new Date(), contract.endDate);
   const invoiced = contract.invoices
-    .filter((i) => !["DRAFT", "CANCELLED"].includes(i.status))
-    .reduce((s, i) => s + Number(i.totalAmount), 0);
-  const outstanding = contract.invoices.reduce((s, i) => s + Number(i.outstandingAmount), 0);
+    .filter((i: Record<string, any>) => !["DRAFT", "CANCELLED"].includes(i.status))
+    .reduce((s: any, i: Record<string, any>) => s + Number(i.totalAmount), 0);
+  const outstanding = contract.invoices.reduce((s: any, i: Record<string, any>) => s + Number(i.outstandingAmount), 0);
   const invoicedPercent =
     Number(contract.contractValue) > 0 ? (invoiced / Number(contract.contractValue)) * 100 : 0;
 
@@ -132,7 +142,7 @@ export default async function ContractDetailPage({
                     </TR>
                   </THead>
                   <TBody>
-                    {contract.invoices.map((i) => (
+                    {contract.invoices.map((i: Record<string, any>) => (
                       <TR key={i.id}>
                         <TD>
                           <Link href={`/invoices/${i.id}`} className="font-medium hover:underline">
@@ -163,7 +173,7 @@ export default async function ContractDetailPage({
                   <p className="text-sm text-muted-foreground">No projects under this contract.</p>
                 ) : (
                   <div className="space-y-2">
-                    {contract.projects.map((p) => (
+                    {contract.projects.map((p: Record<string, any>) => (
                       <div key={p.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
                         <div className="min-w-0">
                           <Link href={`/projects/${p.id}`} className="text-sm font-medium hover:underline">
@@ -189,7 +199,7 @@ export default async function ContractDetailPage({
                   <p className="text-sm text-muted-foreground">No cases raised under this contract.</p>
                 ) : (
                   <div className="space-y-2">
-                    {contract.cases.map((c) => (
+                    {contract.cases.map((c: Record<string, any>) => (
                       <div key={c.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
                         <Link href={`/cases/${c.id}`} className="min-w-0 flex-1 truncate text-sm hover:underline">
                           {c.subject}

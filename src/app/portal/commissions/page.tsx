@@ -75,9 +75,9 @@ export default async function PortalCommissionsPage({
                   <TR key={r.id}>
                     <TD className="font-mono text-xs">{r.commissionNumber}</TD>
                     <TD>
-                      <span className="text-sm font-medium">{r.opportunity.name}</span>
+                      <span className="text-sm font-medium">{r.opportunity?.name}</span>
                       <p className="text-xs text-muted-foreground">
-                        {r.opportunity.account.name}
+                        {r.opportunity?.account?.name}
                         {r.invoice && ` · invoice ${r.invoice.invoiceNumber}`}
                       </p>
                     </TD>

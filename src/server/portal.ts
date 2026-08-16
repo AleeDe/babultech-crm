@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { Decimal, toDecimal, sumBy, one } from "@/lib/decimal";
+import { supabaseServer } from "@/lib/supabase";
 import { nextNumber, SEQUENCES } from "@/lib/numbering";
 import { requireUser, AuthorizationError } from "@/lib/authz";
 import { REGISTRATION_REVIEW_SLA_DAYS } from "@/lib/partner-policy";
@@ -49,63 +49,83 @@ export async function getPortalContext(): Promise<PortalContext | null> {
 
 export async function getPartnerProfile() {
   const { partnerId } = await requirePartner();
+  const db = await supabaseServer();
 
-  return prisma.partner.findUniqueOrThrow({
-    where: { id: partnerId },
-    select: {
-      id: true,
-      partnerNumber: true,
-      displayName: true,
-      kind: true,
-      partnerType: true,
-      tier: true,
-      status: true,
-      territory: true,
-      startDate: true,
-      agreementExpiryDate: true,
-      defaultCommissionPercent: true,
-      payoutCurrencyCode: true,
-      withholdingTaxPercent: true,
-      registrationProtectionDays: true,
-      taxNumber: true,
-      email: true,
-      phone: true,
-      website: true,
-      // Deliberately absent: bankDetails, internal notes, partnerManager.
-      commissionPlan: {
-        select: {
-          name: true, rateType: true, flatPercent: true, fixedAmount: true, basis: true, trigger: true,
-          tiers: { select: { fromAmount: true, toAmount: true, ratePercent: true }, orderBy: { fromAmount: "asc" } },
-        },
-      },
-      account: { select: { id: true, name: true } },
-      contact: { select: { id: true, firstName: true, lastName: true } },
-    },
-  });
+  // The column list stays explicit for the same reason it always was:
+  // bankDetails, internal notes and partnerManager must never reach the portal.
+  const { data, error } = await db
+    .from("partner")
+    .select(
+      `id, partnerNumber, displayName, kind, partnerType, tier, status,
+       territory, startDate, agreementExpiryDate, defaultCommissionPercent,
+       payoutCurrencyCode, withholdingTaxPercent, registrationProtectionDays,
+       taxNumber, email, phone, website,
+       commissionPlan:commission_plan (
+         name, rateType, flatPercent, fixedAmount, basis, trigger,
+         tiers:commission_tier ( fromAmount, toAmount, ratePercent )
+       ),
+       account ( id, name ),
+       contact ( id, firstName, lastName )`,
+    )
+    .eq("id", partnerId)
+    .single();
+
+  if (error || !data) {
+    throw new AuthorizationError("Partner profile not found.");
+  }
+
+  // PostgREST cannot order an embedded relation inline; sort client-side to
+  // preserve the previous `orderBy: { fromAmount: "asc" }`.
+  const plan = Array.isArray(data.commissionPlan)
+    ? data.commissionPlan[0]
+    : data.commissionPlan;
+
+  if (plan?.tiers) {
+    plan.tiers.sort(
+      (a: { fromAmount: unknown }, b: { fromAmount: unknown }) =>
+        toDecimal(a.fromAmount).comparedTo(toDecimal(b.fromAmount)),
+    );
+  }
+
+  return { ...data, commissionPlan: plan };
 }
 
 /** Headline numbers for the portal landing page. */
 export async function getPortalSummary() {
   const { partnerId } = await requirePartner();
 
-  const [records, payouts, deals] = await Promise.all([
-    prisma.commissionRecord.findMany({
-      where: { partnerId, deletedAt: null },
-      select: { status: true, commissionAmount: true, netPayableAmount: true, currencyCode: true },
-    }),
-    prisma.commissionPayout.findMany({
-      where: { partnerId, deletedAt: null },
-      select: { status: true, netAmount: true, currencyCode: true },
-    }),
-    prisma.opportunityPartner.count({
-      where: { partnerId, opportunity: { deletedAt: null } },
-    }),
+  const db = await supabaseServer();
+
+  const [recordsRes, payoutsRes, dealsRes] = await Promise.all([
+    db
+      .from("commission_record")
+      .select("status, commissionAmount, netPayableAmount, currencyCode")
+      .eq("partnerId", partnerId)
+      .is("deletedAt", null),
+    db
+      .from("commission_payout")
+      .select("status, netAmount, currencyCode")
+      .eq("partnerId", partnerId)
+      .is("deletedAt", null),
+    // Prisma filtered on the related opportunity (`opportunity: { deletedAt: null }`).
+    // PostgREST expresses that as an inner join with a filter on the embedded table.
+    db
+      .from("opportunity_partner")
+      .select("id, opportunity!inner(deletedAt)", { count: "exact", head: true })
+      .eq("partnerId", partnerId)
+      .is("opportunity.deletedAt", null),
   ]);
 
+  const records = recordsRes.data ?? [];
+  const payouts = payoutsRes.data ?? [];
+  const deals = dealsRes.count ?? 0;
+
+  // sumBy normalises PostgREST's numeric-as-number into Decimal. Doing this in
+  // plain JS numbers would silently lose precision on Decimal(18,2) money.
   const sum = (
-    rows: { commissionAmount?: Prisma.Decimal; netPayableAmount?: Prisma.Decimal }[],
+    rows: readonly Record<string, unknown>[],
     key: "commissionAmount" | "netPayableAmount",
-  ) => rows.reduce((s, r) => s.plus(new Prisma.Decimal(r[key] ?? 0)), new Prisma.Decimal(0));
+  ) => sumBy(rows, key as never);
 
   const paid = records.filter((r) => r.status === "PAID");
   const pipeline = records.filter((r) => ["ACCRUED", "PENDING_APPROVAL", "APPROVED", "PAYABLE"].includes(r.status));
@@ -127,28 +147,37 @@ export async function getPortalSummary() {
 export async function getPortalCommissions(status?: string) {
   const { partnerId } = await requirePartner();
 
-  return prisma.commissionRecord.findMany({
-    where: {
-      partnerId,
-      deletedAt: null,
-      ...(status ? { status: status as never } : {}),
-    },
-    select: {
-      id: true,
-      commissionNumber: true,
-      status: true,
-      earnedDate: true,
-      basisAmount: true,
-      ratePercent: true,
-      commissionAmount: true,
-      withholdingTaxAmount: true,
-      netPayableAmount: true,
-      currencyCode: true,
-      opportunity: { select: { id: true, opportunityNumber: true, name: true, account: { select: { name: true } } } },
-      invoice: { select: { invoiceNumber: true, invoiceDate: true } },
-      payout: { select: { id: true, payoutNumber: true, status: true, paymentDate: true } },
-    },
-    orderBy: { earnedDate: "desc" },
+  const db = await supabaseServer();
+
+  let query = db
+    .from("commission_record")
+    .select(
+      `id, commissionNumber, status, earnedDate, basisAmount, ratePercent,
+       commissionAmount, withholdingTaxAmount, netPayableAmount, currencyCode,
+       opportunity ( id, opportunityNumber, name, account ( name ) ),
+       invoice ( invoiceNumber, invoiceDate ),
+       payout:commission_payout ( id, payoutNumber, status, paymentDate )`,
+    )
+    .eq("partnerId", partnerId)
+    .is("deletedAt", null)
+    .order("earnedDate", { ascending: false });
+
+  if (status) query = query.eq("status", status);
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Could not load commissions: ${error.message}`);
+
+  // Flatten the embedded to-one relations back to objects.
+  return (data ?? []).map((r) => {
+    const opportunity = one(r.opportunity);
+    return {
+      ...r,
+      opportunity: opportunity
+        ? { ...opportunity, account: one(opportunity.account) }
+        : null,
+      invoice: one(r.invoice),
+      payout: one(r.payout),
+    };
   });
 }
 
@@ -156,23 +185,29 @@ export async function getPortalCommissions(status?: string) {
 export async function getPortalPayouts() {
   const { partnerId } = await requirePartner();
 
-  return prisma.commissionPayout.findMany({
-    where: { partnerId, deletedAt: null },
-    select: {
-      id: true,
-      payoutNumber: true,
-      status: true,
-      periodStart: true,
-      periodEnd: true,
-      grossAmount: true,
-      withholdingTaxAmount: true,
-      netAmount: true,
-      currencyCode: true,
-      paymentDate: true,
-      referenceNumber: true,
-      _count: { select: { records: true } },
-    },
-    orderBy: { createdAt: "desc" },
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("commission_payout")
+    .select(
+      `id, payoutNumber, status, periodStart, periodEnd, grossAmount,
+       withholdingTaxAmount, netAmount, currencyCode, paymentDate,
+       referenceNumber,
+       records:commission_record ( count )`,
+    )
+    .eq("partnerId", partnerId)
+    .is("deletedAt", null)
+    .order("createdAt", { ascending: false });
+
+  if (error) throw new Error(`Could not load payouts: ${error.message}`);
+
+  // Prisma returned `_count: { records: n }`. PostgREST returns an aggregate
+  // relation `records: [{ count: n }]` — reshape so callers are unchanged.
+  return (data ?? []).map((row) => {
+    const { records, ...rest } = row as typeof row & {
+      records?: { count: number }[];
+    };
+    return { ...rest, _count: { records: records?.[0]?.count ?? 0 } };
   });
 }
 
@@ -183,45 +218,57 @@ export async function getPortalPayouts() {
 export async function getPortalDeals() {
   const { partnerId } = await requirePartner();
 
-  const links = await prisma.opportunityPartner.findMany({
-    where: { partnerId, opportunity: { deletedAt: null } },
-    select: {
-      id: true,
-      role: true,
-      revenueSharePercent: true,
-      commissionPercentOverride: true,
-      registeredAt: true,
-      registrationExpiresAt: true,
-      opportunity: {
-        select: {
-          id: true,
-          opportunityNumber: true,
-          name: true,
-          stage: true,
-          amount: true,
-          currencyCode: true,
-          expectedCloseDate: true,
-          actualCloseDate: true,
-          account: { select: { id: true, name: true, industry: true } },
-        },
-      },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const db = await supabaseServer();
+
+  const { data: links, error } = await db
+    .from("opportunity_partner")
+    .select(
+      `id, role, revenueSharePercent, commissionPercentOverride, registeredAt,
+       registrationExpiresAt,
+       opportunity!inner (
+         id, opportunityNumber, name, stage, amount, currencyCode,
+         expectedCloseDate, actualCloseDate,
+         account ( id, name, industry )
+       )`,
+    )
+    .eq("partnerId", partnerId)
+    .is("opportunity.deletedAt", null)
+    .order("createdAt", { ascending: false });
+
+  if (error) throw new Error(`Could not load deals: ${error.message}`);
 
   // Commission earned per deal, so the partner can tie a deal to its payment.
-  const earned = await prisma.commissionRecord.groupBy({
-    by: ["opportunityId"],
-    where: { partnerId, deletedAt: null },
-    _sum: { commissionAmount: true },
-  });
+  //
+  // PostgREST has no groupBy, so the rows are fetched and summed here. Safe at
+  // portal scale (one partner's records); a reporting-sized version of this
+  // would want a database view or an .rpc() instead.
+  const { data: records } = await db
+    .from("commission_record")
+    .select("opportunityId, commissionAmount")
+    .eq("partnerId", partnerId)
+    .is("deletedAt", null);
 
-  return links.map((l) => ({
-    ...l,
-    earnedAmount:
-      earned.find((e) => e.opportunityId === l.opportunity.id)?._sum.commissionAmount ??
-      new Prisma.Decimal(0),
-  }));
+  const earnedByOpportunity = new Map<string, Decimal>();
+  for (const r of records ?? []) {
+    const key = r.opportunityId as string;
+    earnedByOpportunity.set(
+      key,
+      (earnedByOpportunity.get(key) ?? new Decimal(0)).plus(
+        toDecimal(r.commissionAmount),
+      ),
+    );
+  }
+
+  return (links ?? []).map((l) => {
+    // Keep the whole opportunity shape the pages read (stage, amount,
+    // currencyCode, account…); only its id is needed for the lookup here.
+    const opp = one(l.opportunity)!;
+    return {
+      ...l,
+      opportunity: { ...opp, account: one(opp.account) },
+      earnedAmount: earnedByOpportunity.get(opp.id) ?? new Decimal(0),
+    };
+  });
 }
 
 /**
@@ -232,23 +279,26 @@ export async function getPortalDeals() {
 export async function getPortalAccounts() {
   const { partnerId } = await requirePartner();
 
-  const partner = await prisma.partner.findUniqueOrThrow({
-    where: { id: partnerId },
-    select: { accountId: true },
-  });
+  const db = await supabaseServer();
 
-  const links = await prisma.opportunityPartner.findMany({
-    where: { partnerId, opportunity: { deletedAt: null } },
-    select: {
-      opportunity: {
-        select: {
-          id: true, stage: true, amount: true, currencyCode: true,
-          accountId: true,
-          account: { select: { id: true, name: true, industry: true, accountType: true } },
-        },
-      },
-    },
-  });
+  const { data: partner } = await db
+    .from("partner")
+    .select("accountId")
+    .eq("id", partnerId)
+    .single();
+
+  const { data: links, error } = await db
+    .from("opportunity_partner")
+    .select(
+      `opportunity!inner (
+         id, stage, amount, currencyCode, accountId, deletedAt,
+         account ( id, name, industry, accountType )
+       )`,
+    )
+    .eq("partnerId", partnerId)
+    .is("opportunity.deletedAt", null);
+
+  if (error) throw new Error(`Could not load customers: ${error.message}`);
 
   const byAccount = new Map<
     string,
@@ -260,27 +310,35 @@ export async function getPortalAccounts() {
       isOwnRecord: boolean;
       deals: number;
       wonDeals: number;
-      totalValue: Prisma.Decimal;
+      totalValue: Decimal;
       currency: string;
     }
   >();
 
-  for (const l of links) {
-    const a = l.opportunity.account;
+  for (const l of links ?? []) {
+    const opp = (Array.isArray(l.opportunity) ? l.opportunity[0] : l.opportunity) as unknown as {
+      id: string;
+      stage: string;
+      amount: unknown;
+      currencyCode: string;
+      account: { id: string; name: string; industry: string | null; accountType: string };
+    };
+    const a = Array.isArray(opp.account) ? opp.account[0] : opp.account;
+
     const row = byAccount.get(a.id) ?? {
       id: a.id,
       name: a.name,
       industry: a.industry,
       accountType: a.accountType,
-      isOwnRecord: a.id === partner.accountId,
+      isOwnRecord: a.id === partner?.accountId,
       deals: 0,
       wonDeals: 0,
-      totalValue: new Prisma.Decimal(0),
-      currency: l.opportunity.currencyCode,
+      totalValue: new Decimal(0),
+      currency: opp.currencyCode,
     };
     row.deals += 1;
-    if (l.opportunity.stage === "CLOSED_WON") row.wonDeals += 1;
-    row.totalValue = row.totalValue.plus(l.opportunity.amount);
+    if (opp.stage === "CLOSED_WON") row.wonDeals += 1;
+    row.totalValue = row.totalValue.plus(toDecimal(opp.amount));
     byAccount.set(a.id, row);
   }
 
@@ -291,26 +349,28 @@ export async function getPortalAccounts() {
 export async function getPortalReferrals() {
   const { partnerId } = await requirePartner();
 
-  return prisma.lead.findMany({
-    where: { referredByPartnerId: partnerId, deletedAt: null },
-    select: {
-      id: true,
-      leadNumber: true,
-      firstName: true,
-      lastName: true,
-      companyName: true,
-      status: true,
-      estimatedValue: true,
-      createdAt: true,
-      convertedAt: true,
-      // A partner is entitled to know why their registration was turned down.
-      disqualifiedReason: true,
-      convertedOpportunity: {
-        select: { id: true, opportunityNumber: true, name: true, stage: true, amount: true, currencyCode: true },
-      },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("lead")
+    .select(
+      `id, leadNumber, firstName, lastName, companyName, status,
+       estimatedValue, createdAt, convertedAt,
+       disqualifiedReason,
+       convertedOpportunity:opportunity (
+         id, opportunityNumber, name, stage, amount, currencyCode
+       )`,
+    )
+    .eq("referredByPartnerId", partnerId)
+    .is("deletedAt", null)
+    .order("createdAt", { ascending: false });
+
+  if (error) throw new Error(`Could not load referrals: ${error.message}`);
+
+  return (data ?? []).map((l) => ({
+    ...l,
+    convertedOpportunity: one(l.convertedOpportunity),
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -365,13 +425,19 @@ export async function submitDealRegistration(
   const data = parsed.data;
 
   try {
-    const partner = await prisma.partner.findUniqueOrThrow({
-      where: { id: ctx.partnerId },
-      select: {
-        displayName: true, status: true, partnerManagerId: true,
-        agreementExpiryDate: true, commissionPlanId: true,
-      },
-    });
+    const db = await supabaseServer();
+
+    const { data: partner, error: partnerErr } = await db
+      .from("partner")
+      .select(
+        "displayName, status, partnerManagerId, agreementExpiryDate, commissionPlanId",
+      )
+      .eq("id", ctx.partnerId)
+      .single();
+
+    if (partnerErr || !partner) {
+      return { ok: false, error: "Partner record not found." };
+    }
 
     if (partner.status !== "ACTIVE") {
       return {
@@ -379,7 +445,12 @@ export async function submitDealRegistration(
         error: "Only an active partnership can register deals. Please speak to your partner manager.",
       };
     }
-    if (partner.agreementExpiryDate && partner.agreementExpiryDate < new Date()) {
+    // PostgREST returns dates as ISO strings, where Prisma hydrated Date
+    // objects. Comparing a string to a Date would be a silent always-false.
+    if (
+      partner.agreementExpiryDate &&
+      new Date(partner.agreementExpiryDate) < new Date()
+    ) {
       return {
         ok: false,
         error: "Your partner agreement has expired, so new registrations cannot be accepted. Please speak to your partner manager.",
@@ -389,30 +460,46 @@ export async function submitDealRegistration(
     const company = data.companyName.trim();
 
     // Has this customer already been registered, or are they already ours?
-    const [existingLead, existingAccount] = await Promise.all([
-      prisma.lead.findFirst({
-        where: {
-          deletedAt: null,
-          companyName: { equals: company, mode: "insensitive" },
-          status: { notIn: ["DISQUALIFIED"] },
-        },
-        select: {
-          leadNumber: true,
-          referredByPartnerId: true,
-          referredByPartner: { select: { displayName: true } },
-        },
-      }),
-      prisma.account.findFirst({
-        where: { deletedAt: null, name: { equals: company, mode: "insensitive" } },
-        select: {
-          name: true,
-          opportunities: {
-            where: { deletedAt: null, stage: { notIn: ["CLOSED_WON", "CLOSED_LOST"] } },
-            select: { id: true },
-          },
-        },
-      }),
+    // `ilike` with no wildcards is PostgREST's case-insensitive equality,
+    // matching Prisma's `mode: "insensitive"`.
+    const [leadRes, accountRes] = await Promise.all([
+      db
+        .from("lead")
+        .select(
+          `leadNumber, referredByPartnerId,
+           referredByPartner:partner ( displayName )`,
+        )
+        .is("deletedAt", null)
+        .ilike("companyName", company)
+        .neq("status", "DISQUALIFIED")
+        .limit(1)
+        .maybeSingle(),
+      db
+        .from("account")
+        .select(
+          `name,
+           opportunities:opportunity ( id, stage, deletedAt )`,
+        )
+        .is("deletedAt", null)
+        .ilike("name", company)
+        .limit(1)
+        .maybeSingle(),
     ]);
+
+    const existingLead = leadRes.data;
+    const rawAccount = accountRes.data;
+
+    // Prisma filtered the nested opportunities in the query. PostgREST returns
+    // them all, so the open-deal filter is applied here instead.
+    const existingAccount = rawAccount
+      ? {
+          ...rawAccount,
+          opportunities: (rawAccount.opportunities ?? []).filter(
+            (o: { stage: string; deletedAt: string | null }) =>
+              !o.deletedAt && !["CLOSED_WON", "CLOSED_LOST"].includes(o.stage),
+          ),
+        }
+      : null;
 
     const alreadyMine =
       existingLead?.referredByPartnerId === ctx.partnerId;
@@ -430,15 +517,21 @@ export async function submitDealRegistration(
 
     // Leads need an internal owner. The partner manager is the right person;
     // fall back to an administrator so a registration is never orphaned.
-    const ownerId =
-      partner.partnerManagerId ??
-      (
-        await prisma.user.findFirst({
-          where: { status: "ACTIVE", deletedAt: null, role: { permissions: { has: "*" } } },
-          select: { id: true },
-          orderBy: { createdAt: "asc" },
-        })
-      )?.id;
+    let ownerId = partner.partnerManagerId as string | null;
+
+    if (!ownerId) {
+      // `role.permissions has "*"` becomes an inner join with a contains filter.
+      const { data: admin } = await db
+        .from("app_user")
+        .select("id, role:security_role!inner(permissions)")
+        .eq("status", "ACTIVE")
+        .is("deletedAt", null)
+        .contains("role.permissions", ["*"])
+        .order("createdAt", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      ownerId = admin?.id ?? null;
+    }
 
     if (!ownerId) {
       return { ok: false, error: "We could not route your registration. Please contact your partner manager." };
@@ -446,10 +539,17 @@ export async function submitDealRegistration(
 
     const flags: string[] = [];
     if (contestedByOther) {
+      // PostgREST types an embedded to-one relation as an array.
+      const referrer = (
+        Array.isArray(existingLead!.referredByPartner)
+          ? existingLead!.referredByPartner[0]
+          : existingLead!.referredByPartner
+      ) as { displayName: string } | null;
+
       flags.push(
         `CONTESTED: ${company} is already on lead ${existingLead!.leadNumber}` +
-          (existingLead!.referredByPartner
-            ? `, registered by ${existingLead!.referredByPartner.displayName}.`
+          (referrer
+            ? `, registered by ${referrer.displayName}.`
             : ", submitted directly."),
       );
     }
@@ -459,65 +559,61 @@ export async function submitDealRegistration(
 
     const contested = contestedByOther || alreadyCustomer;
 
-    const lead = await prisma.$transaction(async (tx) => {
-      const created = await tx.lead.create({
-        data: {
-          leadNumber: await nextNumber(SEQUENCES.LEAD, tx),
-          firstName: data.firstName.trim(),
-          lastName: data.lastName.trim(),
-          companyName: company,
-          email: data.email || null,
-          phone: data.phone ?? null,
-          industry: data.industry ?? null,
-          leadSource: "Partner",
-          referredByPartnerId: ctx.partnerId,
-          ownerUserId: ownerId,
-          status: "NEW",
-          estimatedValue: data.estimatedValue ?? null,
-          nextFollowUpAt: data.expectedCloseDate ?? null,
-          description: [
-            `Deal registration submitted by ${partner.displayName} via the partner portal.`,
-            data.expectedCloseDate
-              ? `Partner expects to close around ${data.expectedCloseDate.toISOString().slice(0, 10)}.`
-              : null,
-            "",
-            data.description.trim(),
-            flags.length ? `\n--- Needs review ---\n${flags.join("\n")}` : null,
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        },
-      });
+    const due = new Date();
+    due.setDate(due.getDate() + REGISTRATION_REVIEW_SLA_DAYS);
 
-      // There is no email out of this system yet, so "notify" means putting a
-      // dated task in front of the right person. It appears on their
-      // Activities page and links back to the lead. Without this a
-      // registration just sits in a list waiting to be noticed.
-      const due = new Date();
-      due.setDate(due.getDate() + REGISTRATION_REVIEW_SLA_DAYS);
+    const activityBody =
+      `${partner.displayName} registered ${company} through the partner portal.` +
+      (flags.length ? `\n\n${flags.join("\n")}` : "") +
+      `\n\nDecide whether to qualify it. Converting the lead is what credits the partner.`;
 
-      await tx.activity.create({
-        data: {
-          activityType: "TASK",
-          subject: contested
-            ? `Contested deal registration: ${company}`
-            : `Review deal registration: ${company}`,
-          description:
-            `${partner.displayName} registered ${company} through the partner portal ` +
-            `(${created.leadNumber}).` +
-            (flags.length ? `\n\n${flags.join("\n")}` : "") +
-            `\n\nDecide whether to qualify it. Converting the lead is what credits the partner.`,
-          ownerUserId: ownerId,
-          relatedEntityType: "Lead",
-          relatedEntityId: created.id,
-          dueAt: due,
-          priority: contested ? "HIGH" : "MEDIUM",
-          status: "OPEN",
-        },
-      });
+    const description = [
+      `Deal registration submitted by ${partner.displayName} via the partner portal.`,
+      data.expectedCloseDate
+        ? `Partner expects to close around ${data.expectedCloseDate.toISOString().slice(0, 10)}.`
+        : null,
+      "",
+      data.description.trim(),
+      flags.length ? `\n--- Needs review ---\n${flags.join("\n")}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
 
-      return created;
-    });
+    // Lead + review task must be created together: a lead with no review task
+    // is a registration nobody is assigned to look at. supabase-js has no
+    // transaction, so this runs as one database function.
+    const { data: created, error: rpcError } = await db
+      .rpc("register_partner_deal", {
+        p_partner_id: ctx.partnerId,
+        p_owner_id: ownerId,
+        p_first_name: data.firstName.trim(),
+        p_last_name: data.lastName.trim(),
+        p_company: company,
+        p_email: data.email || "",
+        p_phone: data.phone ?? null,
+        p_industry: data.industry ?? null,
+        p_estimated_value: data.estimatedValue ?? null,
+        p_follow_up: data.expectedCloseDate
+          ? data.expectedCloseDate.toISOString().slice(0, 10)
+          : null,
+        p_description: description,
+        p_activity_subject: contested
+          ? `Contested deal registration: ${company}`
+          : `Review deal registration: ${company}`,
+        p_activity_body: activityBody,
+        p_priority: contested ? "HIGH" : "MEDIUM",
+        p_due_at: due.toISOString(),
+      })
+      .single();
+
+    if (rpcError || !created) {
+      return {
+        ok: false,
+        error: rpcError?.message ?? "We could not submit your registration.",
+      };
+    }
+
+    const lead = created as { id: string; leadNumber: string };
 
     revalidatePath("/portal/referrals");
     revalidatePath("/leads");

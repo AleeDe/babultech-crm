@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
+import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
@@ -22,30 +23,41 @@ export default async function CasesPage({
   if (!can(_me, PERMISSIONS.CASE_READ)) return <Forbidden what="support cases" />;
   const params = await searchParams;
 
-  const cases = await prisma.case.findMany({
-    where: {
-      deletedAt: null,
-      ...(params.status ? { status: params.status as never } : {}),
-      ...(params.priority ? { priority: params.priority as never } : {}),
-      ...(params.search
-        ? {
-            OR: [
-              { subject: { contains: params.search, mode: "insensitive" as const } },
-              { caseNumber: { contains: params.search, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
-    },
-    include: {
-      account: { select: { id: true, name: true } },
-      contact: { select: { id: true, firstName: true, lastName: true } },
-      owner: { select: { fullName: true } },
-      team: { select: { name: true } },
-      slaPolicy: { select: { name: true } },
-      category: { select: { name: true } },
-    },
-    orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
-  });
+  const db = await supabaseServer();
+
+  let caseQuery = db
+    .from("support_case")
+    .select(
+      `*,
+       account ( id, name ),
+       contact ( id, firstName, lastName ),
+       owner:app_user!support_case_ownerUserId_fkey ( fullName ),
+       team ( name ),
+       slaPolicy:sla_policy ( name ),
+       category:case_category ( name )`,
+    )
+    .is("deletedAt", null)
+    .order("priority", { ascending: false })
+    .order("createdAt", { ascending: false });
+
+  if (params.status) caseQuery = caseQuery.eq("status", params.status);
+  if (params.priority) caseQuery = caseQuery.eq("priority", params.priority);
+  if (params.search) {
+    const s = params.search.replace(/[,()]/g, "");
+    caseQuery = caseQuery.or(`subject.ilike.%${s}%,caseNumber.ilike.%${s}%`);
+  }
+
+  const { data: caseRows } = await caseQuery;
+
+  const cases = (caseRows ?? []).map((c) => ({
+    ...c,
+    account: one(c.account as never),
+    contact: one(c.contact as never),
+    owner: one(c.owner as never),
+    team: one(c.team as never),
+    slaPolicy: one(c.slaPolicy as never),
+    category: one(c.category as never),
+  }));
 
   const now = new Date();
   const open = cases.filter((c) => OPEN_STATUSES.includes(c.status));

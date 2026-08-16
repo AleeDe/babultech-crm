@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
+import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
@@ -17,42 +18,68 @@ export default async function InvoiceDetailPage({
   const { id } = await params;
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.INVOICE_READ)) return <Forbidden what="invoices" />;
-  const invoice = await prisma.invoice.findUnique({
-    where: { id },
-    include: {
-      account: { select: { id: true, name: true, accountNumber: true } },
-      contact: { select: { id: true, firstName: true, lastName: true, email: true } },
-      project: { select: { id: true, projectNumber: true, name: true } },
-      contract: { select: { id: true, contractNumber: true, name: true } },
-      milestone: { select: { id: true, name: true, projectId: true } },
-      lines: {
-        include: {
-          product: { select: { id: true, name: true, productCode: true } },
-          taxRate: { select: { id: true, name: true, ratePercent: true } },
-          project: { select: { id: true, name: true } },
-        },
-        orderBy: { sortOrder: "asc" },
-      },
-      allocations: {
-        include: {
-          payment: {
-            select: {
-              id: true, paymentNumber: true, paymentDate: true, paymentMethod: true,
-              currencyCode: true,
-            },
-          },
-          allocatedBy: { select: { id: true, fullName: true } },
-        },
-        orderBy: { allocatedAt: "desc" },
-      },
-      commissionRecords: {
-        select: {
-          id: true, commissionNumber: true, commissionAmount: true, status: true,
-          currencyCode: true, partner: { select: { id: true, displayName: true } },
-        },
-      },
-    },
-  });
+  const db = await supabaseServer();
+
+  const { data: invoiceRow } = await db
+    .from("invoice")
+    .select(
+      `*,
+       account ( id, name, accountNumber ),
+       contact ( id, firstName, lastName, email ),
+       project ( id, projectNumber, name ),
+       contract ( id, contractNumber, name ),
+       milestone ( id, name, projectId ),
+       lines:invoice_line (
+         *,
+         product ( id, name, productCode ),
+         taxRate:tax_rate ( id, name, ratePercent ),
+         project ( id, name )
+       ),
+       allocations:payment_allocation (
+         *,
+         payment ( id, paymentNumber, paymentDate, paymentMethod, currencyCode ),
+         allocatedBy:app_user!payment_allocation_allocatedById_fkey ( id, fullName )
+       ),
+       commissionRecords:commission_record (
+         id, commissionNumber, commissionAmount, status, currencyCode,
+         partner ( id, displayName )
+       )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  type Row = Record<string, unknown>;
+  const desc = (a: unknown, b: unknown) => String(b ?? "").localeCompare(String(a ?? ""));
+
+  const invoice = invoiceRow
+    ? {
+        ...invoiceRow,
+        account: one(invoiceRow.account as never),
+        contact: one(invoiceRow.contact as never),
+        project: one(invoiceRow.project as never),
+        contract: one(invoiceRow.contract as never),
+        milestone: one(invoiceRow.milestone as never),
+        // PostgREST cannot order an embedded relation inline.
+        lines: ((invoiceRow.lines ?? []) as Row[])
+          .map((l): Row => ({
+            ...l,
+            product: one(l.product as never),
+            taxRate: one(l.taxRate as never),
+            project: one(l.project as never),
+          }))
+          .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0)),
+        allocations: ((invoiceRow.allocations ?? []) as Row[])
+          .map((a): Row => ({
+            ...a,
+            payment: one(a.payment as never),
+            allocatedBy: one(a.allocatedBy as never),
+          }))
+          .sort((a, b) => desc(a.allocatedAt, b.allocatedAt)),
+        commissionRecords: ((invoiceRow.commissionRecords ?? []) as Row[]).map(
+          (r): Row => ({ ...r, partner: one(r.partner as never) }),
+        ),
+      }
+    : null;
 
   if (!invoice) notFound();
 
@@ -135,7 +162,7 @@ export default async function InvoiceDetailPage({
                     </TR>
                   </THead>
                   <TBody>
-                    {invoice.lines.map((l) => (
+                    {invoice.lines.map((l: Record<string, any>) => (
                       <TR key={l.id}>
                         <TD className="text-sm">
                           {l.product ? (
@@ -191,7 +218,7 @@ export default async function InvoiceDetailPage({
                     </TR>
                   </THead>
                   <TBody>
-                    {invoice.allocations.map((a) => (
+                    {invoice.allocations.map((a: Record<string, any>) => (
                       <TR key={a.id}>
                         <TD className="font-mono text-xs">{a.payment.paymentNumber}</TD>
                         <TD className="text-sm">{formatDate(a.payment.paymentDate)}</TD>
@@ -267,7 +294,7 @@ export default async function InvoiceDetailPage({
                 <CardTitle>Partner commission</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
-                {invoice.commissionRecords.map((c) => (
+                {invoice.commissionRecords.map((c: Record<string, any>) => (
                   <div key={c.id} className="flex items-center justify-between gap-2 border-b pb-2 last:border-0">
                     <Link href={`/partners/${c.partner.id}`} className="text-primary hover:underline">
                       {c.partner.displayName}

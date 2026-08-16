@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
+import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
@@ -17,38 +18,66 @@ export default async function QuotationDetailPage({
   const { id } = await params;
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="quotations" />;
-  const quote = await prisma.quotation.findUnique({
-    where: { id },
-    include: {
-      account: { select: { id: true, name: true, accountNumber: true } },
-      contact: { select: { id: true, firstName: true, lastName: true, email: true } },
-      opportunity: {
-        select: {
-          id: true, opportunityNumber: true, name: true, stage: true,
-          owner: { select: { id: true, fullName: true } },
-        },
-      },
-      lines: {
-        include: {
-          product: { select: { id: true, name: true, productCode: true } },
-          taxRate: { select: { id: true, name: true, ratePercent: true } },
-        },
-        orderBy: { sortOrder: "asc" },
-      },
-      contracts: { select: { id: true, contractNumber: true, name: true, status: true } },
-    },
-  });
+  const db = await supabaseServer();
 
-  if (!quote) notFound();
+  const { data: quoteRow } = await db
+    .from("quotation")
+    .select(
+      `*,
+       account ( id, name, accountNumber ),
+       contact ( id, firstName, lastName, email ),
+       opportunity (
+         id, opportunityNumber, name, stage,
+         owner:app_user!opportunity_ownerUserId_fkey ( id, fullName )
+       ),
+       lines:quote_line (
+         *,
+         product ( id, name, productCode ),
+         taxRate:tax_rate ( id, name, ratePercent )
+       ),
+       contracts:contract ( id, contractNumber, name, status )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
 
-  const expired = quote.expiryDate < new Date() && !["ACCEPTED", "REJECTED"].includes(quote.status);
+  if (!quoteRow) notFound();
+
+  type Row = Record<string, unknown>;
+  const opportunity = one(quoteRow.opportunity as never) as Row | null;
+
+  const quote = {
+    ...quoteRow,
+    account: one(quoteRow.account as never),
+    contact: one(quoteRow.contact as never),
+    opportunity: opportunity
+      ? { ...opportunity, owner: one(opportunity.owner as never) }
+      : null,
+    // PostgREST cannot order an embedded relation inline.
+    lines: ((quoteRow.lines ?? []) as Row[])
+      .map((l): Row => ({
+        ...l,
+        product: one(l.product as never),
+        taxRate: one(l.taxRate as never),
+      }))
+      .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0)),
+    contracts: (quoteRow.contracts ?? []) as Row[],
+  };
+
+  // expiryDate is an ISO string, so parse before comparing — otherwise this is
+  // always false and an expired quote never shows as expired.
+  const expired =
+    new Date(quote.expiryDate as string) < new Date() &&
+    !["ACCEPTED", "REJECTED"].includes(quote.status as string);
 
   // Other versions of the same quote — a quote is versioned per opportunity.
-  const versions = await prisma.quotation.findMany({
-    where: { opportunityId: quote.opportunityId, deletedAt: null },
-    select: { id: true, quoteNumber: true, versionNumber: true, status: true, totalAmount: true },
-    orderBy: { versionNumber: "desc" },
-  });
+  const { data: versionRows } = await db
+    .from("quotation")
+    .select("id, quoteNumber, versionNumber, status, totalAmount")
+    .eq("opportunityId", quote.opportunityId as string)
+    .is("deletedAt", null)
+    .order("versionNumber", { ascending: false });
+
+  const versions = versionRows ?? [];
 
   return (
     <>
@@ -110,7 +139,7 @@ export default async function QuotationDetailPage({
                     </TR>
                   </THead>
                   <TBody>
-                    {quote.lines.map((l) => (
+                    {quote.lines.map((l: Record<string, any>) => (
                       <TR key={l.id}>
                         <TD className="text-sm">
                           {l.product ? (
@@ -191,7 +220,7 @@ export default async function QuotationDetailPage({
                 <CardTitle>Versions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
-                {versions.map((v) => (
+                {versions.map((v: Record<string, any>) => (
                   <div key={v.id} className="flex items-center justify-between gap-2 border-b pb-2 last:border-0">
                     <Link
                       href={`/quotations/${v.id}`}
@@ -215,7 +244,7 @@ export default async function QuotationDetailPage({
                 <CardTitle>Contracts</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
-                {quote.contracts.map((c) => (
+                {quote.contracts.map((c: Record<string, any>) => (
                   <div key={c.id} className="flex items-center justify-between gap-2">
                     <Link href={`/contracts/${c.id}`} className="text-primary hover:underline">
                       {c.contractNumber}

@@ -1,3 +1,6 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateEnum
 CREATE TYPE "UserStatus" AS ENUM ('ACTIVE', 'INACTIVE', 'SUSPENDED');
 
@@ -242,6 +245,7 @@ CREATE TABLE "app_user" (
     "managerUserId" UUID,
     "roleId" UUID NOT NULL,
     "status" "UserStatus" NOT NULL DEFAULT 'ACTIVE',
+    "partnerId" UUID,
     "costRate" DECIMAL(18,2),
     "defaultBillingRate" DECIMAL(18,2),
     "lastLoginAt" TIMESTAMP(3),
@@ -612,6 +616,7 @@ CREATE TABLE "partner" (
     "payoutCurrencyCode" CHAR(3) NOT NULL DEFAULT 'PKR',
     "taxNumber" VARCHAR(50),
     "withholdingTaxPercent" DECIMAL(8,4),
+    "registrationProtectionDays" INTEGER,
     "bankDetails" JSONB,
     "email" VARCHAR(255),
     "phone" VARCHAR(50),
@@ -1513,6 +1518,9 @@ CREATE UNIQUE INDEX "app_user_employeeNumber_key" ON "app_user"("employeeNumber"
 CREATE UNIQUE INDEX "app_user_email_key" ON "app_user"("email");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "app_user_partnerId_key" ON "app_user"("partnerId");
+
+-- CreateIndex
 CREATE INDEX "app_user_departmentId_idx" ON "app_user"("departmentId");
 
 -- CreateIndex
@@ -1940,6 +1948,9 @@ ALTER TABLE "department" ADD CONSTRAINT "department_managerUserId_fkey" FOREIGN 
 
 -- AddForeignKey
 ALTER TABLE "app_user" ADD CONSTRAINT "app_user_roleId_fkey" FOREIGN KEY ("roleId") REFERENCES "security_role"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "app_user" ADD CONSTRAINT "app_user_partnerId_fkey" FOREIGN KEY ("partnerId") REFERENCES "partner"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "app_user" ADD CONSTRAINT "app_user_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "department"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -2429,3 +2440,568 @@ ALTER TABLE "approval_step" ADD CONSTRAINT "approval_step_approverUserId_fkey" F
 
 -- AddForeignKey
 ALTER TABLE "audit_history" ADD CONSTRAINT "audit_history_changedById_fkey" FOREIGN KEY ("changedById") REFERENCES "app_user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+
+
+-- ============ 001_scope_helpers ============
+-- Row-level security: scope helper functions.
+--
+-- These reproduce src/lib/authz.ts scopeFilter() inside the database, so the
+-- same rules hold no matter which client issues the query.
+--
+-- Design note (see docs/SUPABASE-MIGRATION.md): membership is read from the
+-- tables on every check rather than from JWT claims. Claims are faster but go
+-- stale for the life of a session, so a user moved between teams would keep
+-- their old visibility for up to 8 hours. Today's behaviour is immediate, and
+-- silently regressing that in an access-control path is not worth the lookup.
+--
+-- All functions are STABLE (not IMMUTABLE): results depend on table contents
+-- within a statement, which lets Postgres cache them per-statement.
+
+-- The current app user's id. Set per request by the application via
+--   SELECT set_config('app.user_id', $1, true)
+-- inside the same transaction as the query. Returns NULL when unset, and every
+-- policy below denies on NULL, so an unconfigured connection sees nothing.
+create or replace function app_current_user_id()
+returns uuid
+language sql
+stable
+as $$
+  select nullif(current_setting('app.user_id', true), '')::uuid;
+$$;
+
+-- The signed-in user's data scope: OWN | TEAM | DEPARTMENT | ALL.
+-- Mirrors SecurityRole.dataScope. Inactive or soft-deleted users resolve to
+-- NULL, which denies everywhere -- matching requireUser()'s "Account is not
+-- active." refusal.
+create or replace function app_current_scope()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select r."dataScope"
+  from app_user u
+  join security_role r on r.id = u."roleId"
+  where u.id = app_current_user_id()
+    and u.status = 'ACTIVE'
+    and u."deletedAt" is null;
+$$;
+
+-- The partner this user acts for, or NULL for internal staff.
+-- Per the schema comment on User.partnerId, a non-null value is what makes a
+-- user external. This is the discriminator between the two policy families.
+create or replace function app_current_partner_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select u."partnerId"
+  from app_user u
+  where u.id = app_current_user_id()
+    and u.status = 'ACTIVE'
+    and u."deletedAt" is null;
+$$;
+
+-- The set of owner-user-ids the current user may see, for internal staff.
+--
+-- Deliberately mirrors scopeFilter()'s fallbacks: a TEAM user on no team, and a
+-- DEPARTMENT user with no department, both collapse to OWN rather than opening
+-- up. Those two fallbacks are asserted by test/authz-scope.test.ts.
+create or replace function app_visible_owner_ids()
+returns setof uuid
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := app_current_user_id();
+  v_scope   text := app_current_scope();
+  v_dept    uuid;
+begin
+  if v_user_id is null or v_scope is null then
+    return;  -- no rows: unknown or inactive user sees nothing
+  end if;
+
+  if v_scope = 'OWN' then
+    return query select v_user_id;
+    return;
+  end if;
+
+  if v_scope = 'TEAM' then
+    -- Self, plus everyone sharing any team with us. If we are on no team this
+    -- yields just self, matching the application fallback.
+    return query
+      select distinct m2."userId"
+      from team_member m1
+      join team_member m2 on m2."teamId" = m1."teamId"
+      where m1."userId" = v_user_id
+      union
+      select v_user_id;
+    return;
+  end if;
+
+  if v_scope = 'DEPARTMENT' then
+    select u."departmentId" into v_dept from app_user u where u.id = v_user_id;
+
+    if v_dept is null then
+      return query select v_user_id;  -- fallback to OWN
+    else
+      return query
+        select u.id from app_user u where u."departmentId" = v_dept;
+    end if;
+    return;
+  end if;
+
+  -- 'ALL' is not handled here. Callers must check app_current_scope() = 'ALL'
+  -- separately, because "unrestricted" cannot be expressed as a finite id set.
+  return;
+end;
+$$;
+
+-- The opportunity ids the current partner is linked to.
+--
+-- MUST be SECURITY DEFINER. The external policy on `opportunity` needs to look
+-- at `opportunity_partner`, and that table's own policies look back at
+-- `opportunity` -- a cycle Postgres reports as "infinite recursion detected in
+-- policy for relation". Resolving the link set inside a definer function
+-- bypasses RLS for this lookup and breaks the loop.
+--
+-- Caught by the probe in docs/SUPABASE-MIGRATION.md: the pilot passed only
+-- because opportunity_partner had no RLS yet.
+create or replace function app_partner_opportunity_ids()
+returns setof uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select op."opportunityId"
+  from opportunity_partner op
+  where app_current_partner_id() is not null
+    and op."partnerId" = app_current_partner_id();
+$$;
+
+-- The commission-visible opportunity ids for internal staff, resolved without
+-- re-entering the `opportunity` policies. Same recursion reason as above.
+create or replace function app_internal_visible_opportunity_ids()
+returns setof uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select o.id
+  from opportunity o
+  where o."ownerUserId" in (select app_visible_owner_ids());
+$$;
+
+-- True when the current user is internal staff (not a partner portal login).
+create or replace function app_is_internal()
+returns boolean
+language sql
+stable
+as $$
+  select app_current_user_id() is not null
+     and app_current_partner_id() is null
+     and app_current_scope() is not null;
+$$;
+
+-- Indexes supporting the per-check lookups above.
+create index if not exists team_member_user_idx on team_member ("userId");
+create index if not exists team_member_team_idx on team_member ("teamId");
+create index if not exists app_user_department_idx on app_user ("departmentId");
+
+
+-- ============ 002_policies_pilot ============
+-- Row-level security: pilot policies.
+--
+-- Three representative tables, per docs/SUPABASE-MIGRATION.md step 3:
+--   opportunity        -- internal, ownerUserId-scoped (OWN/TEAM/DEPT/ALL)
+--   commission_record  -- external, partnerId-isolated (portal path)
+--   account            -- internal, second table to prove the pattern repeats
+--
+-- The remaining tables are NOT converted yet. Roll them out only once the
+-- characterization tests pass against these three with the application-level
+-- filter removed.
+--
+-- Two policy families, discriminated by app_current_partner_id():
+--   internal  (partnerId IS NULL)     -> dataScope over ownerUserId
+--   external  (partnerId IS NOT NULL) -> that partner's rows only
+--
+-- The failure that matters is an external user matching an internal policy.
+-- Postgres ORs multiple permissive policies together, so each family's
+-- predicate must explicitly exclude the other -- app_is_internal() in the
+-- internal policies is load-bearing, not decorative.
+
+-- ---------------------------------------------------------------- opportunity
+alter table opportunity enable row level security;
+alter table opportunity force row level security;
+
+drop policy if exists opportunity_internal_read on opportunity;
+create policy opportunity_internal_read on opportunity
+  for select
+  using (
+    app_is_internal()
+    and (
+      app_current_scope() = 'ALL'
+      or "ownerUserId" in (select app_visible_owner_ids())
+    )
+  );
+
+-- External users reach a deal only through their own partner link.
+drop policy if exists opportunity_external_read on opportunity;
+create policy opportunity_external_read on opportunity
+  for select
+  using (
+    app_current_partner_id() is not null
+    -- via SECURITY DEFINER helper, not a direct read of opportunity_partner:
+    -- that table's policies reference opportunity, which would recurse.
+    and id in (select app_partner_opportunity_ids())
+  );
+
+-- ---------------------------------------------------------- commission_record
+alter table commission_record enable row level security;
+alter table commission_record force row level security;
+
+drop policy if exists commission_record_internal_read on commission_record;
+create policy commission_record_internal_read on commission_record
+  for select
+  using (
+    app_is_internal()
+    and (
+      app_current_scope() = 'ALL'
+      -- definer helper, same recursion reason as the opportunity policy
+      or "opportunityId" in (select app_internal_visible_opportunity_ids())
+    )
+  );
+
+-- The portal isolation rule: own partner's commission, nothing else.
+drop policy if exists commission_record_external_read on commission_record;
+create policy commission_record_external_read on commission_record
+  for select
+  using (
+    app_current_partner_id() is not null
+    and "partnerId" = app_current_partner_id()
+  );
+
+-- -------------------------------------------------------------------- account
+alter table account enable row level security;
+alter table account force row level security;
+
+drop policy if exists account_internal_read on account;
+create policy account_internal_read on account
+  for select
+  using (
+    app_is_internal()
+    and (
+      app_current_scope() = 'ALL'
+      or "ownerUserId" in (select app_visible_owner_ids())
+    )
+  );
+
+-- No external policy on account: partners have no account visibility today.
+-- Absent a permissive policy, external users see zero rows here, which is the
+-- intended default.
+
+
+-- ============ 003_policies_rollout ============
+-- Row-level security: full rollout.
+--
+-- Extends the pilot (002) to every remaining scoped table. Depends on the
+-- helpers in 001. Apply in order: 001, 002, 003.
+--
+-- SELECT policies only. Writes still go through the application's
+-- requirePermission() checks; write policies are tracked as follow-up in
+-- docs/SUPABASE-MIGRATION.md.
+--
+-- Two families, discriminated by app_current_partner_id():
+--   internal (partnerId IS NULL)      -> dataScope over ownerUserId
+--   external (partnerId IS NOT NULL)  -> that partner's rows only
+--
+-- app_is_internal() in every internal policy is load-bearing: Postgres ORs
+-- permissive policies together, so without it an external user could match an
+-- internal policy and escape partner isolation.
+
+-- ============================================================== internal tables
+-- Same shape as opportunity/account in 002: owner-scoped, no external access.
+
+do $$
+declare
+  t text;
+  owner_tables text[] := array[
+    'activity', 'campaign', 'contract', 'lead', 'milestone',
+    'project_issue', 'project_phase', 'project_risk', 'support_case'
+  ];
+begin
+  foreach t in array owner_tables loop
+    execute format('alter table %I enable row level security', t);
+    execute format('alter table %I force row level security', t);
+    execute format('drop policy if exists %I on %I', t || '_internal_read', t);
+    execute format($f$
+      create policy %I on %I
+        for select
+        using (
+          app_is_internal()
+          and (
+            app_current_scope() = 'ALL'
+            or "ownerUserId" in (select app_visible_owner_ids())
+          )
+        )
+    $f$, t || '_internal_read', t);
+  end loop;
+end $$;
+
+-- ============================================================== partner tables
+
+-- ------------------------------------------------------- opportunity_partner
+-- The join table linking deals to partners. An external user sees only their
+-- own links; internal users see links on deals they can already see.
+alter table opportunity_partner enable row level security;
+alter table opportunity_partner force row level security;
+
+drop policy if exists opportunity_partner_internal_read on opportunity_partner;
+create policy opportunity_partner_internal_read on opportunity_partner
+  for select
+  using (
+    app_is_internal()
+    and (
+      app_current_scope() = 'ALL'
+      -- definer helper: reading `opportunity` directly here recurses, because
+      -- opportunity's external policy reads this table.
+      or "opportunityId" in (select app_internal_visible_opportunity_ids())
+    )
+  );
+
+drop policy if exists opportunity_partner_external_read on opportunity_partner;
+create policy opportunity_partner_external_read on opportunity_partner
+  for select
+  using (
+    app_current_partner_id() is not null
+    and "partnerId" = app_current_partner_id()
+  );
+
+-- --------------------------------------------------------- commission_payout
+alter table commission_payout enable row level security;
+alter table commission_payout force row level security;
+
+drop policy if exists commission_payout_internal_read on commission_payout;
+create policy commission_payout_internal_read on commission_payout
+  for select
+  using (app_is_internal());
+
+drop policy if exists commission_payout_external_read on commission_payout;
+create policy commission_payout_external_read on commission_payout
+  for select
+  using (
+    app_current_partner_id() is not null
+    and "partnerId" = app_current_partner_id()
+  );
+
+-- ----------------------------------------------------------- partner_contact
+alter table partner_contact enable row level security;
+alter table partner_contact force row level security;
+
+drop policy if exists partner_contact_internal_read on partner_contact;
+create policy partner_contact_internal_read on partner_contact
+  for select
+  using (app_is_internal());
+
+drop policy if exists partner_contact_external_read on partner_contact;
+create policy partner_contact_external_read on partner_contact
+  for select
+  using (
+    app_current_partner_id() is not null
+    and "partnerId" = app_current_partner_id()
+  );
+
+-- ------------------------------------------------------------------- partner
+-- The partner record itself: an external user sees only their own.
+alter table partner enable row level security;
+alter table partner force row level security;
+
+drop policy if exists partner_internal_read on partner;
+create policy partner_internal_read on partner
+  for select
+  using (app_is_internal());
+
+drop policy if exists partner_external_read on partner;
+create policy partner_external_read on partner
+  for select
+  using (
+    app_current_partner_id() is not null
+    and id = app_current_partner_id()
+  );
+
+-- ------------------------------------------------------------------ app_user
+-- Directory data. Internal staff may resolve colleagues (names appear on owned
+-- records). An external user may see only their own row -- never the staff
+-- directory, and never other partners' portal users.
+alter table app_user enable row level security;
+alter table app_user force row level security;
+
+drop policy if exists app_user_internal_read on app_user;
+create policy app_user_internal_read on app_user
+  for select
+  using (app_is_internal());
+
+drop policy if exists app_user_self_read on app_user;
+create policy app_user_self_read on app_user
+  for select
+  using (id = app_current_user_id());
+
+-- NOTE: app_user is read by the helper functions themselves. Those are
+-- SECURITY DEFINER and therefore bypass these policies, so enabling RLS here
+-- does not create a recursive lookup. Verified by the probe in
+-- docs/SUPABASE-MIGRATION.md -- without SECURITY DEFINER this deadlocks into
+-- every user seeing zero rows.
+
+
+-- ============ 009_fn_numbering ============
+-- Human-readable record numbers, ported from src/lib/numbering.ts.
+--
+-- Must live in the database once writes move to supabase-js: the TypeScript
+-- version relies on running inside a Prisma transaction with the surrounding
+-- insert, and supabase-js cannot provide that.
+--
+-- entity_type matches NumberSequence.entityType exactly — the values in
+-- SEQUENCES in src/lib/numbering.ts, e.g. 'CommissionRecord', not 'COMMISSION'.
+
+create or replace function next_sequence_number(p_entity_type text)
+returns text
+language plpgsql
+as $$
+declare
+  v_prefix   text;
+  v_padding  integer;
+  v_year     boolean;
+  v_value    integer;
+begin
+  -- UPDATE ... RETURNING takes the row lock and increments in one statement,
+  -- so concurrent callers cannot collide on a number. Mirrors the atomic
+  -- increment in the Prisma version.
+  update number_sequence
+  set "nextValue" = "nextValue" + 1
+  where "entityType" = p_entity_type
+  returning "nextValue" - 1, prefix, "paddingLength", "includeYear"
+  into v_value, v_prefix, v_padding, v_year;
+
+  if not found then
+    raise exception 'No number sequence configured for "%". Add one in prisma/seed.ts.',
+      p_entity_type using errcode = 'no_data_found';
+  end if;
+
+  if v_year then
+    return format('%s-%s-%s', v_prefix, extract(year from current_date)::int,
+                  lpad(v_value::text, v_padding, '0'));
+  end if;
+
+  return format('%s-%s', v_prefix, lpad(v_value::text, v_padding, '0'));
+end;
+$$;
+
+
+-- ============ 010_fn_clawback ============
+-- Atomic commission clawback.
+--
+-- Ports the prisma.$transaction block in src/server/commission-engine.ts
+-- (clawback()). supabase-js has no transaction API — each call is a separate
+-- HTTP request — so a multi-step money operation must live in the database or
+-- it is not atomic.
+--
+-- Without this, a failure between "create reversal" and "update original"
+-- leaves a reversal with the original still ACCRUED: the ledger double-counts
+-- and nothing raises an error.
+--
+-- SECURITY INVOKER (the default): the caller's RLS still applies, so a user
+-- cannot claw back a commission they cannot see. Authorization for the action
+-- itself (commission:write) stays in the application layer.
+
+create or replace function claw_back_commission(
+  p_record_id uuid,
+  p_reason    text,
+  p_actor_id  uuid
+)
+returns uuid
+language plpgsql
+as $$
+declare
+  v_orig        commission_record%rowtype;
+  v_window_days integer;
+  v_deadline    date;
+  v_new_id      uuid;
+  v_number      text;
+begin
+  -- Lock the row for the duration of the transaction so two concurrent
+  -- clawbacks cannot both pass the status check. The Prisma version relied on
+  -- transaction isolation for this; FOR UPDATE makes it explicit.
+  select * into v_orig
+  from commission_record
+  where id = p_record_id
+  for update;
+
+  if not found then
+    raise exception 'Commission record % not found', p_record_id
+      using errcode = 'no_data_found';
+  end if;
+
+  if v_orig.status = 'CLAWED_BACK' then
+    raise exception 'This commission has already been clawed back.'
+      using errcode = 'raise_exception';
+  end if;
+
+  -- Clawback window, when the plan defines one.
+  select cp."clawbackWindowDays" into v_window_days
+  from commission_plan cp
+  where cp.id = v_orig."planId";
+
+  if v_window_days is not null then
+    v_deadline := v_orig."earnedDate" + v_window_days;
+    if current_date > v_deadline then
+      raise exception 'Clawback window closed on % for %', v_deadline, v_orig."commissionNumber"
+        using errcode = 'raise_exception';
+    end if;
+  end if;
+
+  -- Must match SEQUENCES.COMMISSION in src/lib/numbering.ts, which is the
+  -- NumberSequence.entityType value 'CommissionRecord'.
+  v_number := next_sequence_number('CommissionRecord');
+  v_new_id := gen_random_uuid();
+
+  -- The reversal: every money column negated.
+  insert into commission_record (
+    id, "commissionNumber", "partnerId", "opportunityId", "opportunityPartnerId",
+    "planId", status, basis, "basisAmount", "ratePercent", "commissionAmount",
+    "withholdingTaxAmount", "netPayableAmount", "currencyCode", "earnedDate",
+    "reversesRecordId", "calculationNotes", "createdAt", "updatedAt"
+  ) values (
+    v_new_id, v_number, v_orig."partnerId", v_orig."opportunityId",
+    v_orig."opportunityPartnerId", v_orig."planId", 'CLAWED_BACK', v_orig.basis,
+    -v_orig."basisAmount", v_orig."ratePercent", -v_orig."commissionAmount",
+    -v_orig."withholdingTaxAmount", -v_orig."netPayableAmount",
+    v_orig."currencyCode", current_date, v_orig.id,
+    format('Clawback of %s: %s', v_orig."commissionNumber", p_reason),
+    now(), now()
+  );
+
+  update commission_record
+  set status = 'CLAWED_BACK',
+      "rejectionReason" = p_reason,
+      "updatedAt" = now()
+  where id = v_orig.id;
+
+  insert into audit_history (
+    id, "entityType", "entityId", "fieldName", "oldValue", "newValue",
+    "changedById", "changedAt"
+  ) values (
+    gen_random_uuid(), 'CommissionRecord', v_orig.id, 'status',
+    v_orig.status::text, 'CLAWED_BACK', p_actor_id, now()
+  );
+
+  return v_new_id;
+end;
+$$;

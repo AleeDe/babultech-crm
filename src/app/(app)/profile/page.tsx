@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/authz";
-import { prisma } from "@/lib/prisma";
+import { supabaseServer } from "@/lib/supabase";
+import { one } from "@/lib/decimal";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, DetailRow,
 } from "@/components/ui";
@@ -16,15 +17,29 @@ const SCOPE_EXPLAINER: Record<string, string> = {
 export default async function ProfilePage() {
   const session = await requireUser();
 
-  const me = await prisma.user.findUniqueOrThrow({
-    where: { id: session.id },
-    include: {
-      role: true,
-      department: { select: { name: true } },
-      manager: { select: { fullName: true } },
-      partner: { select: { id: true, displayName: true, partnerNumber: true } },
-    },
-  });
+  const db = await supabaseServer();
+
+  const { data: row } = await db
+    .from("app_user")
+    .select(
+      `*,
+       role:security_role ( * ),
+       department:app_user_departmentId_fkey ( name ),
+       manager:managerUserId ( fullName ),
+       partner:app_user_partnerId_fkey ( id, displayName, partnerNumber )`,
+    )
+    .eq("id", session.id)
+    .single();
+
+  if (!row) throw new Error("Your account could not be loaded.");
+
+  const me = {
+    ...row,
+    role: one(row.role as never),
+    department: one(row.department as never),
+    manager: one(row.manager as never),
+    partner: one(row.partner as never),
+  };
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -73,7 +88,7 @@ export default async function ProfilePage() {
                 {SCOPE_EXPLAINER[me.role.dataScope] ?? humanize(me.role.dataScope)}
               </DetailRow>
               <div className="flex flex-wrap gap-1.5 pt-1">
-                {me.role.permissions.map((p) => (
+                {me.role.permissions.map((p: string) => (
                   <Badge key={p} tone={p === "*" ? "danger" : "neutral"} className="font-mono">
                     {p === "*" ? "everything" : p}
                   </Badge>
