@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import { signIn, auth } from "@/lib/auth";
 import { Button, Card, Field, Input, Alert } from "@/components/ui";
+import { PasswordInput } from "@/components/password-input";
 
 export default async function LoginPage({
   searchParams,
@@ -50,7 +51,7 @@ export default async function LoginPage({
             <Input name="email" type="email" autoComplete="email" required placeholder="you@babultech.com" />
           </Field>
           <Field label="Password" required>
-            <Input name="password" type="password" autoComplete="current-password" required />
+            <PasswordInput required />
           </Field>
           <Button type="submit" className="w-full">
             Sign in

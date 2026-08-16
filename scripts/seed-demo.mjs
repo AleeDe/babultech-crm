@@ -897,6 +897,141 @@ await upsert(
 );
 console.log("  ok project_member      5");
 
+// -------------------------------------------------------------- campaigns
+const campaignTypes = [];
+for (const spec of [
+  { name: "Trade Show", channel: "Event", active: true },
+  { name: "Email Campaign", channel: "Email", active: true },
+  { name: "Paid Search", channel: "Digital", active: true },
+  { name: "Partner Co-Marketing", channel: "Partner", active: true },
+]) {
+  campaignTypes.push(await ensureRow("campaign_type", { name: spec.name }, spec));
+}
+const campaignType = Object.fromEntries(campaignTypes.map((c) => [c.name, c]));
+console.log(`  ok campaign_type       ${campaignTypes.length}`);
+
+const campaigns = await upsert(
+  "campaign",
+  [
+    { campaignNumber: "CAM-2026-00001", name: "Food Tech Expo 2026", campaignTypeId: campaignType["Trade Show"].id, ownerUserId: manager, status: "COMPLETED", description: "Stand and speaking slot at the Karachi food technology expo.", startDate: day(-75), endDate: day(-70), budgetAmount: 850000, actualCost: 910000, expectedLeads: 40, expectedRevenue: 6000000 },
+    { campaignNumber: "CAM-2026-00002", name: "Manufacturing ERP — Q3 Email Series", campaignTypeId: campaignType["Email Campaign"].id, ownerUserId: exec, status: "ACTIVE", description: "Six-part nurture sequence to the manufacturing list.", startDate: day(-20), endDate: day(40), budgetAmount: 180000, actualCost: 62000, expectedLeads: 120, expectedRevenue: 4500000 },
+    { campaignNumber: "CAM-2026-00003", name: "Google Ads — ERP Pakistan", campaignTypeId: campaignType["Paid Search"].id, ownerUserId: exec, status: "ACTIVE", description: "Search campaign on ERP and inventory keywords.", startDate: day(-60), endDate: day(30), budgetAmount: 600000, actualCost: 412000, expectedLeads: 90, expectedRevenue: 3200000 },
+    { campaignNumber: "CAM-2026-00004", name: "NexGen Joint Webinar", campaignTypeId: campaignType["Partner Co-Marketing"].id, ownerUserId: manager, status: "PLANNED", description: "Co-hosted webinar with NexGen Systems on export compliance.", startDate: day(18), endDate: day(18), budgetAmount: 220000, actualCost: 0, expectedLeads: 60, expectedRevenue: 2800000 },
+    { campaignNumber: "CAM-2026-00005", name: "Retail Sector Outreach", campaignTypeId: campaignType["Email Campaign"].id, ownerUserId: exec, status: "PAUSED", description: "Paused pending new sector collateral.", startDate: day(-45), endDate: day(15), budgetAmount: 150000, actualCost: 38000, expectedLeads: 50, expectedRevenue: 1900000 },
+  ],
+  "campaignNumber",
+);
+console.log(`  ok campaign            ${campaigns.length}`);
+
+// -------------------------------------------------------------- contracts
+const contracts = await upsert(
+  "contract",
+  [
+    { contractNumber: "CTR-2026-00001", name: "Karachi Logistics — CRM Licence & Services", accountId: account["ACC-2026-00003"].id, opportunityId: opp["OPP-2026-00003"].id, quotationId: quote["QUO-2026-00003"].id, ownerUserId: exec, contractType: "Licence & Services", status: "ACTIVE", startDate: day(-38), endDate: day(327), contractValue: 3717000, currencyCode: "PKR", billingFrequency: "MILESTONE", renewalType: "MANUAL", noticePeriodDays: 60, signedDate: day(-38) },
+    { contractNumber: "CTR-2026-00002", name: "Sapphire Textiles — ERP Subscription", accountId: account["ACC-2026-00001"].id, ownerUserId: manager, contractType: "Subscription", status: "ACTIVE", startDate: day(-300), endDate: day(65), contractValue: 2619600, currencyCode: "PKR", billingFrequency: "ANNUAL", renewalType: "AUTO_RENEW", noticePeriodDays: 90, signedDate: day(-300) },
+    { contractNumber: "CTR-2026-00003", name: "Gujranwala Steel — Support Retainer", accountId: account["ACC-2026-00006"].id, ownerUserId: manager, contractType: "Support Retainer", status: "EXPIRED", startDate: day(-430), endDate: day(-65), contractValue: 1357000, currencyCode: "PKR", billingFrequency: "MONTHLY", renewalType: "MANUAL", noticePeriodDays: 30, signedDate: day(-430), terminationReason: "Lapsed while service escalations were unresolved." },
+    { contractNumber: "CTR-2026-00004", name: "Sapphire Textiles — Second Site Extension", accountId: account["ACC-2026-00001"].id, opportunityId: opp["OPP-2026-00001"].id, quotationId: quote["QUO-2026-00001"].id, ownerUserId: manager, contractType: "Licence & Services", status: "SENT_FOR_SIGNATURE", startDate: day(14), endDate: day(379), contractValue: 5487000, currencyCode: "PKR", billingFrequency: "MILESTONE", renewalType: "MANUAL", noticePeriodDays: 60 },
+    { contractNumber: "CTR-2026-00005", name: "Indus Pharma — Compliance Module", accountId: account["ACC-2026-00002"].id, ownerUserId: admin, contractType: "Fixed Price", status: "DRAFT", startDate: day(7), endDate: day(190), contractValue: 1850000, currencyCode: "PKR", billingFrequency: "MILESTONE", renewalType: "MANUAL" },
+  ],
+  "contractNumber",
+);
+console.log(`  ok contract            ${contracts.length}`);
+
+// ---------------------------------------------------- project breakdown
+const phaseRows = [
+  { projectId: project["PRJ-2026-00001"].id, name: "Discovery & Design", sequenceNumber: 1, ownerUserId: manager, plannedStart: day(-35), plannedEnd: day(-15), actualStart: day(-35), actualEnd: day(-14), status: "COMPLETED", completionPercent: 100, budgetedHours: 240 },
+  { projectId: project["PRJ-2026-00001"].id, name: "Build & Configuration", sequenceNumber: 2, ownerUserId: exec, plannedStart: day(-14), plannedEnd: day(20), actualStart: day(-14), status: "ACTIVE", completionPercent: 55, budgetedHours: 560 },
+  { projectId: project["PRJ-2026-00001"].id, name: "UAT & Go-Live", sequenceNumber: 3, ownerUserId: manager, plannedStart: day(21), plannedEnd: day(55), status: "NOT_STARTED", completionPercent: 0, budgetedHours: 400 },
+  { projectId: project["PRJ-2026-00003"].id, name: "Requirements", sequenceNumber: 1, ownerUserId: admin, plannedStart: day(-70), plannedEnd: day(-45), actualStart: day(-70), actualEnd: day(-40), status: "COMPLETED", completionPercent: 100, budgetedHours: 160 },
+  { projectId: project["PRJ-2026-00003"].id, name: "Build", sequenceNumber: 2, ownerUserId: exec, plannedStart: day(-40), plannedEnd: day(5), actualStart: day(-38), status: "ACTIVE", completionPercent: 70, budgetedHours: 320 },
+];
+
+const phases = [];
+for (const projId of new Set(phaseRows.map((r) => r.projectId))) {
+  phases.push(
+    ...(await replaceChildren(
+      "project_phase",
+      "projectId",
+      projId,
+      phaseRows.filter((r) => r.projectId === projId),
+    )),
+  );
+}
+const phase = Object.fromEntries(phases.map((p) => [`${p.projectId}:${p.name}`, p]));
+console.log(`  ok project_phase       ${phases.length}`);
+
+const p1 = project["PRJ-2026-00001"].id;
+const p3 = project["PRJ-2026-00003"].id;
+
+const milestoneRows = [
+  { projectId: p1, phaseId: phase[`${p1}:Discovery & Design`].id, name: "Design sign-off", ownerUserId: manager, dueDate: day(-15), completedDate: day(-14), status: "COMPLETED", customerApprovalRequired: true, customerApprovalDate: day(-14), billingPercent: 40, billingAmount: 1486800, invoicedAt: at(-38) },
+  { projectId: p1, phaseId: phase[`${p1}:Build & Configuration`].id, name: "UAT entry", ownerUserId: exec, dueDate: day(20), status: "IN_PROGRESS", customerApprovalRequired: true, billingPercent: 30, billingAmount: 1115100 },
+  { projectId: p1, phaseId: phase[`${p1}:UAT & Go-Live`].id, name: "Go-live", ownerUserId: manager, dueDate: day(55), status: "PLANNED", customerApprovalRequired: true, billingPercent: 30, billingAmount: 1115100 },
+  { projectId: p3, phaseId: phase[`${p3}:Build`].id, name: "Compliance build complete", ownerUserId: admin, dueDate: day(5), status: "DELAYED", description: "Slipped: customer-side reference data still outstanding.", billingPercent: 100, billingAmount: 1850000 },
+];
+
+const milestones = [];
+for (const projId of new Set(milestoneRows.map((r) => r.projectId))) {
+  milestones.push(
+    ...(await replaceChildren(
+      "milestone",
+      "projectId",
+      projId,
+      milestoneRows.filter((r) => r.projectId === projId),
+    )),
+  );
+}
+console.log(`  ok milestone           ${milestones.length}`);
+
+const taskRows = [
+  { projectId: p1, phaseId: phase[`${p1}:Build & Configuration`].id, name: "Migrate account and contact records", assignedUserId: exec, status: "COMPLETED", priority: "HIGH", startDate: day(-14), dueDate: day(-6), completedDate: day(-7), estimatedHours: 40, completionPercent: 100, billable: true, sortOrder: 0 },
+  { projectId: p1, phaseId: phase[`${p1}:Build & Configuration`].id, name: "Configure sales pipeline stages", assignedUserId: exec, status: "IN_PROGRESS", priority: "MEDIUM", startDate: day(-6), dueDate: day(6), estimatedHours: 32, completionPercent: 60, billable: true, sortOrder: 1 },
+  { projectId: p1, phaseId: phase[`${p1}:Build & Configuration`].id, name: "Build management dashboards", assignedUserId: manager, status: "NOT_STARTED", priority: "MEDIUM", startDate: day(6), dueDate: day(18), estimatedHours: 48, completionPercent: 0, billable: true, sortOrder: 2 },
+  { projectId: p1, phaseId: phase[`${p1}:UAT & Go-Live`].id, name: "Write UAT scripts", assignedUserId: manager, status: "NOT_STARTED", priority: "HIGH", startDate: day(21), dueDate: day(30), estimatedHours: 24, completionPercent: 0, billable: true, sortOrder: 3 },
+  { projectId: p3, phaseId: phase[`${p3}:Build`].id, name: "Batch traceability data model", assignedUserId: exec, status: "COMPLETED", priority: "CRITICAL", startDate: day(-38), dueDate: day(-20), completedDate: day(-22), estimatedHours: 60, completionPercent: 100, billable: true, sortOrder: 0 },
+  { projectId: p3, phaseId: phase[`${p3}:Build`].id, name: "DRAP reporting templates", assignedUserId: exec, status: "BLOCKED", priority: "CRITICAL", startDate: day(-20), dueDate: day(2), estimatedHours: 80, completionPercent: 45, billable: true, acceptanceCriteria: "Blocked: awaiting the customer's reference data extract.", sortOrder: 1 },
+];
+
+const tasks = [];
+for (const projId of new Set(taskRows.map((r) => r.projectId))) {
+  tasks.push(
+    ...(await replaceChildren(
+      "project_task",
+      "projectId",
+      projId,
+      taskRows.filter((r) => r.projectId === projId),
+    )),
+  );
+}
+const taskByName = Object.fromEntries(tasks.map((t) => [t.name, t]));
+console.log(`  ok project_task        ${tasks.length}`);
+
+// ------------------------------------------------------------- time logs
+const timeLogRows = [
+  { userId: exec, projectId: p1, projectTaskId: taskByName["Migrate account and contact records"].id, workDate: day(-12), hours: 7.5, description: "Mapped legacy account fields and ran the first import pass.", billable: true, billingRate: 6500, costRate: 3100, approvalStatus: "APPROVED", approvedById: manager, approvedAt: at(-10) },
+  { userId: exec, projectId: p1, projectTaskId: taskByName["Migrate account and contact records"].id, workDate: day(-11), hours: 8, description: "Contact deduplication and second import pass.", billable: true, billingRate: 6500, costRate: 3100, approvalStatus: "APPROVED", approvedById: manager, approvedAt: at(-10) },
+  { userId: exec, projectId: p1, projectTaskId: taskByName["Configure sales pipeline stages"].id, workDate: day(-4), hours: 6, description: "Configured stages and probability defaults with the customer.", billable: true, billingRate: 6500, costRate: 3100, approvalStatus: "SUBMITTED" },
+  { userId: exec, projectId: p1, projectTaskId: taskByName["Configure sales pipeline stages"].id, workDate: day(-1), hours: 5.5, description: "Stage transition rules and validation.", billable: true, billingRate: 6500, costRate: 3100, approvalStatus: "DRAFT" },
+  { userId: manager, projectId: p1, workDate: day(-3), hours: 3, description: "Weekly steering call and status pack.", billable: false, billingRate: 8500, costRate: 4200, approvalStatus: "SUBMITTED" },
+  { userId: exec, projectId: p3, projectTaskId: taskByName["Batch traceability data model"].id, workDate: day(-25), hours: 8, description: "Data model for batch genealogy.", billable: true, billingRate: 7200, costRate: 3600, approvalStatus: "APPROVED", approvedById: admin, approvedAt: at(-23) },
+  { userId: exec, projectId: p3, projectTaskId: taskByName["DRAP reporting templates"].id, workDate: day(-6), hours: 4, description: "Template scaffolding — paused pending customer data.", billable: true, billingRate: 7200, costRate: 3600, approvalStatus: "REJECTED" },
+];
+
+{
+  const { error: delErr } = await db
+    .from("time_log")
+    .delete()
+    .in("projectId", [p1, p3]);
+  fail("time_log clear", delErr);
+
+  const now = new Date().toISOString();
+  const { error } = await db
+    .from("time_log")
+    .insert(timeLogRows.map((r) => ({ id: randomUUID(), updatedAt: now, ...r })));
+  fail("time_log insert", error);
+}
+console.log(`  ok time_log            ${timeLogRows.length}`);
+
 // ------------------------------------------------------------ activities
 const activities = [
   { activityType: "CALL", subject: "Discovery call — Multan Agro Foods", ownerUserId: exec, status: "COMPLETED", priority: "MEDIUM", startAt: at(-2), dueAt: at(-2), completedAt: at(-2), description: "Walked through their current finance process.", outcome: "Budget confirmed for this financial year. Sending a proposal." },
@@ -921,6 +1056,8 @@ Done. Demo data seeded:
   ${leads.length} leads           ${opportunities.length} opportunities  ${quotations.length} quotations
   ${partners.length} partners        ${invoices.length} invoices       ${payments.length} payments
   ${cases.length} support cases   ${projects.length} projects       ${activities.length} activities
+  ${campaigns.length} campaigns       ${contracts.length} contracts      ${phases.length} phases
+  ${milestones.length} milestones      ${tasks.length} tasks          ${timeLogRows.length} time logs
 
 Sign in with any seeded user — see scripts/seed-cloud.mjs for credentials.
 `);

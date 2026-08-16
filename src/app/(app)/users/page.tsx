@@ -21,7 +21,12 @@ export default async function UsersPage({
 
   const active = users.filter((u) => u.status === "ACTIVE");
   const partners = users.filter((u) => u.partnerId);
-  const admins = users.filter((u) => u.role.permissions.includes("*") && u.status === "ACTIVE");
+  // role comes from an embedded join that RLS can withhold, so it may be null
+  // even for a user that exists. Treating that as "not an admin" keeps the page
+  // rendering instead of crashing on a permissions read.
+  const admins = users.filter(
+    (u) => u.role?.permissions?.includes("*") && u.status === "ACTIVE",
+  );
   const noRates = active.filter((u) => !u.partnerId && (!u.costRate || !u.defaultBillingRate));
 
   return (
@@ -100,7 +105,7 @@ export default async function UsersPage({
             </THead>
             <TBody>
               {users.map((u) => {
-                const isAdmin = u.role.permissions.includes("*");
+                const isAdmin = u.role?.permissions?.includes("*") ?? false;
                 return (
                   <TR key={u.id} className={u.status !== "ACTIVE" ? "opacity-60" : undefined}>
                     <TD>
@@ -113,7 +118,7 @@ export default async function UsersPage({
                     </TD>
                     <TD>
                       <Badge tone={isAdmin ? "danger" : u.partner ? "warning" : "neutral"}>
-                        {u.role.name}
+                        {(u.role?.name ?? "—")}
                       </Badge>
                       {u.partner && (
                         <Link
@@ -124,7 +129,7 @@ export default async function UsersPage({
                         </Link>
                       )}
                     </TD>
-                    <TD className="text-xs text-muted-foreground">{humanize(u.role.dataScope)}</TD>
+                    <TD className="text-xs text-muted-foreground">{humanize((u.role?.dataScope ?? ""))}</TD>
                     <TD className="text-sm text-muted-foreground">{u.department?.name ?? "—"}</TD>
                     <TD className="text-sm text-muted-foreground">{u.manager?.fullName ?? "—"}</TD>
                     <TD className="whitespace-nowrap text-right text-xs text-muted-foreground">

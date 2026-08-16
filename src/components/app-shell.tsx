@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Megaphone, UserPlus, Building2, Users, Target,
   FileText, FileSignature, Handshake, Coins, LifeBuoy, FolderKanban,
   Receipt, Package, CalendarCheck, Menu, X, LogOut, Clock, UsersRound, Banknote,
-  ShieldCheck, UserCog,
+  ShieldCheck, UserCog, Settings, BookOpen,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { signOutAction } from "@/lib/sign-out-action";
@@ -77,7 +77,14 @@ const NAV: NavGroup[] = [
   {
     label: "Administration",
     adminOnly: true,
-    items: [{ href: "/users", label: "Users", icon: ShieldCheck }],
+    items: [
+      { href: "/users", label: "Users", icon: ShieldCheck },
+      { href: "/settings", label: "Settings", icon: Settings },
+    ],
+  },
+  {
+    label: "Help",
+    items: [{ href: "/guide", label: "User guide", icon: BookOpen }],
   },
 ];
 

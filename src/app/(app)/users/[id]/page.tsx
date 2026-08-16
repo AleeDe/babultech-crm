@@ -31,7 +31,7 @@ export default async function UserDetailPage({
   if (!user) notFound();
 
   const audit = await getAuditTrail("User", id, 15);
-  const isAdmin = user.role.permissions.includes("*");
+  const isAdmin = user.role?.permissions?.includes("*") ?? false;
   const isPartner = Boolean(user.partnerId);
   const missingRates = !isPartner && (!user.costRate || !user.defaultBillingRate);
 
@@ -41,7 +41,7 @@ export default async function UserDetailPage({
         title={user.fullName}
         description={`${user.email}${user.jobTitle ? ` · ${user.jobTitle}` : ""}`}
       >
-        <Badge tone={isAdmin ? "danger" : isPartner ? "warning" : "neutral"}>{user.role.name}</Badge>
+        <Badge tone={isAdmin ? "danger" : isPartner ? "warning" : "neutral"}>{(user.role?.name ?? "—")}</Badge>
         <Badge tone={statusTone(user.status)}>{humanize(user.status)}</Badge>
         <Button asChild variant="outline">
           <Link href={`/users/${user.id}/edit`}>Edit</Link>
@@ -84,11 +84,11 @@ export default async function UserDetailPage({
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Data scope" value={humanize(user.role.dataScope)} sublabel={SCOPE_EXPLAINER[user.role.dataScope]} />
+        <StatTile label="Data scope" value={humanize((user.role?.dataScope ?? ""))} sublabel={SCOPE_EXPLAINER[(user.role?.dataScope ?? "")]} />
         <StatTile
           label="Permissions"
-          value={isAdmin ? "All" : String(user.role.permissions.length)}
-          sublabel={user.role.name}
+          value={isAdmin ? "All" : String((user.role?.permissions ?? []).length)}
+          sublabel={(user.role?.name ?? "—")}
           tone={isAdmin ? "danger" : "neutral"}
         />
         <StatTile
@@ -115,7 +115,7 @@ export default async function UserDetailPage({
                 <p className="text-sm text-muted-foreground">{user.role.description}</p>
               )}
               <div className="flex flex-wrap gap-1.5">
-                {user.role.permissions.map((p: string) => (
+                {(user.role?.permissions ?? []).map((p: string) => (
                   <Badge key={p} tone={p === "*" ? "danger" : "neutral"} className="font-mono">
                     {p === "*" ? "everything" : p}
                   </Badge>
