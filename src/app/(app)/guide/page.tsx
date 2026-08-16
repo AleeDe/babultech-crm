@@ -344,6 +344,12 @@ export default async function GuidePage() {
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           <p>
+            <strong className="text-foreground">Quotations and invoices email out.</strong>{" "}
+            Open one and use Send to customer. The number, dates and totals are appended for you,
+            and sending moves the record to Sent. Every attempt is logged on the record — including
+            failures — so &quot;did anyone send this?&quot; has an answer.
+          </p>
+          <p>
             <strong className="text-foreground">Every list exports to CSV.</strong>{" "}
             The Export button sends what you are currently looking at, filters and all — not the
             whole table. Amounts and dates come out as raw values so a spreadsheet can sum and sort

@@ -4,6 +4,8 @@ import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
 import { NotesPanel } from "@/components/notes-panel";
 import { DocumentsPanel } from "@/components/documents-panel";
+import { SendEmailPanel } from "@/components/send-email-panel";
+import { sendQuotation, listEmails, isEmailConfigured } from "@/server/email";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
@@ -21,9 +23,11 @@ export default async function QuotationDetailPage({
 }) {
   const { id } = await params;
 
-  const [notes, documents] = await Promise.all([
+  const [notes, documents, emails, emailConfigured] = await Promise.all([
     listNotes("Quotation", id),
     listDocuments("Quotation", id),
+    listEmails("Quotation", id),
+    isEmailConfigured(),
   ]);
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="quotations" />;
@@ -53,6 +57,10 @@ export default async function QuotationDetailPage({
 
   type Row = Record<string, unknown>;
   const opportunity = one(quoteRow.opportunity as never) as Row | null;
+
+  // Bound here rather than passed through the client, where the id could be
+  // rewritten to send someone else's quotation.
+  const sendQuotationHere = sendQuotation.bind(null, id);
 
   const quote = {
     ...quoteRow,
@@ -188,10 +196,12 @@ export default async function QuotationDetailPage({
         </div>
 
         <div className="space-y-6">
+          {/* expiryDate arrives from PostgREST as a string, not a Date, so it
+              is parsed before toISOString — calling it on a string throws. */}
           <QuoteActions
             quoteId={quote.id}
             status={quote.status}
-            expiryDate={quote.expiryDate.toISOString()}
+            expiryDate={new Date(quote.expiryDate as string).toISOString()}
           />
 
           <Card>
@@ -265,6 +275,22 @@ export default async function QuotationDetailPage({
             </Card>
           )}
         </div>
+      </div>
+
+      <div className="mt-6">
+        <SendEmailPanel
+          documentLabel="quotation"
+          defaultTo={quote.contact?.email ?? null}
+          defaultSubject={`Quotation ${quote.quoteNumber} from BabulTech`}
+          defaultMessage={`Dear ${quote.contact?.firstName ?? "Sir or Madam"},
+
+Please find our quotation below for your consideration. It is valid until the date shown.
+
+Do let me know if you would like anything adjusted.`}
+          configured={emailConfigured}
+          emails={emails}
+          send={sendQuotationHere}
+        />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">

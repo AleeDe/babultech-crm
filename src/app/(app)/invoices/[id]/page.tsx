@@ -4,6 +4,8 @@ import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
 import { NotesPanel } from "@/components/notes-panel";
 import { DocumentsPanel } from "@/components/documents-panel";
+import { SendEmailPanel } from "@/components/send-email-panel";
+import { sendInvoice, listEmails, isEmailConfigured } from "@/server/email";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
@@ -21,10 +23,16 @@ export default async function InvoiceDetailPage({
 }) {
   const { id } = await params;
 
-  const [notes, documents] = await Promise.all([
+  const [notes, documents, emails, emailConfigured] = await Promise.all([
     listNotes("Invoice", id),
     listDocuments("Invoice", id),
+    listEmails("Invoice", id),
+    isEmailConfigured(),
   ]);
+
+  // Bound here rather than passed through the client, where the id could be
+  // rewritten to send someone else's invoice.
+  const sendInvoiceHere = sendInvoice.bind(null, id);
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.INVOICE_READ)) return <Forbidden what="invoices" />;
   const db = await supabaseServer();
@@ -330,6 +338,22 @@ export default async function InvoiceDetailPage({
             </Card>
           )}
         </div>
+      </div>
+
+      <div className="mt-6">
+        <SendEmailPanel
+          documentLabel="invoice"
+          defaultTo={invoice.contact?.email ?? null}
+          defaultSubject={`Invoice ${invoice.invoiceNumber} from BabulTech`}
+          defaultMessage={`Dear ${invoice.contact?.firstName ?? "Sir or Madam"},
+
+Please find our invoice below. Payment details are as per our agreed terms.
+
+Do let me know if anything needs clarifying.`}
+          configured={emailConfigured}
+          emails={emails}
+          send={sendInvoiceHere}
+        />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
