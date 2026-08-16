@@ -57,14 +57,14 @@ export default async function ProductsPage({
             <THead>
               <TR>
                 <TH>Product</TH>
-                <TH>Category</TH>
-                <TH>Type</TH>
-                <TH>Billing</TH>
-                <TH>Unit</TH>
-                <TH className="text-right">Price</TH>
-                <TH className="text-right">Cost</TH>
-                <TH className="text-right">Commission</TH>
-                <TH>Tax</TH>
+                <TH priority="tertiary">Category</TH>
+                <TH priority="secondary">Type</TH>
+                <TH priority="tertiary">Billing</TH>
+                <TH priority="tertiary">Unit</TH>
+                <TH className="text-right" priority="secondary">Price</TH>
+                <TH className="text-right" priority="tertiary">Cost</TH>
+                <TH className="text-right" priority="tertiary">Commission</TH>
+                <TH priority="tertiary">Tax</TH>
               </TR>
             </THead>
             <TBody>
@@ -76,15 +76,15 @@ export default async function ProductsPage({
                     </Link>
                     <p className="text-xs text-muted-foreground">{p.productCode}</p>
                   </TD>
-                  <TD className="text-sm text-muted-foreground">{p.category ?? "—"}</TD>
-                  <TD>
+                  <TD priority="tertiary" className="text-sm text-muted-foreground">{p.category ?? "—"}</TD>
+                  <TD priority="secondary">
                     <Badge tone="neutral">{humanize(p.productType)}</Badge>
                   </TD>
-                  <TD className="text-sm text-muted-foreground">{humanize(p.billingType)}</TD>
-                  <TD className="text-sm text-muted-foreground">{p.unitOfMeasure ?? "—"}</TD>
-                  <TD className="text-right font-medium tabular">{formatMoney(p.standardPrice)}</TD>
-                  <TD className="text-right tabular text-muted-foreground">{formatMoney(p.standardCost)}</TD>
-                  <TD className="text-right tabular">
+                  <TD priority="tertiary" className="text-sm text-muted-foreground">{humanize(p.billingType)}</TD>
+                  <TD priority="tertiary" className="text-sm text-muted-foreground">{p.unitOfMeasure ?? "—"}</TD>
+                  <TD priority="secondary" className="text-right font-medium tabular">{formatMoney(p.standardPrice)}</TD>
+                  <TD priority="tertiary" className="text-right tabular text-muted-foreground">{formatMoney(p.standardCost)}</TD>
+                  <TD priority="tertiary" className="text-right tabular">
                     {!p.commissionable ? (
                       <span className="text-muted-foreground">excluded</span>
                     ) : p.commissionPercent ? (
@@ -93,7 +93,7 @@ export default async function ProductsPage({
                       <span className="text-muted-foreground">plan rate</span>
                     )}
                   </TD>
-                  <TD className="text-sm text-muted-foreground">
+                  <TD priority="tertiary" className="text-sm text-muted-foreground">
                     {p.defaultTaxRate ? `${p.defaultTaxRate?.name} ${formatPercent(p.defaultTaxRate?.ratePercent, 0)}` : "—"}
                   </TD>
                 </TR>

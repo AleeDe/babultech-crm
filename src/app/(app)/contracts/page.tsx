@@ -81,13 +81,13 @@ export default async function ContractsPage() {
             <THead>
               <TR>
                 <TH>Contract</TH>
-                <TH>Customer</TH>
-                <TH>Type</TH>
-                <TH>Owner</TH>
-                <TH>Term</TH>
-                <TH className="text-right">Value</TH>
-                <TH>Billing</TH>
-                <TH>Renewal</TH>
+                <TH priority="secondary">Customer</TH>
+                <TH priority="tertiary">Type</TH>
+                <TH priority="tertiary">Owner</TH>
+                <TH priority="tertiary">Term</TH>
+                <TH className="text-right" priority="secondary">Value</TH>
+                <TH priority="tertiary">Billing</TH>
+                <TH priority="tertiary">Renewal</TH>
                 <TH>Status</TH>
               </TR>
             </THead>
@@ -103,24 +103,24 @@ export default async function ContractsPage() {
                       </Link>
                       <p className="text-xs text-muted-foreground">{c.contractNumber}</p>
                     </TD>
-                    <TD className="text-sm">
+                    <TD priority="secondary" className="text-sm">
                       <Link href={`/accounts/${c.account?.id}`} className="hover:underline">
                         {c.account?.name}
                       </Link>
                     </TD>
-                    <TD className="text-sm text-muted-foreground">{c.contractType}</TD>
-                    <TD className="text-sm text-muted-foreground">{c.owner?.fullName}</TD>
-                    <TD className={`text-sm ${soon ? "text-amber-600 dark:text-amber-400" : ""}`}>
+                    <TD priority="tertiary" className="text-sm text-muted-foreground">{c.contractType}</TD>
+                    <TD priority="tertiary" className="text-sm text-muted-foreground">{c.owner?.fullName}</TD>
+                    <TD priority="tertiary" className={`text-sm ${soon ? "text-amber-600 dark:text-amber-400" : ""}`}>
                       {formatDate(c.startDate)} → {formatDate(c.endDate)}
                       {soon && <p className="text-xs">{days} days left</p>}
                     </TD>
-                    <TD className="text-right font-medium tabular">
+                    <TD priority="secondary" className="text-right font-medium tabular">
                       {formatMoney(c.contractValue, c.currencyCode)}
                     </TD>
-                    <TD className="text-sm text-muted-foreground">
+                    <TD priority="tertiary" className="text-sm text-muted-foreground">
                       {c.billingFrequency ? humanize(c.billingFrequency) : "—"}
                     </TD>
-                    <TD className="text-sm text-muted-foreground">
+                    <TD priority="tertiary" className="text-sm text-muted-foreground">
                       {c.renewalType ? humanize(c.renewalType) : "—"}
                       {c.noticePeriodDays && <p className="text-xs">{c.noticePeriodDays}d notice</p>}
                     </TD>

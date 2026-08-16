@@ -93,9 +93,9 @@ export default async function MyWorkPage() {
                   <THead>
                     <TR>
                       <TH>Task</TH>
-                      <TH>Project</TH>
-                      <TH>Due</TH>
-                      <TH className="text-right">Progress</TH>
+                      <TH priority="secondary">Project</TH>
+                      <TH priority="secondary">Due</TH>
+                      <TH className="text-right" priority="tertiary">Progress</TH>
                       <TH>Status</TH>
                       <TH />
                     </TR>
@@ -109,15 +109,15 @@ export default async function MyWorkPage() {
                             <p className="text-xs text-muted-foreground">{t.phase?.name}</p>
                           )}
                         </TD>
-                        <TD className="text-sm">
+                        <TD priority="secondary" className="text-sm">
                           <Link href={`/projects/${t.project?.id}`} className="hover:underline">
                             {t.project?.name}
                           </Link>
                         </TD>
-                        <TD className={`text-sm ${t.overdue ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>
+                        <TD priority="secondary" className={`text-sm ${t.overdue ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>
                           {t.dueDate ? formatDate(t.dueDate) : "—"}
                         </TD>
-                        <TD className="text-right tabular text-sm">
+                        <TD priority="tertiary" className="text-right tabular text-sm">
                           {formatPercent(Number(t.completionPercent ?? 0), 0)}
                         </TD>
                         <TD>

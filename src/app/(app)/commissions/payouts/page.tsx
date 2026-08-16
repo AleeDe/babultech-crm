@@ -108,11 +108,11 @@ export default async function PayoutsPage() {
               <THead>
                 <TR>
                   <TH>Payout</TH>
-                  <TH>Partner</TH>
-                  <TH>Paid</TH>
-                  <TH>Method</TH>
-                  <TH>Reference</TH>
-                  <TH className="text-right">Records</TH>
+                  <TH priority="secondary">Partner</TH>
+                  <TH priority="secondary">Paid</TH>
+                  <TH priority="tertiary">Method</TH>
+                  <TH priority="tertiary">Reference</TH>
+                  <TH className="text-right" priority="tertiary">Records</TH>
                   <TH className="text-right">Net paid</TH>
                   <TH>Status</TH>
                 </TR>
@@ -121,15 +121,15 @@ export default async function PayoutsPage() {
                 {settled.map((p) => (
                   <TR key={p.id}>
                     <TD className="font-mono text-xs">{p.payoutNumber}</TD>
-                    <TD>
+                    <TD priority="secondary">
                       <Link href={`/partners/${p.partner?.id}`} className="text-sm hover:underline">
                         {p.partner?.displayName}
                       </Link>
                     </TD>
-                    <TD className="text-sm">{formatDate(p.paymentDate)}</TD>
-                    <TD className="text-sm">{p.paymentMethod ? humanize(p.paymentMethod) : "—"}</TD>
-                    <TD className="text-sm text-muted-foreground">{p.referenceNumber ?? "—"}</TD>
-                    <TD className="text-right tabular">{p._count.records}</TD>
+                    <TD priority="secondary" className="text-sm">{formatDate(p.paymentDate)}</TD>
+                    <TD priority="tertiary" className="text-sm">{p.paymentMethod ? humanize(p.paymentMethod) : "—"}</TD>
+                    <TD priority="tertiary" className="text-sm text-muted-foreground">{p.referenceNumber ?? "—"}</TD>
+                    <TD priority="tertiary" className="text-right tabular">{p._count.records}</TD>
                     <TD className="text-right font-medium tabular">
                       {formatMoney(p.netAmount, p.currencyCode)}
                     </TD>

@@ -163,12 +163,12 @@ export function CommissionTable({ rows }: { rows: Row[] }) {
               </TH>
               <TH>Number</TH>
               <TH>Partner</TH>
-              <TH>Deal</TH>
-              <TH>Earned</TH>
-              <TH className="text-right">Basis</TH>
-              <TH className="text-right">Rate</TH>
-              <TH className="text-right">Gross</TH>
-              <TH className="text-right">WHT</TH>
+              <TH priority="secondary">Deal</TH>
+              <TH priority="secondary">Earned</TH>
+              <TH className="text-right" priority="tertiary">Basis</TH>
+              <TH className="text-right" priority="tertiary">Rate</TH>
+              <TH className="text-right" priority="tertiary">Gross</TH>
+              <TH className="text-right" priority="tertiary">WHT</TH>
               <TH className="text-right">Net</TH>
               <TH>Status</TH>
               <TH className="w-8" />
@@ -200,17 +200,17 @@ export function CommissionTable({ rows }: { rows: Row[] }) {
                       {r.partner?.kind === "INDIVIDUAL" ? "Individual" : "Company"}
                     </p>
                   </TD>
-                  <TD>
+                  <TD priority="secondary">
                     <Link href={`/opportunities/${r.opportunity?.id}`} className="text-sm hover:underline">
                       {r.opportunity?.name}
                     </Link>
                     <p className="text-xs text-muted-foreground">{r.opportunity?.account?.name}</p>
                   </TD>
-                  <TD className="text-sm">{formatDate(r.earnedDate)}</TD>
-                  <TD className="text-right tabular">{formatMoney(r.basisAmount, r.currencyCode)}</TD>
-                  <TD className="text-right tabular">{formatPercent(r.ratePercent)}</TD>
-                  <TD className="text-right tabular">{formatMoney(r.commissionAmount, r.currencyCode)}</TD>
-                  <TD className="text-right tabular text-muted-foreground">
+                  <TD priority="secondary" className="text-sm">{formatDate(r.earnedDate)}</TD>
+                  <TD priority="tertiary" className="text-right tabular">{formatMoney(r.basisAmount, r.currencyCode)}</TD>
+                  <TD priority="tertiary" className="text-right tabular">{formatPercent(r.ratePercent)}</TD>
+                  <TD priority="tertiary" className="text-right tabular">{formatMoney(r.commissionAmount, r.currencyCode)}</TD>
+                  <TD priority="tertiary" className="text-right tabular text-muted-foreground">
                     {formatMoney(r.withholdingTaxAmount, r.currencyCode)}
                   </TD>
                   <TD className="text-right font-medium tabular">{formatMoney(r.netPayableAmount, r.currencyCode)}</TD>

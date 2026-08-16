@@ -69,12 +69,12 @@ export default async function ResourcesPage({
             <THead>
               <TR>
                 <TH>Person</TH>
-                <TH>Projects</TH>
-                <TH className="text-right">Allocated</TH>
-                <TH className="text-right">Logged</TH>
-                <TH className="text-right">Billable</TH>
+                <TH priority="tertiary">Projects</TH>
+                <TH className="text-right" priority="secondary">Allocated</TH>
+                <TH className="text-right" priority="tertiary">Logged</TH>
+                <TH className="text-right" priority="secondary">Billable</TH>
                 <TH className="text-right">Utilisation</TH>
-                <TH className="text-right">Rates</TH>
+                <TH className="text-right" priority="tertiary">Rates</TH>
               </TR>
             </THead>
             <TBody>
@@ -89,7 +89,7 @@ export default async function ResourcesPage({
                         {r.user?.department && ` · ${r.user?.department?.name}`}
                       </p>
                     </TD>
-                    <TD className="text-sm">
+                    <TD priority="tertiary" className="text-sm">
                       {r.projects.length === 0 ? (
                         <span className="text-muted-foreground">Not booked</span>
                       ) : (
@@ -105,13 +105,13 @@ export default async function ResourcesPage({
                         </div>
                       )}
                     </TD>
-                    <TD className="text-right">
+                    <TD priority="secondary" className="text-right">
                       <Badge tone={over ? "danger" : r.allocatedPercent === 0 ? "neutral" : "info"}>
                         {formatNumber(r.allocatedPercent, 0)}%
                       </Badge>
                     </TD>
-                    <TD className="text-right tabular">{formatNumber(r.loggedHours, 1)}</TD>
-                    <TD className="text-right tabular">{formatNumber(r.billableHours, 1)}</TD>
+                    <TD priority="tertiary" className="text-right tabular">{formatNumber(r.loggedHours, 1)}</TD>
+                    <TD priority="secondary" className="text-right tabular">{formatNumber(r.billableHours, 1)}</TD>
                     <TD className="text-right">
                       <div className="ml-auto w-24">
                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
@@ -131,7 +131,7 @@ export default async function ResourcesPage({
                         </p>
                       </div>
                     </TD>
-                    <TD className="whitespace-nowrap text-right text-xs text-muted-foreground">
+                    <TD priority="tertiary" className="whitespace-nowrap text-right text-xs text-muted-foreground">
                       <p>Bill {formatMoney(r.user?.defaultBillingRate)}</p>
                       <p>Cost {formatMoney(r.user?.costRate)}</p>
                     </TD>

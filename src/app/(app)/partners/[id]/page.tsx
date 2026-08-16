@@ -227,10 +227,10 @@ export default async function PartnerDetailPage({
               <THead>
                 <TR>
                   <TH>Deal</TH>
-                  <TH>Customer</TH>
-                  <TH>Role</TH>
-                  <TH className="text-right">Share</TH>
-                  <TH className="text-right">Rate</TH>
+                  <TH priority="secondary">Customer</TH>
+                  <TH priority="tertiary">Role</TH>
+                  <TH priority="tertiary" className="text-right">Share</TH>
+                  <TH priority="tertiary" className="text-right">Rate</TH>
                   <TH className="text-right">Deal value</TH>
                   <TH>Stage</TH>
                 </TR>
@@ -244,12 +244,12 @@ export default async function PartnerDetailPage({
                       </Link>
                       <p className="text-xs text-muted-foreground">{link.opportunity?.opportunityNumber}</p>
                     </TD>
-                    <TD className="text-sm">{link.opportunity?.account?.name}</TD>
-                    <TD>
+                    <TD priority="secondary" className="text-sm">{link.opportunity?.account?.name}</TD>
+                    <TD priority="tertiary">
                       <Badge tone="neutral">{humanize(link.role)}</Badge>
                     </TD>
-                    <TD className="text-right tabular">{formatPercent(link.revenueSharePercent, 0)}</TD>
-                    <TD className="text-right tabular">
+                    <TD priority="tertiary" className="text-right tabular">{formatPercent(link.revenueSharePercent, 0)}</TD>
+                    <TD priority="tertiary" className="text-right tabular">
                       {link.commissionPercentOverride
                         ? `${formatPercent(link.commissionPercentOverride)} (override)`
                         : "plan"}
@@ -288,11 +288,11 @@ export default async function PartnerDetailPage({
               <THead>
                 <TR>
                   <TH>Number</TH>
-                  <TH>Deal</TH>
-                  <TH>Earned</TH>
-                  <TH className="text-right">Basis</TH>
-                  <TH className="text-right">Rate</TH>
-                  <TH className="text-right">Gross</TH>
+                  <TH priority="secondary">Deal</TH>
+                  <TH priority="secondary">Earned</TH>
+                  <TH priority="tertiary" className="text-right">Basis</TH>
+                  <TH priority="tertiary" className="text-right">Rate</TH>
+                  <TH priority="tertiary" className="text-right">Gross</TH>
                   <TH className="text-right">Net payable</TH>
                   <TH>Status</TH>
                 </TR>
@@ -301,11 +301,11 @@ export default async function PartnerDetailPage({
                 {partner.commissionRecords.map((r: Record<string, any>) => (
                   <TR key={r.id}>
                     <TD className="font-mono text-xs">{r.commissionNumber}</TD>
-                    <TD className="text-sm">{r.opportunity?.name}</TD>
-                    <TD className="text-sm">{formatDate(r.earnedDate)}</TD>
-                    <TD className="text-right tabular">{formatMoney(r.basisAmount, r.currencyCode)}</TD>
-                    <TD className="text-right tabular">{formatPercent(r.ratePercent)}</TD>
-                    <TD className="text-right tabular">{formatMoney(r.commissionAmount, r.currencyCode)}</TD>
+                    <TD priority="secondary" className="text-sm">{r.opportunity?.name}</TD>
+                    <TD priority="secondary" className="text-sm">{formatDate(r.earnedDate)}</TD>
+                    <TD priority="tertiary" className="text-right tabular">{formatMoney(r.basisAmount, r.currencyCode)}</TD>
+                    <TD priority="tertiary" className="text-right tabular">{formatPercent(r.ratePercent)}</TD>
+                    <TD priority="tertiary" className="text-right tabular">{formatMoney(r.commissionAmount, r.currencyCode)}</TD>
                     <TD className="text-right font-medium tabular">{formatMoney(r.netPayableAmount, r.currencyCode)}</TD>
                     <TD>
                       <Badge tone={statusTone(r.status)}>{humanize(r.status)}</Badge>
