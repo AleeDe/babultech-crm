@@ -107,48 +107,67 @@ end $$;
 
 -- lead and campaign own their rows directly, so they scope on ownerUserId.
 alter table lead enable row level security;
+drop policy if exists lead_internal_read on lead;
 create policy lead_internal_read on lead
   for select using (
     app_is_internal()
     and (app_current_scope() = 'ALL' or "ownerUserId" in (select app_visible_owner_ids()))
   );
+drop policy if exists lead_internal_write on lead;
 create policy lead_internal_write on lead
   for all using (app_can_write()) with check (app_can_write());
 
 alter table campaign enable row level security;
+drop policy if exists campaign_internal_read on campaign;
 create policy campaign_internal_read on campaign
   for select using (app_is_internal());
+drop policy if exists campaign_internal_write on campaign;
 create policy campaign_internal_write on campaign
   for all using (app_can_write()) with check (app_can_write());
 
--- The rest hang off an account.
+-- The rest hang off an account. A nullable accountId passes: a training session
+-- need not belong to a customer, and internal data with no account has nothing
+-- to be restricted by.
 do $$
 declare t text;
 begin
   foreach t in array array[
     'contact', 'invoice', 'payment', 'support_case', 'project', 'contract',
-    'expense', 'vendor_bill', 'vendor_payment', 'financial_transaction',
-    'knowledge_article', 'training'
+    'training'
   ]
   loop
-    -- Some of these have a nullable accountId (an expense need not belong to a
-    -- customer), so a null passes: it is internal data with no account to
-    -- restrict it by.
     execute format(
       'create policy %I on %I for select using ('
       || ' app_is_internal() and ('
       || '   app_current_scope() = ''ALL'''
-      || '   or %s'
+      || '   or "accountId" is null'
+      || '   or "accountId" in (select app_visible_account_ids())'
       || ' ))',
-      t || '_internal_read', t,
-      case
-        when t in ('expense', 'vendor_bill', 'vendor_payment',
-                   'financial_transaction', 'knowledge_article')
-        then '"accountId" is null or "accountId" in (select app_visible_account_ids())'
-        else '"accountId" in (select app_visible_account_ids())'
-      end
+      t || '_internal_read', t
     );
 
+    execute format(
+      'create policy %I on %I for all using (app_can_write()) with check (app_can_write())',
+      t || '_internal_write', t
+    );
+  end loop;
+end $$;
+
+-- Back-office tables with no accountId at all: expenses, vendor bills and
+-- payments, ledger transactions and knowledge articles are internal records,
+-- visible to internal staff without an account to scope them through.
+do $$
+declare t text;
+begin
+  foreach t in array array[
+    'expense', 'vendor_bill', 'vendor_payment', 'financial_transaction',
+    'knowledge_article'
+  ]
+  loop
+    execute format(
+      'create policy %I on %I for select using (app_is_internal())',
+      t || '_internal_read', t
+    );
     execute format(
       'create policy %I on %I for all using (app_can_write()) with check (app_can_write())',
       t || '_internal_write', t
