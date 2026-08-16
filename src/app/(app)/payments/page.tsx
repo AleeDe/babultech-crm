@@ -83,7 +83,9 @@ export default async function PaymentsPage({
               {payments.map((p: Record<string, any>) => (
                 <TR key={p.id}>
                   <TD className="font-mono text-xs">
-                    {p.paymentNumber}
+                    <Link href={`/payments/${p.id}`} className="font-medium hover:underline">
+                      {p.paymentNumber}
+                    </Link>
                     {p.referenceNumber && (
                       <p className="text-xs text-muted-foreground">{p.referenceNumber}</p>
                     )}

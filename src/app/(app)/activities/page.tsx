@@ -93,7 +93,11 @@ export default async function ActivitiesPage() {
                   const late = a.status === "OPEN" && a.dueAt && a.dueAt < now;
                   return (
                     <TR key={a.id}>
-                      <TD className="text-sm font-medium">{a.subject}</TD>
+                      <TD className="text-sm font-medium">
+                        <Link href={`/activities/${a.id}`} className="hover:underline">
+                          {a.subject}
+                        </Link>
+                      </TD>
                       <TD>
                         <Badge tone="neutral">{humanize(a.activityType)}</Badge>
                       </TD>

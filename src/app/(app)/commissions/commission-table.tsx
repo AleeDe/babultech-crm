@@ -187,7 +187,11 @@ export function CommissionTable({ rows }: { rows: Row[] }) {
                       aria-label={`Select ${r.commissionNumber}`}
                     />
                   </TD>
-                  <TD className="font-mono text-xs">{r.commissionNumber}</TD>
+                  <TD className="font-mono text-xs">
+                    <Link href={`/commissions/${r.id}`} className="hover:underline">
+                      {r.commissionNumber}
+                    </Link>
+                  </TD>
                   <TD>
                     <Link href={`/partners/${r.partner?.id}`} className="text-sm font-medium hover:underline">
                       {r.partner?.displayName}

@@ -1195,6 +1195,96 @@ export async function updateProduct(
   }
 }
 
+export async function getActivity(id: string) {
+  const me = await requireUser();
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("activity")
+    .select(
+      `*,
+       owner:app_user!activity_ownerUserId_fkey ( id, fullName ),
+       contact ( id, firstName, lastName, email, phone, account ( id, name ) )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load activity: ${error.message}`);
+  if (!data) return null;
+
+  const contact = one(data.contact as never) as Record<string, unknown> | null;
+
+  return {
+    ...data,
+    owner: one(data.owner as never),
+    contact: contact ? { ...contact, account: one(contact.account as never) } : null,
+    // The activities screen is "mine", so the detail page says plainly whether
+    // this one belongs to the reader before they try to complete it.
+    isMine: data.ownerUserId === me.id,
+  };
+}
+
+const activityUpdateSchema = activitySchema.extend({
+  status: z.enum(["OPEN", "COMPLETED", "CANCELLED"]).default("OPEN"),
+  outcome: z.string().optional().nullable(),
+});
+
+export async function updateActivity(
+  id: string,
+  input: z.infer<typeof activityUpdateSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const me = await requireUser();
+
+  const parsed = activityUpdateSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const d = parsed.data;
+
+  if (d.startAt && d.dueAt && d.dueAt < d.startAt) {
+    return {
+      ok: false,
+      error: "It cannot be due before it starts.",
+      fieldErrors: { dueAt: ["Must be on or after the start."] },
+    };
+  }
+
+  try {
+    await updateRecord(
+      "activity",
+      id,
+      {
+        activityType: d.activityType,
+        subject: d.subject,
+        ownerUserId: d.ownerUserId,
+        description: d.description || null,
+        contactId: d.contactId || null,
+        priority: d.priority,
+        startAt: d.startAt || null,
+        dueAt: d.dueAt || null,
+        location: d.location || null,
+        status: d.status,
+        outcome: d.outcome || null,
+        // Completing an activity stamps the time, so the list can show when it
+        // actually happened rather than only that it is done.
+        completedAt: d.status === "COMPLETED" ? new Date().toISOString() : null,
+      },
+      "Activity",
+      me.id,
+    );
+
+    revalidatePath("/activities");
+    revalidatePath(`/activities/${id}`);
+    return { ok: true, data: { id } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Could not update the activity." };
+  }
+}
+
 /** Options the three new forms need: types, owners, tax rates and contacts. */
 export async function getCreateFormOptions() {
   await requireUser();

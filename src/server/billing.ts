@@ -829,3 +829,38 @@ export async function getBillingFormOptions() {
 
   return { accounts, contacts, projects, contracts, products, taxRates, currencies };
 }
+
+export async function getPayment(id: string) {
+  await requirePermission(PERMISSIONS.INVOICE_READ);
+
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("payment")
+    .select(
+      `*,
+       account ( id, name, accountNumber ),
+       bankAccount:bank_account ( id, name ),
+       allocations:payment_allocation (
+         *,
+         invoice ( id, invoiceNumber, totalAmount, outstandingAmount, status, dueDate, currencyCode )
+       )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load payment: ${error.message}`);
+  if (!data) return null;
+
+  type Row = Record<string, unknown>;
+
+  return {
+    ...data,
+    account: one(data.account as never),
+    bankAccount: one(data.bankAccount as never),
+    allocations: ((data.allocations ?? []) as Row[]).map((a): Row => ({
+      ...a,
+      invoice: one(a.invoice as never),
+    })),
+  };
+}

@@ -522,3 +522,42 @@ export async function listCommissionPlans() {
     },
   }));
 }
+
+export async function getCommission(id: string) {
+  await requirePermission(PERMISSIONS.COMMISSION_READ);
+
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("commission_record")
+    .select(
+      `*,
+       partner ( id, displayName, partnerNumber, kind, partnerType, tier, withholdingTaxPercent ),
+       opportunity ( id, opportunityNumber, name, stage, amount, currencyCode, account ( id, name ) ),
+       plan:commission_plan ( id, name, basis, trigger, rateType, flatPercent, clawbackWindowDays ),
+       invoice ( id, invoiceNumber, totalAmount, status ),
+       payment ( id, paymentNumber, amount, paymentDate ),
+       payout:commission_payout ( id, payoutNumber, status, paymentDate ),
+       approvedBy:app_user!commission_record_approvedById_fkey ( id, fullName )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load commission: ${error.message}`);
+  if (!data) return null;
+
+  const opportunity = one(data.opportunity as never) as Record<string, unknown> | null;
+
+  return {
+    ...data,
+    partner: one(data.partner as never),
+    opportunity: opportunity
+      ? { ...opportunity, account: one(opportunity.account as never) }
+      : null,
+    plan: one(data.plan as never),
+    invoice: one(data.invoice as never),
+    payment: one(data.payment as never),
+    payout: one(data.payout as never),
+    approvedBy: one(data.approvedBy as never),
+  };
+}
