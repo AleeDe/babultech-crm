@@ -10,6 +10,7 @@ import {
   ShieldCheck, UserCog,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
+import { signOutAction } from "@/lib/sign-out-action";
 
 interface NavItem {
   href: string;
@@ -170,7 +171,7 @@ export function AppShell({
               <p className="truncate text-sm font-medium hover:underline">{user.fullName}</p>
               <p className="truncate text-xs text-muted-foreground">{user.roleName}</p>
             </Link>
-            <form action="/api/auth/signout" method="post">
+            <form action={signOutAction}>
               <button type="submit" className="text-muted-foreground hover:text-foreground" aria-label="Sign out">
                 <LogOut className="h-4 w-4" />
               </button>

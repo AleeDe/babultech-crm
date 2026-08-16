@@ -8,6 +8,7 @@ import {
   Menu, X, LogOut, FilePlus2,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
+import { signOutAction } from "@/lib/sign-out-action";
 
 /**
  * The external partner's shell. Deliberately a different component from
@@ -104,7 +105,7 @@ export function PortalShell({
               <p className="truncate text-sm font-medium hover:underline">{user.fullName}</p>
               <p className="truncate text-xs text-muted-foreground">{user.email}</p>
             </Link>
-            <form action="/api/auth/signout" method="post">
+            <form action={signOutAction}>
               <button type="submit" className="text-muted-foreground hover:text-foreground" aria-label="Sign out">
                 <LogOut className="h-4 w-4" />
               </button>

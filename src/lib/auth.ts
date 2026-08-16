@@ -2,7 +2,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { supabaseAdmin } from "./supabase";
+import { supabaseAdmin, supabaseServer } from "./supabase";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -43,6 +43,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
         if (!valid) return null;
 
+        // Sign in to Supabase Auth as well, so the request carries a Supabase
+        // JWT and not only the NextAuth cookie.
+        //
+        // Without this the two halves disagree: requireUser() resolves identity
+        // from the NextAuth session, but every data query runs through
+        // supabaseServer(), which is anonymous to the database. RLS then denies
+        // everything — reads come back empty and inserts fail with "new row
+        // violates row-level security policy".
+        //
+        // auth.users.id === app_user.id (scripts/migrate-auth-users.mjs), so
+        // both sessions describe the same person.
+        const sessionDb = await supabaseServer();
+        const { error: supabaseSignInError } = await sessionDb.auth.signInWithPassword({
+          email: parsed.data.email.toLowerCase(),
+          password: parsed.data.password,
+        });
+
+        if (supabaseSignInError) {
+          // The bcrypt hash in app_user and the password in auth.users are
+          // stored separately, so they can drift apart. Failing loudly here
+          // beats signing the user in to a session that can read nothing.
+          console.error(
+            `Supabase Auth rejected ${parsed.data.email}: ${supabaseSignInError.message}. ` +
+              `Run scripts/migrate-auth-users.mjs to resync passwords.`,
+          );
+          return null;
+        }
+
         await db
           .from("app_user")
           .update({ lastLoginAt: new Date().toISOString() })
@@ -63,6 +91,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
+  events: {
+    // Sign-in creates two sessions, so sign-out has to end both. Leaving the
+    // Supabase cookie behind would keep a usable database session alive after
+    // the user believes they have signed out.
+    async signOut() {
+      try {
+        const sessionDb = await supabaseServer();
+        await sessionDb.auth.signOut();
+      } catch {
+        // Best effort: the NextAuth sign-out must complete regardless.
+      }
+    },
+  },
   callbacks: {
     jwt({ token, user }) {
       if (user) {
