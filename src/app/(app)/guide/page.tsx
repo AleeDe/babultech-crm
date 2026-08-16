@@ -404,7 +404,8 @@ export default async function GuidePage() {
           {can(me, PERMISSIONS.ADMIN) && (
             <p>
               <strong className="text-foreground">Dropdowns come from Settings.</strong>{" "}
-              Currencies, tax rates, departments and categories are editable lists under{" "}
+              Currencies, tax rates, departments, categories — and the email branding and wording
+              customers see — are all editable under{" "}
               <Link href="/settings" className="text-primary hover:underline">Settings</Link>, and
               every form picks the change up. Roles and data scopes are set per user under{" "}
               <Link href="/users" className="text-primary hover:underline">Users</Link>.

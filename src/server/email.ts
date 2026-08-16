@@ -8,6 +8,9 @@ import { supabaseServer } from "@/lib/supabase";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { one } from "@/lib/decimal";
 import { formatMoney, formatDate } from "@/lib/utils";
+import {
+  renderDocumentEmail, fillTemplate, type EmailBranding,
+} from "@/lib/email-template";
 import type { ActionResult } from "./partners";
 
 /**
@@ -33,6 +36,217 @@ function client(): Resend | null {
 
 export async function isEmailConfigured(): Promise<boolean> {
   return Boolean(process.env.RESEND_API_KEY);
+}
+
+const SETTINGS_ID = "00000000-0000-0000-0000-000000000001";
+
+/**
+ * Branding and templates, with defaults if the row is somehow missing.
+ *
+ * A send must not fail because a settings row was deleted, so every field has
+ * a fallback rather than the query being treated as required.
+ */
+export async function getEmailSettings() {
+  await requireUser();
+  const db = await supabaseServer();
+
+  const { data } = await db.from("email_settings").select("*").eq("id", SETTINGS_ID).maybeSingle();
+
+  return {
+    companyName: data?.companyName ?? "BabulTech",
+    logoUrl: data?.logoUrl ?? null,
+    websiteUrl: data?.websiteUrl ?? null,
+    supportEmail: data?.supportEmail ?? null,
+    supportPhone: data?.supportPhone ?? null,
+    addressLine: data?.addressLine ?? null,
+    brandColor: data?.brandColor ?? "#00B8A4",
+    brandColorDark: data?.brandColorDark ?? "#0F172A",
+    textColor: data?.textColor ?? "#1A2233",
+    mutedColor: data?.mutedColor ?? "#64748B",
+    backgroundColor: data?.backgroundColor ?? "#F1F5F9",
+    emailFooter:
+      data?.emailFooter ??
+      "This email and any attachments are confidential and intended solely for the addressee.",
+    quotationSubject: data?.quotationSubject ?? "Quotation {{documentNumber}} from {{companyName}}",
+    quotationBody: data?.quotationBody ?? "Dear {{contactFirstName}},\n\nPlease find our quotation below.",
+    invoiceSubject: data?.invoiceSubject ?? "Invoice {{documentNumber}} from {{companyName}}",
+    invoiceBody: data?.invoiceBody ?? "Dear {{contactFirstName}},\n\nPlease find our invoice below.",
+  };
+}
+
+async function getBranding(): Promise<EmailBranding> {
+  const s = await getEmailSettings();
+  return {
+    companyName: s.companyName,
+    logoUrl: s.logoUrl,
+    websiteUrl: s.websiteUrl,
+    supportEmail: s.supportEmail,
+    supportPhone: s.supportPhone,
+    addressLine: s.addressLine,
+    brandColor: s.brandColor,
+    brandColorDark: s.brandColorDark,
+    textColor: s.textColor,
+    mutedColor: s.mutedColor,
+    backgroundColor: s.backgroundColor,
+    emailFooter: s.emailFooter,
+  };
+}
+
+/** The subject and body a compose form should open with, placeholders filled. */
+export async function getDraftFor(
+  kind: "quotation" | "invoice",
+  values: Record<string, string>,
+): Promise<{ subject: string; body: string }> {
+  const s = await getEmailSettings();
+  const merged = { ...values, companyName: s.companyName };
+
+  return kind === "quotation"
+    ? {
+        subject: fillTemplate(s.quotationSubject, merged),
+        body: fillTemplate(s.quotationBody, merged),
+      }
+    : {
+        subject: fillTemplate(s.invoiceSubject, merged),
+        body: fillTemplate(s.invoiceBody, merged),
+      };
+}
+
+const settingsSchema = z.object({
+  companyName: z.string().trim().min(1, "The company needs a name.").max(200),
+  logoUrl: z.string().trim().url("That is not a valid URL.").or(z.literal("")).nullable(),
+  websiteUrl: z.string().trim().url("That is not a valid URL.").or(z.literal("")).nullable(),
+  supportEmail: z.string().trim().email().or(z.literal("")).nullable(),
+  supportPhone: z.string().trim().max(50).nullable(),
+  addressLine: z.string().trim().nullable(),
+  brandColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a six-digit hex colour like #00B8A4."),
+  brandColorDark: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a six-digit hex colour."),
+  textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a six-digit hex colour."),
+  mutedColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a six-digit hex colour."),
+  backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a six-digit hex colour."),
+  quotationSubject: z.string().trim().min(1),
+  quotationBody: z.string().trim().min(1),
+  invoiceSubject: z.string().trim().min(1),
+  invoiceBody: z.string().trim().min(1),
+  emailFooter: z.string().trim(),
+});
+
+export async function saveEmailSettings(
+  input: z.infer<typeof settingsSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const me = await requireUser();
+  if (!can(me, PERMISSIONS.ADMIN)) {
+    return { ok: false, error: "Only an administrator can change email settings." };
+  }
+
+  const parsed = settingsSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Check the values.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const d = parsed.data;
+
+  const db = await supabaseServer();
+
+  const { error } = await db
+    .from("email_settings")
+    .update({
+      ...d,
+      logoUrl: d.logoUrl || null,
+      websiteUrl: d.websiteUrl || null,
+      supportEmail: d.supportEmail || null,
+      supportPhone: d.supportPhone || null,
+      addressLine: d.addressLine || null,
+      updatedAt: new Date().toISOString(),
+    })
+    .eq("id", SETTINGS_ID);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/settings");
+  return { ok: true, data: { id: SETTINGS_ID } };
+}
+
+/** Renders the current template with sample data, for the Settings preview. */
+export async function previewEmail(kind: "quotation" | "invoice"): Promise<string> {
+  const me = await requireUser();
+  const branding = await getBranding();
+
+  const sample =
+    kind === "quotation"
+      ? {
+          documentNumber: "QUO-2026-00042",
+          contactFirstName: "Imran",
+          expiryDate: "15 Sept 2026",
+          dueDate: "",
+        }
+      : {
+          documentNumber: "INV-2026-00108",
+          contactFirstName: "Imran",
+          expiryDate: "",
+          dueDate: "30 Sept 2026",
+        };
+
+  const draft = await getDraftFor(kind, sample);
+
+  const { html } = renderDocumentEmail({
+    branding,
+    documentTitle:
+      kind === "quotation"
+        ? `Quotation ${sample.documentNumber}`
+        : `Invoice ${sample.documentNumber}`,
+    message: draft.body,
+    summary:
+      kind === "quotation"
+        ? [
+            { label: "Quotation", value: sample.documentNumber },
+            { label: "Date", value: "16 Aug 2026" },
+            { label: "Valid until", value: sample.expiryDate },
+            { label: "Total", value: "Rs 1,486,800", emphasis: true },
+          ]
+        : [
+            { label: "Invoice", value: sample.documentNumber },
+            { label: "Issued", value: "16 Aug 2026" },
+            { label: "Due", value: sample.dueDate },
+            { label: "Total", value: "Rs 1,486,800" },
+            { label: "Outstanding", value: "Rs 1,486,800", emphasis: true },
+          ],
+    senderName: me.fullName,
+  });
+
+  return html;
+}
+
+/** Sends the current template to the signed-in user, so it can be seen for real. */
+export async function sendTestEmail(
+  kind: "quotation" | "invoice",
+): Promise<ActionResult<{ id: string }>> {
+  const me = await requireUser();
+  if (!can(me, PERMISSIONS.ADMIN)) {
+    return { ok: false, error: "Only an administrator can send a test." };
+  }
+
+  const resend = client();
+  if (!resend) {
+    return { ok: false, error: "Email is not configured. Set RESEND_API_KEY first." };
+  }
+
+  const html = await previewEmail(kind);
+  const settings = await getEmailSettings();
+
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to: me.email,
+    subject: `[Test] ${kind === "quotation" ? "Quotation" : "Invoice"} template — ${settings.companyName}`,
+    html,
+    text: "This is a test of the email template. Open in an HTML-capable client to see it.",
+  });
+
+  if (error) return { ok: false, error: `Could not send: ${error.message}` };
+
+  return { ok: true, data: { id: "test" } };
 }
 
 const sendSchema = z.object({
@@ -123,52 +337,6 @@ async function deliver(input: {
   return { ok: true, data: { id: rowId } };
 }
 
-/**
- * The wrapper every outbound email gets.
- *
- * Deliberately plain: inline styles only, a table-free layout and no images,
- * because anything cleverer breaks in Outlook and this has to arrive readable
- * rather than look designed.
- */
-function wrap(heading: string, body: string, footer?: string): string {
-  const esc = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-  return `<!doctype html>
-<html><body style="margin:0;padding:24px;background:#f5f7fa;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1a2233;">
-<div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;padding:28px;">
-<h1 style="margin:0 0 16px;font-size:18px;font-weight:600;">${esc(heading)}</h1>
-${body}
-${footer ? `<p style="margin:24px 0 0;padding-top:16px;border-top:1px solid #e4e8ef;font-size:12px;color:#6b7688;">${esc(footer)}</p>` : ""}
-</div>
-</body></html>`;
-}
-
-function paragraphs(text: string): string {
-  return text
-    .split(/\n{2,}/)
-    .map(
-      (p) =>
-        `<p style="margin:0 0 12px;font-size:14px;line-height:1.6;">${p
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/\n/g, "<br>")}</p>`,
-    )
-    .join("");
-}
-
-function summaryTable(rows: [string, string][]): string {
-  return `<table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
-${rows
-  .map(
-    ([label, value]) =>
-      `<tr><td style="padding:6px 0;color:#6b7688;">${label}</td><td style="padding:6px 0;text-align:right;font-weight:600;">${value}</td></tr>`,
-  )
-  .join("")}
-</table>`;
-}
-
 export async function sendQuotation(
   quotationId: string,
   input: z.infer<typeof sendSchema>,
@@ -199,28 +367,20 @@ export async function sendQuotation(
 
   if (!quote) return { ok: false, error: "That quotation is not available to you." };
 
-  const account = one(quote.account as never) as Record<string, unknown> | null;
+  const branding = await getBranding();
 
-  const html = wrap(
-    `Quotation ${quote.quoteNumber}`,
-    paragraphs(d.message) +
-      summaryTable([
-        ["Quotation", String(quote.quoteNumber)],
-        ["Date", formatDate(quote.quoteDate)],
-        ["Valid until", formatDate(quote.expiryDate)],
-        ["Total", formatMoney(quote.totalAmount, quote.currencyCode)],
-      ]),
-    `Sent by ${me.fullName} · BabulTech`,
-  );
-
-  const text = `${d.message}
-
-Quotation: ${quote.quoteNumber}
-Date: ${formatDate(quote.quoteDate)}
-Valid until: ${formatDate(quote.expiryDate)}
-Total: ${formatMoney(quote.totalAmount, quote.currencyCode)}
-
-Sent by ${me.fullName}, BabulTech`;
+  const { html, text } = renderDocumentEmail({
+    branding,
+    documentTitle: `Quotation ${quote.quoteNumber}`,
+    message: d.message,
+    summary: [
+      { label: "Quotation", value: String(quote.quoteNumber) },
+      { label: "Date", value: formatDate(quote.quoteDate) },
+      { label: "Valid until", value: formatDate(quote.expiryDate) },
+      { label: "Total", value: formatMoney(quote.totalAmount, quote.currencyCode), emphasis: true },
+    ],
+    senderName: me.fullName,
+  });
 
   const result = await deliver({
     to: d.to,
@@ -286,28 +446,25 @@ export async function sendInvoice(
     return { ok: false, error: "Approve the invoice before sending it." };
   }
 
-  const html = wrap(
-    `Invoice ${invoice.invoiceNumber}`,
-    paragraphs(d.message) +
-      summaryTable([
-        ["Invoice", String(invoice.invoiceNumber)],
-        ["Issued", formatDate(invoice.invoiceDate)],
-        ["Due", formatDate(invoice.dueDate)],
-        ["Total", formatMoney(invoice.totalAmount, invoice.currencyCode)],
-        ["Outstanding", formatMoney(invoice.outstandingAmount, invoice.currencyCode)],
-      ]),
-    `Sent by ${me.fullName} · BabulTech`,
-  );
+  const branding = await getBranding();
 
-  const text = `${d.message}
-
-Invoice: ${invoice.invoiceNumber}
-Issued: ${formatDate(invoice.invoiceDate)}
-Due: ${formatDate(invoice.dueDate)}
-Total: ${formatMoney(invoice.totalAmount, invoice.currencyCode)}
-Outstanding: ${formatMoney(invoice.outstandingAmount, invoice.currencyCode)}
-
-Sent by ${me.fullName}, BabulTech`;
+  const { html, text } = renderDocumentEmail({
+    branding,
+    documentTitle: `Invoice ${invoice.invoiceNumber}`,
+    message: d.message,
+    summary: [
+      { label: "Invoice", value: String(invoice.invoiceNumber) },
+      { label: "Issued", value: formatDate(invoice.invoiceDate) },
+      { label: "Due", value: formatDate(invoice.dueDate) },
+      { label: "Total", value: formatMoney(invoice.totalAmount, invoice.currencyCode) },
+      {
+        label: "Outstanding",
+        value: formatMoney(invoice.outstandingAmount, invoice.currencyCode),
+        emphasis: true,
+      },
+    ],
+    senderName: me.fullName,
+  });
 
   const result = await deliver({
     to: d.to,

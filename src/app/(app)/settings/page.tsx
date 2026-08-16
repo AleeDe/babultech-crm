@@ -2,13 +2,17 @@ import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { PageHeader, Forbidden, Alert } from "@/components/ui";
 import { getSettings } from "@/server/settings";
 import { CurrencyList, TaxRateList, NamedList } from "./settings-lists";
+import { EmailSettingsPanel } from "./email-settings";
+import { getEmailSettings } from "@/server/email";
 
 export default async function SettingsPage() {
   const me = await requireUser();
   if (!can(me, PERMISSIONS.ADMIN)) return <Forbidden what="settings" />;
 
-  const { currencies, taxRates, departments, caseCategories, expenseCategories } =
-    await getSettings();
+  const [
+    { currencies, taxRates, departments, caseCategories, expenseCategories },
+    emailSettings,
+  ] = await Promise.all([getSettings(), getEmailSettings()]);
 
   const everythingEmpty =
     currencies.length === 0 && taxRates.length === 0 && departments.length === 0;
@@ -30,6 +34,7 @@ export default async function SettingsPage() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
+        <EmailSettingsPanel values={emailSettings} />
         <CurrencyList rows={currencies} />
         <TaxRateList rows={taxRates} />
         <NamedList
