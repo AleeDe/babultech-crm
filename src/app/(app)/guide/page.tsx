@@ -3,7 +3,7 @@ import {
   UserPlus, Building2, Target, FileText, FileSignature, Package,
   Megaphone, Handshake, LifeBuoy, FolderKanban, Receipt, Banknote,
   Clock, CalendarCheck, ArrowRight, CheckSquare, ShieldCheck, Settings,
-  UsersRound, Coins, FileInput, Wallet, type LucideIcon,
+  UsersRound, Coins, FileInput, Wallet, Stamp, type LucideIcon,
 } from "lucide-react";
 import { requireUser, can, PERMISSIONS, type SessionUser } from "@/lib/authz";
 import {
@@ -116,6 +116,12 @@ interface Reference {
 }
 
 const REFERENCE: Reference[] = [
+  {
+    icon: Stamp,
+    title: "Approvals",
+    href: "/approvals",
+    body: "Everything waiting on a decision from you, gathered from quotations, expenses, timesheets, vendor bills and commission — oldest first. Each one opens where the decision is actually made, because that screen has the context.",
+  },
   {
     icon: CheckSquare,
     title: "My work",

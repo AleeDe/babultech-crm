@@ -9,6 +9,7 @@ import { getPipelineByStage } from "@/server/opportunities";
 import { getCommissionTotals } from "@/server/commissions";
 import { getModuleSummary, getAttentionItems } from "@/server/dashboard";
 import { getPayablesSummary } from "@/server/payables";
+import { getPendingApprovals } from "@/server/approvals";
 import { ModuleSummary } from "./module-summary";
 import {
   Card, CardHeader, CardTitle, CardContent, PageHeader, StatTile,
@@ -21,7 +22,7 @@ export default async function DashboardPage() {
 
   const [
     pipeline, commissions, openCases, activeProjects, overdueInvoices, topPartners, myActivities,
-    summary, attentionData, payables,
+    summary, attentionData, payables, approvals,
   ] =
     await Promise.all([
       getPipelineByStage(),
@@ -108,6 +109,14 @@ export default async function DashboardPage() {
       getModuleSummary(),
       getAttentionItems(),
       getPayablesSummary(),
+      // The queue needs at least one approve permission. A reader without any
+      // gets an empty list rather than a page that fails to load.
+      getPendingApprovals().catch(() => ({
+        items: [] as Awaited<ReturnType<typeof getPendingApprovals>>["items"],
+        byKind: {},
+        totalValue: "0",
+        oldestDays: 0,
+      })),
     ]);
 
   const openStages = pipeline.filter(
@@ -165,6 +174,17 @@ export default async function DashboardPage() {
         .map((p: Record<string, any>) => `${p.displayName} — ${formatDate(p.agreementExpiryDate)}`)
         .join(" · "),
       href: "/partners",
+      tone: "warning" as const,
+    },
+    {
+      count: approvals.items.filter((i) => !i.blockedReason).length,
+      title: "Waiting on your approval",
+      detail: approvals.items
+        .filter((i) => !i.blockedReason)
+        .slice(0, 3)
+        .map((i) => `${i.reference} — ${i.title}`)
+        .join(" · "),
+      href: "/approvals",
       tone: "warning" as const,
     },
   ].filter((item) => item.count > 0);
