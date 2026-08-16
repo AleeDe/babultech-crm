@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
+import { applySearch, LIST_LIMIT } from "@/lib/db";
+import { ListFilters, optionsFrom } from "@/components/list-filters";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
@@ -9,12 +11,18 @@ import {
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize } from "@/lib/utils";
 
-export default async function QuotationsPage() {
+export default async function QuotationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ search?: string; status?: string }>;
+}) {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="quotations" />;
+
+  const params = await searchParams;
   const db = await supabaseServer();
 
-  const { data: quoteRows } = await db
+  let query = db
     .from("quotation")
     .select(
       `*,
@@ -26,6 +34,11 @@ export default async function QuotationsPage() {
     .is("deletedAt", null)
     .order("quoteDate", { ascending: false })
     .order("versionNumber", { ascending: false });
+
+  if (params.status) query = query.eq("status", params.status);
+  query = applySearch(query, params.search, ["quoteNumber"]);
+
+  const { data: quoteRows } = await query.limit(LIST_LIMIT);
 
   const quotes = (quoteRows ?? []).map((q) => ({
     ...q,
@@ -69,7 +82,25 @@ export default async function QuotationsPage() {
         />
       </div>
 
-      <Card className="mt-6">
+      <div className="mt-6">
+        <ListFilters
+          searchPlaceholder="Search quote number…"
+          searchValue={params.search}
+          selects={[
+            {
+              name: "status",
+              allLabel: "All statuses",
+              value: params.status,
+              options: optionsFrom([
+                "DRAFT", "UNDER_REVIEW", "APPROVED", "SENT",
+                "ACCEPTED", "REJECTED", "EXPIRED", "REVISED",
+              ]),
+            },
+          ]}
+        />
+      </div>
+
+      <Card>
         {quotes.length === 0 ? (
           <EmptyState
             title="No quotations yet"

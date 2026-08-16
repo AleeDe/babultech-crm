@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { listPayments } from "@/server/billing";
+import { ListFilters, optionsFrom } from "@/components/list-filters";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, StatTile, Button, Forbidden
@@ -11,13 +12,18 @@ import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 export default async function PaymentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string }>;
+  searchParams: Promise<{ filter?: string; search?: string; status?: string }>;
 }) {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.INVOICE_READ)) return <Forbidden what="payments" />;
 
-  const { filter } = await searchParams;
-  const payments = await listPayments({ unappliedOnly: filter === "unapplied" });
+  const params = await searchParams;
+  const { filter } = params;
+  const payments = await listPayments({
+    unappliedOnly: filter === "unapplied",
+    search: params.search,
+    status: params.status,
+  });
 
   const cleared = payments.filter((p: Record<string, any>) => p.status === "CLEARED");
   const received = cleared.reduce((s, p) => s + Number(p.amount), 0);
@@ -54,7 +60,26 @@ export default async function PaymentsPage({
         <StatTile label="Total payments" value={String(payments.length)} />
       </div>
 
-      <Card className="mt-6">
+      <div className="mt-6">
+        <ListFilters
+          searchPlaceholder="Search payment or reference number…"
+          searchValue={params.search}
+          selects={[
+            {
+              name: "status",
+              allLabel: "All statuses",
+              value: params.status,
+              options: optionsFrom(["PENDING", "CLEARED", "FAILED", "REVERSED"]),
+            },
+          ]}
+        >
+          {/* The unapplied view is reached from a stat tile, so the flag has to
+              survive a filter submit rather than being silently dropped. */}
+          {filter && <input type="hidden" name="filter" value={filter} />}
+        </ListFilters>
+      </div>
+
+      <Card>
         {payments.length === 0 ? (
           <EmptyState
             title={filter === "unapplied" ? "No unapplied cash" : "No payments recorded"}

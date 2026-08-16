@@ -1,17 +1,23 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { listProducts } from "@/server/crm";
+import { ListFilters, optionsFrom } from "@/components/list-filters";
 import {
   PageHeader, Button, Card, Table, THead, TBody, TR, TH, TD, Badge, EmptyState, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatPercent, humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
-export default async function ProductsPage() {
+export default async function ProductsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ search?: string; productType?: string }>;
+}) {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="the product catalogue" />;
 
-  const products = await listProducts(false);
+  const params = await searchParams;
+  const products = await listProducts(false, params);
 
   return (
     <>
@@ -27,6 +33,19 @@ export default async function ProductsPage() {
           </Button>
         )}
       </PageHeader>
+
+      <ListFilters
+        searchPlaceholder="Search name, code or category…"
+        searchValue={params.search}
+        selects={[
+          {
+            name: "productType",
+            allLabel: "All types",
+            value: params.productType,
+            options: optionsFrom(["PRODUCT", "SERVICE", "SUBSCRIPTION"]),
+          },
+        ]}
+      />
 
       <Card>
         {products.length === 0 ? (

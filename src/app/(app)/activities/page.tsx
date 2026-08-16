@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
+import { applySearch } from "@/lib/db";
+import { ListFilters, optionsFrom } from "@/components/list-filters";
 import { requireUser } from "@/lib/authz";
 import {
   PageHeader, Button, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
@@ -9,19 +11,29 @@ import {
 } from "@/components/ui";
 import { formatDateTime, humanize, entityHref } from "@/lib/utils";
 
-export default async function ActivitiesPage() {
+export default async function ActivitiesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ search?: string; activityType?: string; status?: string }>;
+}) {
   const user = await requireUser();
+  const params = await searchParams;
 
   const db = await supabaseServer();
 
-  const { data: activityRows } = await db
+  let query = db
     .from("activity")
     .select("*, contact ( id, firstName, lastName )")
     .is("deletedAt", null)
     .eq("ownerUserId", user.id)
     .order("status")
-    .order("dueAt")
-    .limit(200);
+    .order("dueAt");
+
+  if (params.activityType) query = query.eq("activityType", params.activityType);
+  if (params.status) query = query.eq("status", params.status);
+  query = applySearch(query, params.search, ["subject", "description", "location"]);
+
+  const { data: activityRows } = await query.limit(200);
 
   const activities = (activityRows ?? []).map((a) => ({
     ...a,
@@ -66,7 +78,28 @@ export default async function ActivitiesPage() {
         <StatTile label="Completed" value={String(activities.filter((a) => a.status === "COMPLETED").length)} tone="success" />
       </div>
 
-      <Card className="mt-6">
+      <div className="mt-6">
+        <ListFilters
+          searchPlaceholder="Search subject, notes or location…"
+          searchValue={params.search}
+          selects={[
+            {
+              name: "activityType",
+              allLabel: "All types",
+              value: params.activityType,
+              options: optionsFrom(["TASK", "CALL", "MEETING", "REMINDER"]),
+            },
+            {
+              name: "status",
+              allLabel: "All statuses",
+              value: params.status,
+              options: optionsFrom(["OPEN", "COMPLETED", "CANCELLED"]),
+            },
+          ]}
+        />
+      </div>
+
+      <Card>
         <CardHeader>
           <CardTitle>All activities</CardTitle>
         </CardHeader>

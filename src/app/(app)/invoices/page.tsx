@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
+import { applySearch, LIST_LIMIT } from "@/lib/db";
+import { ListFilters, optionsFrom } from "@/components/list-filters";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
@@ -11,15 +13,18 @@ import { BillingRun } from "./billing-run";
 import { formatMoney, formatDate, humanize, daysBetween } from "@/lib/utils";
 
 /** Receivables: what has been billed, what is overdue, and what to bill next. */
-export default async function InvoicesPage() {
+export default async function InvoicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ search?: string; status?: string }>;
+}) {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.INVOICE_READ)) return <Forbidden what="invoices" />;
 
-  await requireUser();
-
+  const params = await searchParams;
   const db = await supabaseServer();
 
-  const { data: invoiceRows } = await db
+  let query = db
     .from("invoice")
     .select(
       `*,
@@ -29,6 +34,11 @@ export default async function InvoicesPage() {
     )
     .is("deletedAt", null)
     .order("dueDate");
+
+  if (params.status) query = query.eq("status", params.status);
+  query = applySearch(query, params.search, ["invoiceNumber"]);
+
+  const { data: invoiceRows } = await query.limit(LIST_LIMIT);
 
   const invoices = (invoiceRows ?? []).map((i) => ({
     ...i,
@@ -89,9 +99,27 @@ export default async function InvoicesPage() {
         <StatTile label="Total invoices" value={String(invoices.length)} />
       </div>
 
-      <Card className="mt-6">
+      <div className="mt-6">
+        <ListFilters
+          searchPlaceholder="Search invoice number…"
+          searchValue={params.search}
+          selects={[
+            {
+              name: "status",
+              allLabel: "All statuses",
+              value: params.status,
+              options: optionsFrom([
+                "DRAFT", "APPROVED", "SENT", "PARTIALLY_PAID",
+                "PAID", "OVERDUE", "CANCELLED", "WRITTEN_OFF",
+              ]),
+            },
+          ]}
+        />
+      </div>
+
+      <Card>
         {invoices.length === 0 ? (
-          <EmptyState title="No invoices yet" description="Invoices are raised from a contract, a billing milestone, or approved time." />
+          <EmptyState title="No invoices match" description="Invoices are raised from a contract, a billing milestone, or approved time." />
         ) : (
           <Table>
             <THead>

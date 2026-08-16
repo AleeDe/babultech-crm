@@ -10,6 +10,26 @@ import { supabaseServer } from "./supabase";
 export const LIST_LIMIT = 500;
 
 /**
+ * Case-insensitive "contains" across several columns.
+ *
+ * PostgREST's or() takes a comma-separated filter list, so a comma or a
+ * parenthesis in the search term would be read as syntax rather than text.
+ * Stripping them is what stops a stray bracket turning into a malformed query.
+ *
+ *   query = applySearch(query, term, ["name", "invoiceNumber"]);
+ */
+export function applySearch<Q extends { or: (filter: string) => Q }>(
+  query: Q,
+  term: string | undefined,
+  columns: readonly string[],
+): Q {
+  const cleaned = term?.replace(/[,()]/g, "").trim();
+  if (!cleaned) return query;
+
+  return query.or(columns.map((c) => `${c}.ilike.%${cleaned}%`).join(","));
+}
+
+/**
  * Atomic write helpers.
  *
  * These wrap the `create_record` / `update_record` database functions (see

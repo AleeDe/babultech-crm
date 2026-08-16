@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { listCampaigns, getCampaignPerformance } from "@/server/crm";
+import { ListFilters, optionsFrom } from "@/components/list-filters";
 import {
   PageHeader, Button, Card, CardHeader, CardTitle, CardContent, Table, THead, TBody,
   TR, TH, TD, Badge, statusTone, EmptyState, StatTile, Alert, Forbidden
@@ -8,11 +9,16 @@ import {
 import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
-export default async function CampaignsPage() {
+export default async function CampaignsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ search?: string; status?: string }>;
+}) {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.LEAD_READ)) return <Forbidden what="campaigns" />;
 
-  const campaigns = await listCampaigns();
+  const params = await searchParams;
+  const campaigns = await listCampaigns(params);
 
   // The ROI view only exists once supabase/schema-sql/02_views.sql has been applied.
   let performance: Awaited<ReturnType<typeof getCampaignPerformance>> = [];
@@ -22,6 +28,12 @@ export default async function CampaignsPage() {
   } catch {
     viewMissing = true;
   }
+
+  // The view is read whole rather than filtered, so it has to be narrowed to
+  // the same campaigns the list above is showing — otherwise a search hides
+  // rows in one table and leaves them visible in the other.
+  const visibleIds = new Set(campaigns.map((c) => c.id));
+  performance = performance.filter((p) => visibleIds.has(p.campaign_id));
 
   const totalSpend = campaigns.reduce((s, c) => s + Number(c.actualCost ?? 0), 0);
   const totalBudget = campaigns.reduce((s, c) => s + Number(c.budgetAmount ?? 0), 0);
@@ -48,6 +60,21 @@ export default async function CampaignsPage() {
         <StatTile label="Actual spend" value={formatMoney(totalSpend)} tone={totalSpend > totalBudget ? "danger" : "neutral"} />
         <StatTile label="Leads generated" value={String(totalLeads)} tone="info" />
         <StatTile label="Won revenue" value={formatMoney(wonValue)} tone="success" />
+      </div>
+
+      <div className="mt-6">
+        <ListFilters
+          searchPlaceholder="Search campaign name or number…"
+          searchValue={params.search}
+          selects={[
+            {
+              name: "status",
+              allLabel: "All statuses",
+              value: params.status,
+              options: optionsFrom(["PLANNED", "ACTIVE", "PAUSED", "COMPLETED"]),
+            },
+          ]}
+        />
       </div>
 
       {viewMissing && (

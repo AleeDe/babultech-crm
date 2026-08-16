@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase";
-import { createRecord, updateRecord, applyScope, LIST_LIMIT } from "@/lib/db";
+import { createRecord, updateRecord, applyScope, applySearch, LIST_LIMIT } from "@/lib/db";
 import { one, toDecimal } from "@/lib/decimal";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission, requireUser, scopedContext } from "@/lib/authz";
@@ -661,12 +661,12 @@ export async function listLeads(filters?: { search?: string; status?: string; so
 // Campaigns & Products
 // ---------------------------------------------------------------------------
 
-export async function listCampaigns() {
+export async function listCampaigns(filters?: { search?: string; status?: string }) {
   await requirePermission(PERMISSIONS.LEAD_READ);
 
   const db = await supabaseServer();
 
-  const { data, error } = await db
+  let query = db
     .from("campaign")
     .select(
       `*,
@@ -678,6 +678,11 @@ export async function listCampaigns() {
     )
     .is("deletedAt", null)
     .order("startDate", { ascending: false });
+
+  if (filters?.status) query = query.eq("status", filters.status);
+  query = applySearch(query, filters?.search, ["name", "campaignNumber"]);
+
+  const { data, error } = await query.limit(LIST_LIMIT);
 
   if (error) throw new Error(`Could not load campaigns: ${error.message}`);
 
@@ -725,7 +730,10 @@ export async function getCampaignPerformance() {
   }>;
 }
 
-export async function listProducts(activeOnly = true) {
+export async function listProducts(
+  activeOnly = true,
+  filters?: { search?: string; productType?: string; category?: string },
+) {
   await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
 
   const db = await supabaseServer();
@@ -737,6 +745,9 @@ export async function listProducts(activeOnly = true) {
     .order("name");
 
   if (activeOnly) query = query.eq("active", true);
+  if (filters?.productType) query = query.eq("productType", filters.productType);
+  if (filters?.category) query = query.eq("category", filters.category);
+  query = applySearch(query, filters?.search, ["name", "productCode", "category"]);
 
   const { data, error } = await query.limit(LIST_LIMIT);
   if (error) throw new Error(`Could not load products: ${error.message}`);
