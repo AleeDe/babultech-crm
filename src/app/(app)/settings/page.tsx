@@ -4,6 +4,8 @@ import { getSettings } from "@/server/settings";
 import { CurrencyList, TaxRateList, NamedList } from "./settings-lists";
 import { EmailSettingsPanel } from "./email-settings";
 import { getEmailSettings } from "@/server/email";
+import { SlaPolicies } from "./sla-policies";
+import { listSlaPolicies, listBusinessHours } from "@/server/sla";
 
 export default async function SettingsPage() {
   const me = await requireUser();
@@ -12,7 +14,9 @@ export default async function SettingsPage() {
   const [
     { currencies, taxRates, departments, caseCategories, expenseCategories },
     emailSettings,
-  ] = await Promise.all([getSettings(), getEmailSettings()]);
+    slaPolicies,
+    businessHours,
+  ] = await Promise.all([getSettings(), getEmailSettings(), listSlaPolicies(), listBusinessHours()]);
 
   const everythingEmpty =
     currencies.length === 0 && taxRates.length === 0 && departments.length === 0;
@@ -34,6 +38,7 @@ export default async function SettingsPage() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
+        <SlaPolicies policies={slaPolicies} businessHours={businessHours} />
         <EmailSettingsPanel values={emailSettings} />
         <CurrencyList rows={currencies} />
         <TaxRateList rows={taxRates} />

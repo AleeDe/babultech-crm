@@ -4,6 +4,8 @@ import { getVendorBill, getPayableFormOptions } from "@/server/payables";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
 import { NotesPanel } from "@/components/notes-panel";
+import { AuditPanel } from "@/components/audit-panel";
+import { getAuditTrail } from "@/lib/audit";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
@@ -23,11 +25,12 @@ export default async function VendorBillDetailPage({
 
   const { id } = await params;
 
-  const [bill, options, notes, documents] = await Promise.all([
+  const [bill, options, notes, documents, audit] = await Promise.all([
     getVendorBill(id),
     getPayableFormOptions(),
     listNotes("VendorBill", id),
     listDocuments("VendorBill", id),
+    getAuditTrail("VendorBill", id, 15),
   ]);
   if (!bill) notFound();
 
@@ -198,6 +201,10 @@ export default async function VendorBillDetailPage({
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NotesPanel entityType="VendorBill" entityId={id} notes={notes} />
         <DocumentsPanel entityType="VendorBill" entityId={id} documents={documents} />
+      </div>
+
+      <div className="mt-6">
+        <AuditPanel entries={audit as never} />
       </div>
     </>
   );

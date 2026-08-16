@@ -854,6 +854,46 @@ const commissions = await upsert(
 );
 console.log(`  ok commission_record   ${commissions.length}`);
 
+// ------------------------------------------------------- service level data
+//
+// cases.ts stamps every case with the active policy for its priority. Without
+// these rows that lookup finds nothing and cases are created with no deadline
+// — the SLA engine runs and decides nothing.
+const officeHours = await ensureRow(
+  "business_hours",
+  { name: "Pakistan office hours" },
+  {
+    name: "Pakistan office hours",
+    timezone: "Asia/Karachi",
+    weeklySchedule: {
+      monday: { start: "09:00", end: "18:00" },
+      tuesday: { start: "09:00", end: "18:00" },
+      wednesday: { start: "09:00", end: "18:00" },
+      thursday: { start: "09:00", end: "18:00" },
+      friday: { start: "09:00", end: "13:00" },
+      saturday: null,
+      sunday: null,
+    },
+    isDefault: true,
+    active: true,
+  },
+);
+console.log("  ok business_hours      1");
+
+// Critical runs round the clock: a production outage does not wait for Monday.
+// The rest follow office hours, which is what the customer actually experiences.
+const slaPolicies = [];
+for (const spec of [
+  { name: "Critical — 1h response, 8h fix", priority: "CRITICAL", firstResponseMinutes: 60, resolutionMinutes: 480, businessHoursId: null, pauseOnCustomerWait: true, active: true },
+  { name: "High — 4h response, 2 working days", priority: "HIGH", firstResponseMinutes: 240, resolutionMinutes: 2880, businessHoursId: officeHours.id, pauseOnCustomerWait: true, active: true },
+  { name: "Medium — 1 working day, 5 days", priority: "MEDIUM", firstResponseMinutes: 480, resolutionMinutes: 7200, businessHoursId: officeHours.id, pauseOnCustomerWait: true, active: true },
+  { name: "Low — 2 working days, 10 days", priority: "LOW", firstResponseMinutes: 960, resolutionMinutes: 14400, businessHoursId: officeHours.id, pauseOnCustomerWait: true, active: true },
+]) {
+  slaPolicies.push(await ensureRow("sla_policy", { name: spec.name }, spec));
+}
+console.log(`  ok sla_policy          ${slaPolicies.length}`);
+
+
 // ---------------------------------------------------------- support cases
 const caseCategory = await ensureRow(
   "case_category",
@@ -874,6 +914,42 @@ const cases = await upsert(
   "caseNumber",
 );
 console.log(`  ok support_case        ${cases.length}`);
+
+// Stamp the SLA deadlines the app would have set at creation time. Without
+// these the cases exist but nothing is ever due, so the breach tile and the
+// overdue colouring on the case list have nothing to work with.
+{
+  const policyFor = Object.fromEntries(slaPolicies.map((p) => [p.priority, p]));
+  const now = new Date().toISOString();
+
+  const stamped = cases
+    .filter((c) => policyFor[c.priority])
+    .map((c) => {
+      const policy = policyFor[c.priority];
+      const raised = new Date(c.createdAt).getTime();
+      const open = !["RESOLVED", "CLOSED", "CANCELLED"].includes(c.status);
+      const resolutionDue = new Date(raised + policy.resolutionMinutes * 60_000);
+
+      return {
+        id: c.id,
+        updatedAt: now,
+        slaPolicyId: policy.id,
+        firstResponseDueAt: new Date(raised + policy.firstResponseMinutes * 60_000).toISOString(),
+        resolutionDueAt: resolutionDue.toISOString(),
+        // Breached only where the clock has actually run out on an open case.
+        slaBreached: open && resolutionDue.getTime() < Date.now(),
+      };
+    });
+
+  // One update per case rather than an upsert: upsert treats a partial row as
+  // an insert and trips the NOT NULL on caseNumber.
+  for (const row of stamped) {
+    const { id, ...values } = row;
+    const { error } = await db.from("support_case").update(values).eq("id", id);
+    fail("support_case SLA stamp", error);
+  }
+  console.log(`  ok case SLA deadlines  ${stamped.length}`);
+}
 
 // -------------------------------------------------------------- projects
 const projects = await upsert(

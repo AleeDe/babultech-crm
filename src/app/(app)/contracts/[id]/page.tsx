@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
 import { NotesPanel } from "@/components/notes-panel";
+import { AuditPanel } from "@/components/audit-panel";
+import { getAuditTrail } from "@/lib/audit";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
@@ -20,9 +22,10 @@ export default async function ContractDetailPage({
 }) {
   const { id } = await params;
 
-  const [notes, documents] = await Promise.all([
+  const [notes, documents, audit] = await Promise.all([
     listNotes("Contract", id),
     listDocuments("Contract", id),
+    getAuditTrail("Contract", id, 15),
   ]);
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="contracts" />;
@@ -272,6 +275,10 @@ export default async function ContractDetailPage({
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NotesPanel entityType="Contract" entityId={id} notes={notes} />
         <DocumentsPanel entityType="Contract" entityId={id} documents={documents} />
+      </div>
+
+      <div className="mt-6">
+        <AuditPanel entries={audit as never} />
       </div>
     </>
   );

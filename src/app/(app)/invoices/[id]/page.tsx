@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
 import { NotesPanel } from "@/components/notes-panel";
+import { AuditPanel } from "@/components/audit-panel";
+import { getAuditTrail } from "@/lib/audit";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { SendEmailPanel } from "@/components/send-email-panel";
 import { sendInvoice, listEmails, isEmailConfigured } from "@/server/email";
@@ -23,11 +25,12 @@ export default async function InvoiceDetailPage({
 }) {
   const { id } = await params;
 
-  const [notes, documents, emails, emailConfigured] = await Promise.all([
+  const [notes, documents, emails, emailConfigured, audit] = await Promise.all([
     listNotes("Invoice", id),
     listDocuments("Invoice", id),
     listEmails("Invoice", id),
     isEmailConfigured(),
+    getAuditTrail("Invoice", id, 15),
   ]);
 
   // Bound here rather than passed through the client, where the id could be
@@ -359,6 +362,10 @@ Do let me know if anything needs clarifying.`}
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NotesPanel entityType="Invoice" entityId={id} notes={notes} />
         <DocumentsPanel entityType="Invoice" entityId={id} documents={documents} />
+      </div>
+
+      <div className="mt-6">
+        <AuditPanel entries={audit as never} />
       </div>
     </>
   );

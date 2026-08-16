@@ -5,6 +5,8 @@ import { getExpense } from "@/server/payables";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
 import { NotesPanel } from "@/components/notes-panel";
+import { AuditPanel } from "@/components/audit-panel";
+import { getAuditTrail } from "@/lib/audit";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
@@ -24,10 +26,11 @@ export default async function ExpenseDetailPage({
 
   const { id } = await params;
 
-  const [expense, notes, documents] = await Promise.all([
+  const [expense, notes, documents, audit] = await Promise.all([
     getExpense(id),
     listNotes("Expense", id),
     listDocuments("Expense", id),
+    getAuditTrail("Expense", id, 15),
   ]);
   if (!expense) notFound();
 
@@ -139,6 +142,10 @@ export default async function ExpenseDetailPage({
 
       <div className="mt-6">
         <DocumentsPanel entityType="Expense" entityId={id} documents={documents} />
+      </div>
+
+      <div className="mt-6">
+        <AuditPanel entries={audit as never} />
       </div>
     </>
   );

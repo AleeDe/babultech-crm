@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
 import { NotesPanel } from "@/components/notes-panel";
+import { AuditPanel } from "@/components/audit-panel";
+import { getAuditTrail } from "@/lib/audit";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { SendEmailPanel } from "@/components/send-email-panel";
 import { sendQuotation, listEmails, isEmailConfigured } from "@/server/email";
@@ -23,11 +25,12 @@ export default async function QuotationDetailPage({
 }) {
   const { id } = await params;
 
-  const [notes, documents, emails, emailConfigured] = await Promise.all([
+  const [notes, documents, emails, emailConfigured, audit] = await Promise.all([
     listNotes("Quotation", id),
     listDocuments("Quotation", id),
     listEmails("Quotation", id),
     isEmailConfigured(),
+    getAuditTrail("Quotation", id, 15),
   ]);
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="quotations" />;
@@ -296,6 +299,10 @@ Do let me know if you would like anything adjusted.`}
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NotesPanel entityType="Quotation" entityId={id} notes={notes} />
         <DocumentsPanel entityType="Quotation" entityId={id} documents={documents} />
+      </div>
+
+      <div className="mt-6">
+        <AuditPanel entries={audit as never} />
       </div>
     </>
   );

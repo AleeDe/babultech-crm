@@ -5,9 +5,11 @@ import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, Input, Select, Button, StatTile, Forbidden
 } from "@/components/ui";
-import { formatMoney, formatDate, humanize } from "@/lib/utils";
+import { formatMoney, humanize, serialize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { ExportButton } from "@/components/export-button";
+import { LeadsTable } from "./leads-table";
+import { getAssignableUsers } from "@/server/bulk";
 
 const STATUSES = [
   "NEW", "ASSIGNED", "ATTEMPTED_CONTACT", "CONTACTED", "DISCOVERY_SCHEDULED",
@@ -23,7 +25,7 @@ export default async function LeadsPage({
   if (!can(_me, PERMISSIONS.LEAD_READ)) return <Forbidden what="leads" />;
 
   const params = await searchParams;
-  const leads = await listLeads(params);
+  const [leads, users] = await Promise.all([listLeads(params), getAssignableUsers()]);
 
   const open = leads.filter((l) => !["CONVERTED", "DISQUALIFIED"].includes(l.status));
   const partnerReferred = leads.filter((l) => l.referredByPartnerId).length;
@@ -82,75 +84,11 @@ export default async function LeadsPage({
           <Button type="submit" variant="secondary">Filter</Button>
         </form>
 
-        {leads.length === 0 ? (
-          <EmptyState title="No leads match" description="Leads arrive from campaigns, the website, or a partner referral." />
-        ) : (
-          <Table>
-            <THead>
-              <TR>
-                <TH>Lead</TH>
-                <TH>Company</TH>
-                <TH>Source</TH>
-                <TH>Referred by</TH>
-                <TH>Owner</TH>
-                <TH className="text-right">Est. value</TH>
-                <TH>Follow up</TH>
-                <TH>Status</TH>
-                <TH className="text-right">Actions</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {leads.map((l) => {
-                const overdue = l.nextFollowUpAt && l.nextFollowUpAt < new Date();
-                return (
-                  <TR key={l.id}>
-                    <TD>
-                      <Link href={`/leads/${l.id}`} className="font-medium hover:underline">
-                        {l.firstName} {l.lastName}
-                      </Link>
-                      <p className="text-xs text-muted-foreground">{l.leadNumber}</p>
-                    </TD>
-                    <TD className="text-sm">{l.companyName ?? "—"}</TD>
-                    <TD className="text-sm text-muted-foreground">
-                      {l.leadSource ?? "—"}
-                      {l.campaign && <p className="text-xs">{l.campaign.name}</p>}
-                    </TD>
-                    <TD className="text-sm">
-                      {l.referredByPartner ? (
-                        <Link href={`/partners/${l.referredByPartner.id}`} className="text-primary hover:underline">
-                          {l.referredByPartner.displayName}
-                        </Link>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TD>
-                    <TD className="text-sm text-muted-foreground">{l.owner?.fullName}</TD>
-                    <TD className="text-right tabular">{formatMoney(l.estimatedValue)}</TD>
-                    <TD className={`text-sm ${overdue ? "text-red-600 dark:text-red-400" : ""}`}>
-                      {formatDate(l.nextFollowUpAt)}
-                    </TD>
-                    <TD>
-                      <Badge tone={statusTone(l.status)}>{humanize(l.status)}</Badge>
-                    </TD>
-                    <TD className="whitespace-nowrap text-right text-sm">
-                      <Link href={`/leads/${l.id}/edit`} className="text-primary hover:underline">
-                        {l.status === "CONVERTED" ? "View" : "Edit"}
-                      </Link>
-                      {l.status !== "CONVERTED" && (
-                        <>
-                          <span className="px-1.5 text-muted-foreground">·</span>
-                          <Link href={`/leads/${l.id}/convert`} className="text-primary hover:underline">
-                            Convert
-                          </Link>
-                        </>
-                      )}
-                    </TD>
-                  </TR>
-                );
-              })}
-            </TBody>
-          </Table>
-        )}
+        <LeadsTable
+          leads={serialize(leads) as never}
+          users={users}
+          canWrite={can(_me, PERMISSIONS.LEAD_WRITE)}
+        />
       </Card>
     </>
   );

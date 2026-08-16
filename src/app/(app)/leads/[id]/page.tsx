@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
 import { NotesPanel } from "@/components/notes-panel";
+import { AuditPanel } from "@/components/audit-panel";
+import { getAuditTrail } from "@/lib/audit";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { Mail, Phone, MessageCircle, ArrowRight } from "lucide-react";
 import { getLead } from "@/server/crm";
@@ -23,9 +25,10 @@ export default async function LeadDetailPage({
 
   const { id } = await params;
 
-  const [notes, documents] = await Promise.all([
+  const [notes, documents, audit] = await Promise.all([
     listNotes("Lead", id),
     listDocuments("Lead", id),
+    getAuditTrail("Lead", id, 15),
   ]);
   const lead = await getLead(id);
   if (!lead) notFound();
@@ -170,6 +173,10 @@ export default async function LeadDetailPage({
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NotesPanel entityType="Lead" entityId={id} notes={notes} />
         <DocumentsPanel entityType="Lead" entityId={id} documents={documents} />
+      </div>
+
+      <div className="mt-6">
+        <AuditPanel entries={audit as never} />
       </div>
     </>
   );
