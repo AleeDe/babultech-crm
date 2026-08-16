@@ -1,9 +1,14 @@
 import Link from "next/link";
+import {
+  AlertTriangle, Target, Receipt, FolderKanban, LifeBuoy, Handshake,
+} from "lucide-react";
 import { toDecimal } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
 import { requireUser } from "@/lib/authz";
 import { getPipelineByStage } from "@/server/opportunities";
 import { getCommissionTotals } from "@/server/commissions";
+import { getModuleSummary, getAttentionItems } from "@/server/dashboard";
+import { ModuleSummary } from "./module-summary";
 import {
   Card, CardHeader, CardTitle, CardContent, PageHeader, StatTile,
   Badge, statusTone, Table, THead, TBody, TR, TH, TD, EmptyState,
@@ -13,7 +18,10 @@ import { formatCompactMoney, formatMoney, formatDate, humanize } from "@/lib/uti
 export default async function DashboardPage() {
   const user = await requireUser();
 
-  const [pipeline, commissions, openCases, activeProjects, overdueInvoices, topPartners, myActivities] =
+  const [
+    pipeline, commissions, openCases, activeProjects, overdueInvoices, topPartners, myActivities,
+    summary, attentionData,
+  ] =
     await Promise.all([
       getPipelineByStage(),
       getCommissionTotals(),
@@ -96,6 +104,8 @@ export default async function DashboardPage() {
           .limit(6);
         return data ?? [];
       })(),
+      getModuleSummary(),
+      getAttentionItems(),
     ]);
 
   const openStages = pipeline.filter(
@@ -111,6 +121,51 @@ export default async function DashboardPage() {
     (m, p) => (p.total.greaterThan(m) ? p.total : m),
     toDecimal(1),
   );
+
+  // Only the categories that actually have something in them, so an empty
+  // strip disappears rather than reading as four reassuring zeros.
+  const attention = [
+    {
+      count: attentionData.overdueInvoices.length,
+      title: "Invoices past their due date",
+      detail: attentionData.overdueInvoices
+        .slice(0, 3)
+        .map((i: Record<string, any>) => `${i.invoiceNumber} — ${i.account?.name ?? "unknown"}`)
+        .join(" · "),
+      href: "/invoices",
+      tone: "danger" as const,
+    },
+    {
+      count: attentionData.breachedCases.length,
+      title: "Cases breaching SLA or marked critical",
+      detail: attentionData.breachedCases
+        .slice(0, 3)
+        .map((c: Record<string, any>) => `${c.caseNumber} — ${c.subject}`)
+        .join(" · "),
+      href: "/cases",
+      tone: "danger" as const,
+    },
+    {
+      count: attentionData.staleDeals.length,
+      title: "Deals past their expected close date",
+      detail: attentionData.staleDeals
+        .slice(0, 3)
+        .map((o: Record<string, any>) => `${o.name} — ${o.account?.name ?? "unknown"}`)
+        .join(" · "),
+      href: "/opportunities",
+      tone: "warning" as const,
+    },
+    {
+      count: attentionData.expiringAgreements.length,
+      title: "Partner agreements expiring within 60 days",
+      detail: attentionData.expiringAgreements
+        .slice(0, 3)
+        .map((p: Record<string, any>) => `${p.displayName} — ${formatDate(p.agreementExpiryDate)}`)
+        .join(" · "),
+      href: "/partners",
+      tone: "warning" as const,
+    },
+  ].filter((item) => item.count > 0);
 
   const partnersRanked = topPartners
     .map((p: Record<string, any>) => ({
@@ -158,6 +213,113 @@ export default async function DashboardPage() {
           tone={overdueInvoices._count > 0 ? "danger" : "neutral"}
           href="/invoices"
         />
+      </div>
+
+      {attention.length > 0 && (
+        <Card className="mt-6 border-amber-300/60 dark:border-amber-800/60">
+          <CardHeader className="flex flex-row items-center gap-2 pb-3">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500" />
+            <CardTitle className="text-base">Needs attention</CardTitle>
+          </CardHeader>
+          <CardContent className="px-0 pb-0">
+            <div className="divide-y border-t">
+              {attention.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="flex items-start gap-3 px-5 py-3 transition-colors hover:bg-muted/50"
+                >
+                  <span className="mt-0.5 shrink-0">
+                    <Badge tone={item.tone}>{item.count}</Badge>
+                  </span>
+                  <span className="min-w-0 flex-1 text-sm">
+                    <span className="font-medium">{item.title}</span>
+                    <span className="block text-xs text-muted-foreground">{item.detail}</span>
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+        Live summary
+      </h2>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {summary.visible.sales && (
+          <ModuleSummary
+            title="Sales"
+            icon={Target}
+            href="/opportunities"
+            headline={{ label: "in open pipeline", value: formatCompactMoney(summary.sales.openValue) }}
+            rows={[
+              { label: "Open deals", value: String(summary.sales.openDeals), href: "/opportunities" },
+              { label: "Won this month", value: `${summary.sales.wonThisMonth} · ${formatCompactMoney(summary.sales.wonValueThisMonth)}`, href: "/opportunities?stage=CLOSED_WON" },
+              { label: "Quotes awaiting reply", value: `${summary.sales.quotesAwaitingReply} · ${formatCompactMoney(summary.sales.quoteValueOut)}`, href: "/quotations?status=SENT" },
+              { label: "New leads", value: String(summary.sales.newLeads), href: "/leads?status=NEW" },
+              { label: "Follow-ups due", value: String(summary.sales.leadsToFollowUp), href: "/leads", alert: summary.sales.leadsToFollowUp > 0 },
+            ]}
+          />
+        )}
+
+        {summary.visible.finance && (
+          <ModuleSummary
+            title="Finance"
+            icon={Receipt}
+            href="/invoices"
+            headline={{ label: "outstanding", value: formatCompactMoney(summary.finance.outstanding) }}
+            rows={[
+              { label: "Overdue", value: `${summary.finance.overdueCount} · ${formatCompactMoney(summary.finance.overdue)}`, href: "/invoices", alert: summary.finance.overdueCount > 0 },
+              { label: "Collected this month", value: formatCompactMoney(summary.finance.collectedThisMonth), href: "/payments" },
+              { label: "Unallocated payments", value: formatCompactMoney(summary.finance.unallocatedPayments), href: "/payments", alert: Number(summary.finance.unallocatedPayments) > 0 },
+              { label: "Draft invoices", value: String(summary.finance.draftInvoices), href: "/invoices" },
+            ]}
+          />
+        )}
+
+        {summary.visible.delivery && (
+          <ModuleSummary
+            title="Delivery"
+            icon={FolderKanban}
+            href="/projects"
+            headline={{ label: "active projects", value: String(summary.delivery.activeProjects) }}
+            rows={[
+              { label: "At risk", value: String(summary.delivery.atRiskProjects), href: "/projects", alert: summary.delivery.atRiskProjects > 0 },
+              { label: "Milestones due in 14 days", value: String(summary.delivery.milestonesDueSoon), href: "/projects" },
+              { label: "Overdue tasks", value: String(summary.delivery.overdueTasks), href: "/projects", alert: summary.delivery.overdueTasks > 0 },
+              { label: "Hours awaiting approval", value: summary.delivery.hoursAwaitingApproval, href: "/timesheets/approvals" },
+            ]}
+          />
+        )}
+
+        {summary.visible.service && (
+          <ModuleSummary
+            title="Support"
+            icon={LifeBuoy}
+            href="/cases"
+            headline={{ label: "open cases", value: String(summary.service.openCases) }}
+            rows={[
+              { label: "Critical", value: String(summary.service.criticalCases), href: "/cases?priority=CRITICAL", alert: summary.service.criticalCases > 0 },
+              { label: "SLA breached", value: String(summary.service.breachedSla), href: "/cases", alert: summary.service.breachedSla > 0 },
+              { label: "Unassigned", value: String(summary.service.unassignedCases), href: "/cases", alert: summary.service.unassignedCases > 0 },
+            ]}
+          />
+        )}
+
+        {summary.visible.partners && (
+          <ModuleSummary
+            title="Partners"
+            icon={Handshake}
+            href="/partners"
+            headline={{ label: "commission payable", value: formatCompactMoney(summary.partners.commissionPayable) }}
+            rows={[
+              { label: "Active partners", value: String(summary.partners.activePartners), href: "/partners" },
+              { label: "Awaiting approval", value: String(summary.partners.commissionPendingApproval), href: "/commissions", alert: summary.partners.commissionPendingApproval > 0 },
+              { label: "Agreements expiring in 60 days", value: String(summary.partners.agreementsExpiringSoon), href: "/partners", alert: summary.partners.agreementsExpiringSoon > 0 },
+            ]}
+          />
+        )}
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
