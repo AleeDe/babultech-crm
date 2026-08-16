@@ -302,7 +302,12 @@ export function TaskBoard({
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1.5 text-sm font-medium">
             {isSub && <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-            <span className="truncate">{t.name}</span>
+            <Link
+              href={`/projects/${projectId}/tasks/${t.id}`}
+              className="truncate hover:underline"
+            >
+              {t.name}
+            </Link>
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {t.assignedUser ? t.assignedUser?.fullName : "Unassigned"}

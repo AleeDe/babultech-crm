@@ -951,6 +951,63 @@ console.log(`  ok support_case        ${cases.length}`);
   console.log(`  ok case SLA deadlines  ${stamped.length}`);
 }
 
+// --------------------------------------------------- case conversations
+//
+// A case with no thread is a title and a status. These give the screens
+// something to show and exercise the SLA pause path.
+const commentRows = [
+  { caseNumber: "CASE-2026-00001", commentType: "CUSTOMER_COMMENT", body: "Three SKUs are showing negative on-hand after the month-end close. Purchasing cannot raise orders against them.", isPublic: true, authorUserId: null, minutes: null },
+  { caseNumber: "CASE-2026-00001", commentType: "AGENT_RESPONSE", body: "Thank you for reporting this. We are reproducing it now against your month-end snapshot and will come back within the hour.", isPublic: true, authorUserId: pm, minutes: 15 },
+  { caseNumber: "CASE-2026-00001", commentType: "INTERNAL_NOTE", body: "Reproduced. Goods receipt posts before the invoice, so valuation reads the quantity mid-transaction. Needs a fix in the posting order, not a data correction.", isPublic: false, authorUserId: pm, minutes: 45 },
+  { caseNumber: "CASE-2026-00002", commentType: "CUSTOMER_COMMENT", body: "The batch traceability export fails silently on anything over 500 lines.", isPublic: true, authorUserId: null, minutes: null },
+  { caseNumber: "CASE-2026-00002", commentType: "AGENT_RESPONSE", body: "We can see the timeout in the logs. Could you confirm which batch numbers you tried, so we can test against the same volume?", isPublic: true, authorUserId: pm, minutes: 20 },
+  { caseNumber: "CASE-2026-00004", commentType: "AGENT_RESPONSE", body: "Walked through the recurring invoice template on a call. No product change needed — the feature was already there under Contracts.", isPublic: true, authorUserId: consultant, minutes: 30 },
+];
+
+{
+  const caseByNumber = Object.fromEntries(cases.map((c) => [c.caseNumber, c]));
+  const caseIds = cases.map((c) => c.id);
+
+  const { error: delErr } = await db.from("case_comment").delete().in("caseId", caseIds);
+  fail("case_comment clear", delErr);
+
+  const now = new Date().toISOString();
+  const { error } = await db.from("case_comment").insert(
+    commentRows.map((r, i) => ({
+      id: randomUUID(),
+      updatedAt: now,
+      caseId: caseByNumber[r.caseNumber].id,
+      authorUserId: r.authorUserId,
+      authorContactId: null,
+      commentType: r.commentType,
+      body: r.body,
+      isPublic: r.isPublic,
+      timeSpentMinutes: r.minutes,
+      // Spread across the last few days so the thread reads in order.
+      createdAt: at(-3 + i * 0.3),
+    })),
+  );
+  fail("case_comment insert", error);
+}
+console.log(`  ok case_comment        ${commentRows.length}`);
+
+// CASE-2026-00002 is waiting on the customer, so its clock is paused. Without
+// the events the pause is invisible and the deadline reads as still running.
+{
+  const waiting = cases.find((c) => c.caseNumber === "CASE-2026-00002");
+  if (waiting) {
+    const { error: delErr } = await db.from("sla_timer_event").delete().eq("caseId", waiting.id);
+    fail("sla_timer_event clear", delErr);
+
+    const { error } = await db.from("sla_timer_event").insert([
+      { id: randomUUID(), caseId: waiting.id, eventType: "STARTED", eventAt: at(-3), reason: "Case raised", createdById: pm },
+      { id: randomUUID(), caseId: waiting.id, eventType: "PAUSED", eventAt: at(-2), reason: "Waiting on the customer", createdById: pm },
+    ]);
+    fail("sla_timer_event insert", error);
+    console.log("  ok sla_timer_event     2");
+  }
+}
+
 // -------------------------------------------------------------- projects
 const projects = await upsert(
   "project",

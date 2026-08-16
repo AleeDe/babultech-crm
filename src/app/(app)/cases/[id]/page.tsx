@@ -6,6 +6,8 @@ import { NotesPanel } from "@/components/notes-panel";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { getCase } from "@/server/cases";
 import { getAuditTrail } from "@/lib/audit";
+import { getCaseThread } from "@/server/case-thread";
+import { CaseThread } from "./case-thread";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   StatTile, Button, Forbidden
@@ -24,9 +26,10 @@ export default async function CaseDetailPage({
 
   const { id } = await params;
 
-  const [notes, documents] = await Promise.all([
+  const [notes, documents, thread] = await Promise.all([
     listNotes("SupportCase", id),
     listDocuments("SupportCase", id),
+    getCaseThread(id),
   ]);
   const c = await getCase(id);
   if (!c) notFound();
@@ -140,7 +143,11 @@ export default async function CaseDetailPage({
           <FirstResponseControl
             caseId={c.id}
             alreadyResponded={Boolean(c.firstRespondedAt)}
-            dueAt={c.firstResponseDueAt?.toISOString() ?? null}
+            dueAt={
+              c.firstResponseDueAt
+                ? new Date(c.firstResponseDueAt as string).toISOString()
+                : null
+            }
           />
 
           <Card>
@@ -199,6 +206,17 @@ export default async function CaseDetailPage({
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      <div className="mt-6">
+        <CaseThread
+          caseId={id}
+          comments={thread.comments}
+          events={thread.events}
+          pausedMinutes={thread.pausedMinutes}
+          currentStatus={c.status}
+          canWrite={can(_me, PERMISSIONS.CASE_WRITE)}
+        />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
