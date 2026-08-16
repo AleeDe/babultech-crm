@@ -6,7 +6,7 @@ import { supabaseServer } from "@/lib/supabase";
 import { createRecord, updateRecord, applyScope } from "@/lib/db";
 import { one, toDecimal } from "@/lib/decimal";
 import { SEQUENCES } from "@/lib/numbering";
-import { PERMISSIONS, authorize, requirePermission, scopedContext } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission, requireUser, scopedContext } from "@/lib/authz";
 import { registrationExpiry, protectionDaysFor } from "@/lib/partner-policy";
 import type { ActionResult } from "./partners";
 
@@ -811,5 +811,244 @@ export async function getFormOptions() {
     contacts: contacts.data ?? [],
     products: products.data ?? [],
     taxRates: taxRates.data ?? [],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Creating campaigns, products and activities
+// ---------------------------------------------------------------------------
+//
+// These three had list screens but no way to add a row, so the only route in
+// was the seed script. Permissions follow what the list pages already check:
+// campaigns sit with leads (marketing), products with opportunities (they
+// price the deal), and activities are open to any signed-in user, since
+// everyone logs their own calls and tasks.
+
+const campaignSchema = z.object({
+  name: z.string().min(1, "Give the campaign a name.").max(200),
+  campaignTypeId: z.string().uuid("Choose a campaign type."),
+  ownerUserId: z.string().uuid("Choose an owner."),
+  status: z.enum(["PLANNED", "ACTIVE", "PAUSED", "COMPLETED"]).default("PLANNED"),
+  description: z.string().optional().nullable(),
+  startDate: z.string().optional().nullable(),
+  endDate: z.string().optional().nullable(),
+  budgetAmount: z.coerce.number().min(0).optional().nullable(),
+  expectedLeads: z.coerce.number().int().min(0).optional().nullable(),
+  expectedRevenue: z.coerce.number().min(0).optional().nullable(),
+});
+
+export async function createCampaign(
+  input: z.infer<typeof campaignSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const _auth = await authorize(PERMISSIONS.LEAD_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  const parsed = campaignSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const d = parsed.data;
+
+  if (d.startDate && d.endDate && d.endDate < d.startDate) {
+    return {
+      ok: false,
+      error: "The campaign cannot end before it starts.",
+      fieldErrors: { endDate: ["Must be on or after the start date."] },
+    };
+  }
+
+  try {
+    const created = await createRecord<{ id: string }>(
+      "campaign",
+      {
+        name: d.name,
+        campaignTypeId: d.campaignTypeId,
+        ownerUserId: d.ownerUserId,
+        status: d.status,
+        description: d.description || null,
+        startDate: d.startDate || null,
+        endDate: d.endDate || null,
+        budgetAmount: d.budgetAmount ?? null,
+        actualCost: 0,
+        expectedLeads: d.expectedLeads ?? null,
+        expectedRevenue: d.expectedRevenue ?? null,
+      },
+      { field: "campaignNumber", sequence: SEQUENCES.CAMPAIGN },
+    );
+
+    revalidatePath("/campaigns");
+    return { ok: true, data: { id: created.id } };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+const productSchema = z.object({
+  productCode: z.string().min(1, "Give the product a code.").max(50),
+  name: z.string().min(1, "Give the product a name.").max(200),
+  productType: z.enum(["PRODUCT", "SERVICE", "SUBSCRIPTION"]),
+  billingType: z.enum(["FIXED", "HOURLY", "RETAINER", "MILESTONE", "ANNUAL"]),
+  description: z.string().optional().nullable(),
+  category: z.string().max(100).optional().nullable(),
+  unitOfMeasure: z.string().max(30).optional().nullable(),
+  standardPrice: z.coerce.number().min(0).optional().nullable(),
+  standardCost: z.coerce.number().min(0).optional().nullable(),
+  defaultTaxRateId: z.string().uuid().optional().nullable(),
+  commissionPercent: z.coerce.number().min(0).max(100).optional().nullable(),
+  commissionable: z.coerce.boolean().default(true),
+  active: z.coerce.boolean().default(true),
+});
+
+export async function createProduct(
+  input: z.infer<typeof productSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  const parsed = productSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const d = parsed.data;
+
+  // Selling below cost is legitimate but rarely intended, so it is worth
+  // stopping on here rather than discovering it on a margin report later.
+  if (d.standardPrice != null && d.standardCost != null && d.standardPrice < d.standardCost) {
+    return {
+      ok: false,
+      error: "The price is below the cost. Change one of them, or leave the cost blank.",
+      fieldErrors: { standardPrice: ["Below the standard cost."] },
+    };
+  }
+
+  try {
+    const db = await supabaseServer();
+
+    const { data: clash } = await db
+      .from("product")
+      .select("id")
+      .eq("productCode", d.productCode)
+      .maybeSingle();
+
+    if (clash) {
+      return {
+        ok: false,
+        error: `Product code ${d.productCode} is already in use.`,
+        fieldErrors: { productCode: ["Already in use."] },
+      };
+    }
+
+    const created = await createRecord<{ id: string }>("product", {
+      productCode: d.productCode,
+      name: d.name,
+      productType: d.productType,
+      billingType: d.billingType,
+      description: d.description || null,
+      category: d.category || null,
+      unitOfMeasure: d.unitOfMeasure || null,
+      standardPrice: d.standardPrice ?? null,
+      standardCost: d.standardCost ?? null,
+      defaultTaxRateId: d.defaultTaxRateId || null,
+      commissionPercent: d.commissionPercent ?? null,
+      commissionable: d.commissionable,
+      active: d.active,
+    });
+
+    revalidatePath("/products");
+    return { ok: true, data: { id: created.id } };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+const activitySchema = z.object({
+  activityType: z.enum(["TASK", "CALL", "MEETING", "REMINDER"]),
+  subject: z.string().min(1, "Give the activity a subject.").max(255),
+  ownerUserId: z.string().uuid("Choose an owner."),
+  description: z.string().optional().nullable(),
+  contactId: z.string().uuid().optional().nullable(),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
+  startAt: z.string().optional().nullable(),
+  dueAt: z.string().optional().nullable(),
+  location: z.string().max(255).optional().nullable(),
+});
+
+export async function createActivity(
+  input: z.infer<typeof activitySchema>,
+): Promise<ActionResult<{ id: string }>> {
+  // No dedicated permission: logging your own call or task is not a privileged
+  // act, and requireUser() has already established who is asking.
+  const me = await requireUser();
+
+  const parsed = activitySchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const d = parsed.data;
+
+  if (d.startAt && d.dueAt && d.dueAt < d.startAt) {
+    return {
+      ok: false,
+      error: "It cannot be due before it starts.",
+      fieldErrors: { dueAt: ["Must be on or after the start."] },
+    };
+  }
+
+  try {
+    const created = await createRecord<{ id: string }>("activity", {
+      activityType: d.activityType,
+      subject: d.subject,
+      ownerUserId: d.ownerUserId || me.id,
+      description: d.description || null,
+      contactId: d.contactId || null,
+      priority: d.priority,
+      startAt: d.startAt || null,
+      dueAt: d.dueAt || null,
+      location: d.location || null,
+      status: "OPEN",
+    });
+
+    revalidatePath("/activities");
+    return { ok: true, data: { id: created.id } };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** Options the three new forms need: types, owners, tax rates and contacts. */
+export async function getCreateFormOptions() {
+  await requireUser();
+  const db = await supabaseServer();
+
+  const [campaignTypes, users, taxRates, contacts] = await Promise.all([
+    db.from("campaign_type").select("id, name").eq("active", true).order("name"),
+    db.from("app_user").select("id, fullName").eq("status", "ACTIVE").is("deletedAt", null).order("fullName"),
+    db.from("tax_rate").select("id, name, ratePercent").eq("active", true).order("name"),
+    db
+      .from("contact")
+      .select("id, firstName, lastName")
+      .eq("active", true)
+      .is("deletedAt", null)
+      .order("firstName")
+      .limit(500),
+  ]);
+
+  return {
+    campaignTypes: campaignTypes.data ?? [],
+    users: users.data ?? [],
+    taxRates: taxRates.data ?? [],
+    contacts: contacts.data ?? [],
   };
 }

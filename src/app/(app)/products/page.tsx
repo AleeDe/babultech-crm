@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { listProducts } from "@/server/crm";
 import {
-  PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, EmptyState, Forbidden
+  PageHeader, Button, Card, Table, THead, TBody, TR, TH, TD, Badge, EmptyState, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatPercent, humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
@@ -17,7 +18,15 @@ export default async function ProductsPage() {
       <PageHeader
         title="Products & services"
         description="The catalogue behind quotes and invoices. Commission can be overridden per product."
-      />
+      >
+        {can(_me, PERMISSIONS.OPPORTUNITY_WRITE) && (
+          <Button asChild>
+            <Link href="/products/new">
+              <Plus className="h-4 w-4" /> New product
+            </Link>
+          </Button>
+        )}
+      </PageHeader>
 
       <Card>
         {products.length === 0 ? (

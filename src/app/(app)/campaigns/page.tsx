@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { listCampaigns, getCampaignPerformance } from "@/server/crm";
 import {
-  PageHeader, Card, CardHeader, CardTitle, CardContent, Table, THead, TBody,
+  PageHeader, Button, Card, CardHeader, CardTitle, CardContent, Table, THead, TBody,
   TR, TH, TD, Badge, statusTone, EmptyState, StatTile, Alert, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
@@ -32,7 +33,15 @@ export default async function CampaignsPage() {
       <PageHeader
         title="Campaigns"
         description="Marketing spend against leads generated, pipeline created and revenue won."
-      />
+      >
+        {can(_me, PERMISSIONS.LEAD_WRITE) && (
+          <Button asChild>
+            <Link href="/campaigns/new">
+              <Plus className="h-4 w-4" /> New campaign
+            </Link>
+          </Button>
+        )}
+      </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Total budget" value={formatMoney(totalBudget)} sublabel={`${campaigns.length} campaigns`} />

@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
 import { requireUser } from "@/lib/authz";
 import {
-  PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
+  PageHeader, Button, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, EmptyState, StatTile,
 } from "@/components/ui";
 import { formatDateTime, humanize, entityHref } from "@/lib/utils";
@@ -50,7 +51,13 @@ export default async function ActivitiesPage() {
       <PageHeader
         title="My activities"
         description="Calls, meetings, tasks and reminders assigned to you across every module."
-      />
+      >
+        <Button asChild>
+          <Link href="/activities/new">
+            <Plus className="h-4 w-4" /> New activity
+          </Link>
+        </Button>
+      </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Open" value={String(open.length)} />
