@@ -5,7 +5,7 @@ import { z } from "zod";
 import Decimal from "decimal.js";
 import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
-import { updateRecord } from "@/lib/db";
+import { updateRecord, LIST_LIMIT } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { registrationExpiry, protectionDaysFor } from "@/lib/partner-policy";
@@ -353,7 +353,7 @@ export async function listPartners(filters?: {
     );
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(LIST_LIMIT);
   if (error) throw new Error(`Could not load partners: ${error.message}`);
 
   const countOf = (v: unknown) => (v as { count: number }[] | undefined)?.[0]?.count ?? 0;

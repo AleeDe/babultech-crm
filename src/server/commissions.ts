@@ -5,7 +5,7 @@ import { z } from "zod";
 import Decimal from "decimal.js";
 import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
-import { updateRecord } from "@/lib/db";
+import { updateRecord, LIST_LIMIT } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { clawback } from "./commission-engine";
@@ -311,7 +311,7 @@ export async function listCommissions(filters?: {
   if (filters?.from) query = query.gte("earnedDate", filters.from.toISOString().slice(0, 10));
   if (filters?.to) query = query.lte("earnedDate", filters.to.toISOString().slice(0, 10));
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(LIST_LIMIT);
   if (error) throw new Error(`Could not load commissions: ${error.message}`);
 
   return (data ?? []).map((r) => {
@@ -401,7 +401,7 @@ export async function listPayouts(status?: string) {
 
   if (status) query = query.eq("status", status);
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(LIST_LIMIT);
   if (error) throw new Error(`Could not load payouts: ${error.message}`);
 
   return (data ?? []).map((p) => ({

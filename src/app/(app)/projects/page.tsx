@@ -110,11 +110,11 @@ export default async function ProjectsPage({
                       </p>
                     </TD>
                     <TD className="text-sm">
-                      <Link href={`/accounts/${p.account.id}`} className="hover:underline">
-                        {p.account.name}
+                      <Link href={`/accounts/${p.account?.id}`} className="hover:underline">
+                        {p.account?.name}
                       </Link>
                     </TD>
-                    <TD className="text-sm text-muted-foreground">{p.projectManager.fullName}</TD>
+                    <TD className="text-sm text-muted-foreground">{p.projectManager?.fullName}</TD>
                     <TD className={`whitespace-nowrap text-sm ${late ? "text-red-600 dark:text-red-400" : ""}`}>
                       {formatDate(p.startDate)} → {formatDate(p.plannedEndDate)}
                     </TD>

@@ -83,7 +83,7 @@ export default async function QuotationDetailPage({
     <>
       <PageHeader
         title={`${quote.quoteNumber} — v${quote.versionNumber}`}
-        description={`${quote.account.name} · ${quote.opportunity.name}`}
+        description={`${quote.account?.name} · ${quote.opportunity?.name}`}
       >
         <Badge tone={statusTone(quote.status)}>{humanize(quote.status)}</Badge>
         {quote.approvalStatus !== "NOT_REQUIRED" && (
@@ -143,8 +143,8 @@ export default async function QuotationDetailPage({
                       <TR key={l.id}>
                         <TD className="text-sm">
                           {l.product ? (
-                            <Link href={`/products/${l.product.id}`} className="font-medium hover:underline">
-                              {l.product.name}
+                            <Link href={`/products/${l.product?.id}`} className="font-medium hover:underline">
+                              {l.product?.name}
                             </Link>
                           ) : (
                             <span className="font-medium">{l.description}</span>
@@ -191,24 +191,24 @@ export default async function QuotationDetailPage({
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <DetailRow label="Customer">
-                <Link href={`/accounts/${quote.account.id}`} className="text-primary hover:underline">
-                  {quote.account.name}
+                <Link href={`/accounts/${quote.account?.id}`} className="text-primary hover:underline">
+                  {quote.account?.name}
                 </Link>
-                <p className="text-xs text-muted-foreground">{quote.account.accountNumber}</p>
+                <p className="text-xs text-muted-foreground">{quote.account?.accountNumber}</p>
               </DetailRow>
               <DetailRow label="Opportunity">
-                <Link href={`/opportunities/${quote.opportunity.id}`} className="text-primary hover:underline">
-                  {quote.opportunity.opportunityNumber} — {quote.opportunity.name}
+                <Link href={`/opportunities/${quote.opportunity?.id}`} className="text-primary hover:underline">
+                  {quote.opportunity?.opportunityNumber} — {quote.opportunity?.name}
                 </Link>
               </DetailRow>
               <DetailRow label="Contact">
                 {quote.contact ? (
-                  <Link href={`/contacts/${quote.contact.id}/edit`} className="text-primary hover:underline">
-                    {quote.contact.firstName} {quote.contact.lastName}
+                  <Link href={`/contacts/${quote.contact?.id}/edit`} className="text-primary hover:underline">
+                    {quote.contact?.firstName} {quote.contact?.lastName}
                   </Link>
                 ) : "—"}
               </DetailRow>
-              <DetailRow label="Deal owner">{quote.opportunity.owner.fullName}</DetailRow>
+              <DetailRow label="Deal owner">{quote.opportunity?.owner?.fullName}</DetailRow>
               <DetailRow label="Quote date">{formatDate(quote.quoteDate)}</DetailRow>
               <DetailRow label="Currency">{quote.currencyCode}</DetailRow>
             </CardContent>

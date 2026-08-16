@@ -73,7 +73,7 @@ export default async function ProductsPage() {
                     )}
                   </TD>
                   <TD className="text-sm text-muted-foreground">
-                    {p.defaultTaxRate ? `${p.defaultTaxRate.name} ${formatPercent(p.defaultTaxRate.ratePercent, 0)}` : "—"}
+                    {p.defaultTaxRate ? `${p.defaultTaxRate?.name} ${formatPercent(p.defaultTaxRate?.ratePercent, 0)}` : "—"}
                   </TD>
                 </TR>
               ))}

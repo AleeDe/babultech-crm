@@ -78,7 +78,7 @@ export default async function PortalCommissionsPage({
                       <span className="text-sm font-medium">{r.opportunity?.name}</span>
                       <p className="text-xs text-muted-foreground">
                         {r.opportunity?.account?.name}
-                        {r.invoice && ` · invoice ${r.invoice.invoiceNumber}`}
+                        {r.invoice && ` · invoice ${r.invoice?.invoiceNumber}`}
                       </p>
                     </TD>
                     <TD className="whitespace-nowrap text-sm">{formatDate(r.earnedDate)}</TD>

@@ -81,12 +81,12 @@ export default async function ResourcesPage({
               {data.rows.map((r) => {
                 const over = r.allocatedPercent > 100;
                 return (
-                  <TR key={r.user.id} id={r.user.id}>
+                  <TR key={r.user?.id} id={r.user?.id}>
                     <TD>
-                      <span className="font-medium">{r.user.fullName}</span>
+                      <span className="font-medium">{r.user?.fullName}</span>
                       <p className="text-xs text-muted-foreground">
-                        {r.user.jobTitle ?? "—"}
-                        {r.user.department && ` · ${r.user.department.name}`}
+                        {r.user?.jobTitle ?? "—"}
+                        {r.user?.department && ` · ${r.user?.department?.name}`}
                       </p>
                     </TD>
                     <TD className="text-sm">
@@ -132,8 +132,8 @@ export default async function ResourcesPage({
                       </div>
                     </TD>
                     <TD className="whitespace-nowrap text-right text-xs text-muted-foreground">
-                      <p>Bill {formatMoney(r.user.defaultBillingRate)}</p>
-                      <p>Cost {formatMoney(r.user.costRate)}</p>
+                      <p>Bill {formatMoney(r.user?.defaultBillingRate)}</p>
+                      <p>Cost {formatMoney(r.user?.costRate)}</p>
                     </TD>
                   </TR>
                 );

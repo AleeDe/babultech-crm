@@ -148,14 +148,14 @@ export function ApprovalClient({ entries }: { entries: PendingEntry[] }) {
                       checked={selected.has(e.id)}
                       onChange={() => toggle(e.id)}
                       className="h-4 w-4 rounded border-input"
-                      aria-label={`Select ${e.user.fullName} ${e.workDate}`}
+                      aria-label={`Select ${e.user?.fullName} ${e.workDate}`}
                     />
                   </TD>
-                  <TD className="text-sm font-medium">{e.user.fullName}</TD>
+                  <TD className="text-sm font-medium">{e.user?.fullName}</TD>
                   <TD className="text-sm">
                     {e.project ? (
-                      <Link href={`/projects/${e.project.id}`} className="text-primary hover:underline">
-                        {e.project.name}
+                      <Link href={`/projects/${e.project?.id}`} className="text-primary hover:underline">
+                        {e.project?.name}
                       </Link>
                     ) : e.case ? (
                       <Link href={`/cases/${e.case.id}`} className="text-primary hover:underline">

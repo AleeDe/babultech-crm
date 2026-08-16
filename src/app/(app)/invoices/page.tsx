@@ -119,12 +119,12 @@ export default async function InvoicesPage() {
                       <Link href={`/invoices/${i.id}`} className="hover:underline">{i.invoiceNumber}</Link>
                     </TD>
                     <TD className="text-sm">
-                      <Link href={`/accounts/${i.account.id}`} className="hover:underline">
-                        {i.account.name}
+                      <Link href={`/accounts/${i.account?.id}`} className="hover:underline">
+                        {i.account?.name}
                       </Link>
                       {i.project && (
-                        <Link href={`/projects/${i.project.id}`} className="block text-xs text-muted-foreground hover:underline">
-                          {i.project.name}
+                        <Link href={`/projects/${i.project?.id}`} className="block text-xs text-muted-foreground hover:underline">
+                          {i.project?.name}
                         </Link>
                       )}
                     </TD>

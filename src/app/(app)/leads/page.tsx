@@ -103,9 +103,9 @@ export default async function LeadsPage({
                 return (
                   <TR key={l.id}>
                     <TD>
-                      <span className="font-medium">
+                      <Link href={`/leads/${l.id}`} className="font-medium hover:underline">
                         {l.firstName} {l.lastName}
-                      </span>
+                      </Link>
                       <p className="text-xs text-muted-foreground">{l.leadNumber}</p>
                     </TD>
                     <TD className="text-sm">{l.companyName ?? "—"}</TD>
@@ -122,7 +122,7 @@ export default async function LeadsPage({
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TD>
-                    <TD className="text-sm text-muted-foreground">{l.owner.fullName}</TD>
+                    <TD className="text-sm text-muted-foreground">{l.owner?.fullName}</TD>
                     <TD className="text-right tabular">{formatMoney(l.estimatedValue)}</TD>
                     <TD className={`text-sm ${overdue ? "text-red-600 dark:text-red-400" : ""}`}>
                       {formatDate(l.nextFollowUpAt)}

@@ -111,8 +111,8 @@ export default async function UserDetailPage({
               <CardTitle>What this role allows</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {user.role.description && (
-                <p className="text-sm text-muted-foreground">{user.role.description}</p>
+              {user.role?.description && (
+                <p className="text-sm text-muted-foreground">{user.role?.description}</p>
               )}
               <div className="flex flex-wrap gap-1.5">
                 {(user.role?.permissions ?? []).map((p: string) => (
@@ -137,14 +137,14 @@ export default async function UserDetailPage({
                 {user.projectMemberships.map((m: Record<string, any>) => (
                   <div key={m.id} className="flex items-center justify-between gap-3 border-b pb-2 last:border-0">
                     <div className="min-w-0">
-                      <Link href={`/projects/${m.project.id}`} className="font-medium hover:underline">
-                        {m.project.name}
+                      <Link href={`/projects/${m.project?.id}`} className="font-medium hover:underline">
+                        {m.project?.name}
                       </Link>
                       <p className="text-xs text-muted-foreground">
                         {m.projectRole} · {Number(m.allocationPercent ?? 0)}% allocated
                       </p>
                     </div>
-                    <Badge tone={statusTone(m.project.status)}>{humanize(m.project.status)}</Badge>
+                    <Badge tone={statusTone(m.project?.status)}>{humanize(m.project?.status)}</Badge>
                   </div>
                 ))}
               </CardContent>
@@ -215,8 +215,8 @@ export default async function UserDetailPage({
                   <DetailRow label="Department">{user.department?.name ?? "—"}</DetailRow>
                   <DetailRow label="Reports to">
                     {user.manager ? (
-                      <Link href={`/users/${user.manager.id}`} className="text-primary hover:underline">
-                        {user.manager.fullName}
+                      <Link href={`/users/${user.manager?.id}`} className="text-primary hover:underline">
+                        {user.manager?.fullName}
                       </Link>
                     ) : "—"}
                   </DetailRow>
@@ -235,7 +235,7 @@ export default async function UserDetailPage({
               <DetailRow label="Teams">
                 {user.teamMemberships.length === 0
                   ? "—"
-                  : user.teamMemberships.map((t: Record<string, any>) => t.team.name).join(", ")}
+                  : user.teamMemberships.map((t: Record<string, any>) => t.team?.name).join(", ")}
               </DetailRow>
               <DetailRow label="Created">{formatDate(user.createdAt)}</DetailRow>
             </CardContent>

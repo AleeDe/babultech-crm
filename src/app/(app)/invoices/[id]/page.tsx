@@ -93,7 +93,7 @@ export default async function InvoiceDetailPage({
     <>
       <PageHeader
         title={invoice.invoiceNumber}
-        description={`${invoice.account.name} · issued ${formatDate(invoice.invoiceDate)}`}
+        description={`${invoice.account?.name} · issued ${formatDate(invoice.invoiceDate)}`}
       >
         <Badge tone={statusTone(invoice.status)}>{humanize(invoice.status)}</Badge>
         {["DRAFT", "APPROVED"].includes(invoice.status) && (
@@ -166,16 +166,16 @@ export default async function InvoiceDetailPage({
                       <TR key={l.id}>
                         <TD className="text-sm">
                           {l.product ? (
-                            <Link href={`/products/${l.product.id}`} className="font-medium hover:underline">
-                              {l.product.name}
+                            <Link href={`/products/${l.product?.id}`} className="font-medium hover:underline">
+                              {l.product?.name}
                             </Link>
                           ) : (
                             <span className="font-medium">{l.description}</span>
                           )}
                           {l.product && <p className="text-xs text-muted-foreground">{l.description}</p>}
                           {l.project && (
-                            <Link href={`/projects/${l.project.id}`} className="text-xs text-primary hover:underline">
-                              {l.project.name}
+                            <Link href={`/projects/${l.project?.id}`} className="text-xs text-primary hover:underline">
+                              {l.project?.name}
                             </Link>
                           )}
                         </TD>
@@ -220,9 +220,9 @@ export default async function InvoiceDetailPage({
                   <TBody>
                     {invoice.allocations.map((a: Record<string, any>) => (
                       <TR key={a.id}>
-                        <TD className="font-mono text-xs">{a.payment.paymentNumber}</TD>
-                        <TD className="text-sm">{formatDate(a.payment.paymentDate)}</TD>
-                        <TD className="text-sm text-muted-foreground">{humanize(a.payment.paymentMethod)}</TD>
+                        <TD className="font-mono text-xs">{a.payment?.paymentNumber}</TD>
+                        <TD className="text-sm">{formatDate(a.payment?.paymentDate)}</TD>
+                        <TD className="text-sm text-muted-foreground">{humanize(a.payment?.paymentMethod)}</TD>
                         <TD className="text-sm text-muted-foreground">{a.allocatedBy?.fullName ?? "System"}</TD>
                         <TD className="text-right font-medium tabular">
                           {formatMoney(a.allocatedAmount, invoice.currencyCode)}
@@ -250,22 +250,22 @@ export default async function InvoiceDetailPage({
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <DetailRow label="Customer">
-                <Link href={`/accounts/${invoice.account.id}`} className="text-primary hover:underline">
-                  {invoice.account.name}
+                <Link href={`/accounts/${invoice.account?.id}`} className="text-primary hover:underline">
+                  {invoice.account?.name}
                 </Link>
-                <p className="text-xs text-muted-foreground">{invoice.account.accountNumber}</p>
+                <p className="text-xs text-muted-foreground">{invoice.account?.accountNumber}</p>
               </DetailRow>
               <DetailRow label="Bill to">
                 {invoice.contact ? (
-                  <Link href={`/contacts/${invoice.contact.id}/edit`} className="text-primary hover:underline">
-                    {invoice.contact.firstName} {invoice.contact.lastName}
+                  <Link href={`/contacts/${invoice.contact?.id}/edit`} className="text-primary hover:underline">
+                    {invoice.contact?.firstName} {invoice.contact?.lastName}
                   </Link>
                 ) : "—"}
               </DetailRow>
               <DetailRow label="Project">
                 {invoice.project ? (
-                  <Link href={`/projects/${invoice.project.id}`} className="text-primary hover:underline">
-                    {invoice.project.projectNumber} — {invoice.project.name}
+                  <Link href={`/projects/${invoice.project?.id}`} className="text-primary hover:underline">
+                    {invoice.project?.projectNumber} — {invoice.project?.name}
                   </Link>
                 ) : "—"}
               </DetailRow>
@@ -278,8 +278,8 @@ export default async function InvoiceDetailPage({
               </DetailRow>
               <DetailRow label="Milestone">
                 {invoice.milestone ? (
-                  <Link href={`/projects/${invoice.milestone.projectId}`} className="text-primary hover:underline">
-                    {invoice.milestone.name}
+                  <Link href={`/projects/${invoice.milestone?.projectId}`} className="text-primary hover:underline">
+                    {invoice.milestone?.name}
                   </Link>
                 ) : "—"}
               </DetailRow>
@@ -296,8 +296,8 @@ export default async function InvoiceDetailPage({
               <CardContent className="space-y-2 text-sm">
                 {invoice.commissionRecords.map((c: Record<string, any>) => (
                   <div key={c.id} className="flex items-center justify-between gap-2 border-b pb-2 last:border-0">
-                    <Link href={`/partners/${c.partner.id}`} className="text-primary hover:underline">
-                      {c.partner.displayName}
+                    <Link href={`/partners/${c.partner?.id}`} className="text-primary hover:underline">
+                      {c.partner?.displayName}
                       <span className="block font-mono text-xs text-muted-foreground">{c.commissionNumber}</span>
                     </Link>
                     <div className="text-right">

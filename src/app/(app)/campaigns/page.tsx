@@ -93,10 +93,10 @@ export default async function CampaignsPage() {
                       <p className="text-xs text-muted-foreground">{c.campaignNumber}</p>
                     </TD>
                     <TD className="text-sm text-muted-foreground">
-                      {c.campaignType.name}
-                      {c.campaignType.channel && <p className="text-xs">{c.campaignType.channel}</p>}
+                      {c.campaignType?.name}
+                      {c.campaignType?.channel && <p className="text-xs">{c.campaignType?.channel}</p>}
                     </TD>
-                    <TD className="text-sm text-muted-foreground">{c.owner.fullName}</TD>
+                    <TD className="text-sm text-muted-foreground">{c.owner?.fullName}</TD>
                     <TD className="text-sm">
                       {formatDate(c.startDate)} → {formatDate(c.endDate)}
                     </TD>

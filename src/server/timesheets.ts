@@ -352,15 +352,15 @@ export async function rejectTimeLogs(ids: string[], reason: string): Promise<Act
     // The reason is appended per entry, so each description differs — done
     // after the transition rather than inside it, since a failure here leaves
     // the rejection itself intact and only loses the appended note.
-    for (const log of logs) {
-      await db
-        .from("time_log")
-        .update({
-          description: `${log.description}\n\n[Rejected by ${user.fullName}: ${reason.trim()}]`,
-          updatedAt: new Date().toISOString(),
-        })
-        .eq("id", log.id);
-    }
+    const stampedAt = new Date().toISOString();
+    await db.from("time_log").upsert(
+      logs.map((log) => ({
+        id: log.id,
+        description: `${log.description}\n\n[Rejected by ${user.fullName}: ${reason.trim()}]`,
+        updatedAt: stampedAt,
+      })),
+      { onConflict: "id" },
+    );
 
     revalidatePath("/timesheets/approvals");
     revalidatePath("/timesheets");

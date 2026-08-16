@@ -104,12 +104,12 @@ export default async function ContractsPage() {
                       <p className="text-xs text-muted-foreground">{c.contractNumber}</p>
                     </TD>
                     <TD className="text-sm">
-                      <Link href={`/accounts/${c.account.id}`} className="hover:underline">
-                        {c.account.name}
+                      <Link href={`/accounts/${c.account?.id}`} className="hover:underline">
+                        {c.account?.name}
                       </Link>
                     </TD>
                     <TD className="text-sm text-muted-foreground">{c.contractType}</TD>
-                    <TD className="text-sm text-muted-foreground">{c.owner.fullName}</TD>
+                    <TD className="text-sm text-muted-foreground">{c.owner?.fullName}</TD>
                     <TD className={`text-sm ${soon ? "text-amber-600 dark:text-amber-400" : ""}`}>
                       {formatDate(c.startDate)} → {formatDate(c.endDate)}
                       {soon && <p className="text-xs">{days} days left</p>}

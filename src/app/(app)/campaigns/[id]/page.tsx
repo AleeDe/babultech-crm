@@ -4,7 +4,7 @@ import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
-  PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
+  PageHeader, Button, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
@@ -80,9 +80,14 @@ export default async function CampaignDetailPage({
     <>
       <PageHeader
         title={campaign.name}
-        description={`${campaign.campaignNumber} · ${campaign.campaignType.name}`}
+        description={`${campaign.campaignNumber} · ${campaign.campaignType?.name}`}
       >
         <Badge tone={statusTone(campaign.status)}>{humanize(campaign.status)}</Badge>
+        {can(_me, PERMISSIONS.LEAD_WRITE) && (
+          <Button asChild variant="outline">
+            <Link href={`/campaigns/${campaign.id}/edit`}>Edit</Link>
+          </Button>
+        )}
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -172,8 +177,8 @@ export default async function CampaignDetailPage({
                           <p className="text-xs text-muted-foreground">{o.opportunityNumber}</p>
                         </TD>
                         <TD className="text-sm">
-                          <Link href={`/accounts/${o.account.id}`} className="hover:underline">
-                            {o.account.name}
+                          <Link href={`/accounts/${o.account?.id}`} className="hover:underline">
+                            {o.account?.name}
                           </Link>
                         </TD>
                         <TD className="text-right tabular">{formatMoney(o.amount, o.currencyCode)}</TD>
@@ -193,8 +198,8 @@ export default async function CampaignDetailPage({
               <CardTitle>Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <DetailRow label="Type">{campaign.campaignType.name}</DetailRow>
-              <DetailRow label="Owner">{campaign.owner.fullName}</DetailRow>
+              <DetailRow label="Type">{campaign.campaignType?.name}</DetailRow>
+              <DetailRow label="Owner">{campaign.owner?.fullName}</DetailRow>
               <DetailRow label="Runs">
                 {formatDate(campaign.startDate)} → {formatDate(campaign.endDate)}
               </DetailRow>

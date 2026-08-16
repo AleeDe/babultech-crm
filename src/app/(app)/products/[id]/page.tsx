@@ -4,7 +4,7 @@ import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
-  PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
+  PageHeader, Button, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatPercent, formatDate, formatNumber, humanize } from "@/lib/utils";
@@ -74,7 +74,7 @@ export default async function ProductDetailPage({
   const marginPercent = price > 0 ? ((price - cost) / price) * 100 : 0;
 
   const pipelineValue = product.opportunityLines
-    .filter((l: Record<string, any>) => !["CLOSED_WON", "CLOSED_LOST"].includes(l.opportunity.stage))
+    .filter((l: Record<string, any>) => !["CLOSED_WON", "CLOSED_LOST"].includes(l.opportunity?.stage))
     .reduce((s: any, l: Record<string, any>) => s + Number(l.lineTotal), 0);
   const invoicedValue = product.invoiceLines.reduce((s: any, l: Record<string, any>) => s + Number(l.lineTotal), 0);
 
@@ -83,6 +83,11 @@ export default async function ProductDetailPage({
       <PageHeader title={product.name} description={`${product.productCode} · ${humanize(product.productType)}`}>
         <Badge tone={product.active ? "success" : "neutral"}>{product.active ? "Active" : "Inactive"}</Badge>
         {!product.commissionable && <Badge tone="warning">Not commissionable</Badge>}
+        {can(_me, PERMISSIONS.OPPORTUNITY_WRITE) && (
+          <Button asChild variant="outline">
+            <Link href={`/products/${product.id}/edit`}>Edit</Link>
+          </Button>
+        )}
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -121,19 +126,19 @@ export default async function ProductDetailPage({
                     {product.opportunityLines.map((l: Record<string, any>) => (
                       <TR key={l.id}>
                         <TD>
-                          <Link href={`/opportunities/${l.opportunity.id}`} className="font-medium hover:underline">
-                            {l.opportunity.name}
+                          <Link href={`/opportunities/${l.opportunity?.id}`} className="font-medium hover:underline">
+                            {l.opportunity?.name}
                           </Link>
-                          <p className="text-xs text-muted-foreground">{l.opportunity.opportunityNumber}</p>
+                          <p className="text-xs text-muted-foreground">{l.opportunity?.opportunityNumber}</p>
                         </TD>
                         <TD className="text-sm">
-                          <Link href={`/accounts/${l.opportunity.account.id}`} className="hover:underline">
-                            {l.opportunity.account.name}
+                          <Link href={`/accounts/${l.opportunity?.account?.id}`} className="hover:underline">
+                            {l.opportunity?.account?.name}
                           </Link>
                         </TD>
                         <TD className="text-right tabular">{formatNumber(l.quantity, 2)}</TD>
-                        <TD className="text-right tabular">{formatMoney(l.lineTotal, l.opportunity.currencyCode)}</TD>
-                        <TD><Badge tone={statusTone(l.opportunity.stage)}>{humanize(l.opportunity.stage)}</Badge></TD>
+                        <TD className="text-right tabular">{formatMoney(l.lineTotal, l.opportunity?.currencyCode)}</TD>
+                        <TD><Badge tone={statusTone(l.opportunity?.stage)}>{humanize(l.opportunity?.stage)}</Badge></TD>
                       </TR>
                     ))}
                   </TBody>
@@ -163,37 +168,37 @@ export default async function ProductDetailPage({
                     {product.quoteLines.map((l: Record<string, any>) => (
                       <TR key={l.id}>
                         <TD>
-                          <Link href={`/quotations/${l.quotation.id}`} className="font-medium hover:underline">
-                            {l.quotation.quoteNumber}
+                          <Link href={`/quotations/${l.quotation?.id}`} className="font-medium hover:underline">
+                            {l.quotation?.quoteNumber}
                           </Link>
                           <p className="text-xs text-muted-foreground">Quotation</p>
                         </TD>
                         <TD className="text-sm">
-                          <Link href={`/accounts/${l.quotation.account.id}`} className="hover:underline">
-                            {l.quotation.account.name}
+                          <Link href={`/accounts/${l.quotation?.account?.id}`} className="hover:underline">
+                            {l.quotation?.account?.name}
                           </Link>
                         </TD>
-                        <TD className="text-right tabular">{formatMoney(l.lineTotal, l.quotation.currencyCode)}</TD>
-                        <TD><Badge tone={statusTone(l.quotation.status)}>{humanize(l.quotation.status)}</Badge></TD>
+                        <TD className="text-right tabular">{formatMoney(l.lineTotal, l.quotation?.currencyCode)}</TD>
+                        <TD><Badge tone={statusTone(l.quotation?.status)}>{humanize(l.quotation?.status)}</Badge></TD>
                       </TR>
                     ))}
                     {product.invoiceLines.map((l: Record<string, any>) => (
                       <TR key={l.id}>
                         <TD>
-                          <Link href={`/invoices/${l.invoice.id}`} className="font-medium hover:underline">
-                            {l.invoice.invoiceNumber}
+                          <Link href={`/invoices/${l.invoice?.id}`} className="font-medium hover:underline">
+                            {l.invoice?.invoiceNumber}
                           </Link>
                           <p className="text-xs text-muted-foreground">
-                            Invoice · {formatDate(l.invoice.invoiceDate)}
+                            Invoice · {formatDate(l.invoice?.invoiceDate)}
                           </p>
                         </TD>
                         <TD className="text-sm">
-                          <Link href={`/accounts/${l.invoice.account.id}`} className="hover:underline">
-                            {l.invoice.account.name}
+                          <Link href={`/accounts/${l.invoice?.account?.id}`} className="hover:underline">
+                            {l.invoice?.account?.name}
                           </Link>
                         </TD>
-                        <TD className="text-right tabular">{formatMoney(l.lineTotal, l.invoice.currencyCode)}</TD>
-                        <TD><Badge tone={statusTone(l.invoice.status)}>{humanize(l.invoice.status)}</Badge></TD>
+                        <TD className="text-right tabular">{formatMoney(l.lineTotal, l.invoice?.currencyCode)}</TD>
+                        <TD><Badge tone={statusTone(l.invoice?.status)}>{humanize(l.invoice?.status)}</Badge></TD>
                       </TR>
                     ))}
                   </TBody>
@@ -216,7 +221,7 @@ export default async function ProductDetailPage({
               <DetailRow label="Unit of measure">{product.unitOfMeasure ?? "—"}</DetailRow>
               <DetailRow label="Default tax">
                 {product.defaultTaxRate
-                  ? `${product.defaultTaxRate.name} (${formatPercent(product.defaultTaxRate.ratePercent, 1)})`
+                  ? `${product.defaultTaxRate?.name} (${formatPercent(product.defaultTaxRate?.ratePercent, 1)})`
                   : "None"}
               </DetailRow>
               <DetailRow label="Commission">

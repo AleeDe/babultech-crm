@@ -1,6 +1,15 @@
 import { supabaseServer } from "./supabase";
 
 /**
+ * Ceiling on rows returned by a list screen.
+ *
+ * PostgREST defaults to unbounded, so a list query grew with the table and the
+ * page rendered every row it was handed. Well past this many rows the screen is
+ * unusable anyway — the answer there is a filter, not a longer page.
+ */
+export const LIST_LIMIT = 500;
+
+/**
  * Atomic write helpers.
  *
  * These wrap the `create_record` / `update_record` database functions (see

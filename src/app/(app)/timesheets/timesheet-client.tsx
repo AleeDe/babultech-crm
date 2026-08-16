@@ -297,8 +297,8 @@ export function TimesheetClient({
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">
                         {e.project ? (
-                          <Link href={`/projects/${e.project.id}`} className="hover:underline">
-                            {e.project.name}
+                          <Link href={`/projects/${e.project?.id}`} className="hover:underline">
+                            {e.project?.name}
                           </Link>
                         ) : e.case ? (
                           <Link href={`/cases/${e.case.id}`} className="hover:underline">

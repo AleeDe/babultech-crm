@@ -5,7 +5,7 @@ import { z } from "zod";
 import Decimal from "decimal.js";
 import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
-import { createRecord, updateRecord } from "@/lib/db";
+import { createRecord, updateRecord, LIST_LIMIT } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -72,17 +72,21 @@ async function rollUpProgress(db: Db, projectId: string): Promise<void> {
     .select("id")
     .eq("projectId", projectId);
 
-  for (const phase of phases ?? []) {
-    const pct = weighted(tasks.filter((t) => t.phaseId === phase.id));
-    if (pct === null) continue;
-    await db
-      .from("project_phase")
-      .update({
-        completionPercent: pct,
-        status: pct >= 100 ? "COMPLETED" : pct > 0 ? "ACTIVE" : "NOT_STARTED",
-        updatedAt: new Date().toISOString(),
-      })
-      .eq("id", phase.id);
+  // One upsert rather than an UPDATE per phase: a twelve-phase project was
+  // twelve round trips, and this runs on every task change.
+  const now = new Date().toISOString();
+  const phaseUpdates = (phases ?? [])
+    .map((phase) => ({ phase, pct: weighted(tasks.filter((t) => t.phaseId === phase.id)) }))
+    .filter((u): u is { phase: { id: string }; pct: number } => u.pct !== null)
+    .map(({ phase, pct }) => ({
+      id: phase.id,
+      completionPercent: pct,
+      status: pct >= 100 ? "COMPLETED" : pct > 0 ? "ACTIVE" : "NOT_STARTED",
+      updatedAt: now,
+    }));
+
+  if (phaseUpdates.length) {
+    await db.from("project_phase").upsert(phaseUpdates, { onConflict: "id" });
   }
 
   const overall = weighted(tasks);
@@ -278,7 +282,7 @@ export async function listProjects(filters?: { status?: string; search?: string;
     query = query.or(clauses.join(","));
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(LIST_LIMIT);
   if (error) throw new Error(`Could not load projects: ${error.message}`);
 
   const countOf = (v: unknown) => (v as { count: number }[] | undefined)?.[0]?.count ?? 0;

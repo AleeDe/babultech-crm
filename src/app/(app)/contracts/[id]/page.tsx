@@ -71,14 +71,14 @@ export default async function ContractDetailPage({
     <>
       <PageHeader
         title={contract.name}
-        description={`${contract.contractNumber} · ${contract.account.name}`}
+        description={`${contract.contractNumber} · ${contract.account?.name}`}
       >
         <Badge tone={statusTone(contract.status)}>{humanize(contract.status)}</Badge>
         <Button asChild variant="outline">
           <Link href={`/contracts/${contract.id}/edit`}>Edit</Link>
         </Button>
         <Button asChild>
-          <Link href={`/invoices/new?accountId=${contract.account.id}`}>New invoice</Link>
+          <Link href={`/invoices/new?accountId=${contract.account?.id}`}>New invoice</Link>
         </Button>
       </PageHeader>
 
@@ -225,24 +225,24 @@ export default async function ContractDetailPage({
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <DetailRow label="Customer">
-                <Link href={`/accounts/${contract.account.id}`} className="text-primary hover:underline">
-                  {contract.account.name}
+                <Link href={`/accounts/${contract.account?.id}`} className="text-primary hover:underline">
+                  {contract.account?.name}
                 </Link>
-                <p className="text-xs text-muted-foreground">{contract.account.accountNumber}</p>
+                <p className="text-xs text-muted-foreground">{contract.account?.accountNumber}</p>
               </DetailRow>
-              <DetailRow label="Owner">{contract.owner.fullName}</DetailRow>
+              <DetailRow label="Owner">{contract.owner?.fullName}</DetailRow>
               <DetailRow label="Contract type">{contract.contractType}</DetailRow>
               <DetailRow label="Sourced from">
                 {contract.opportunity ? (
-                  <Link href={`/opportunities/${contract.opportunity.id}`} className="text-primary hover:underline">
-                    {contract.opportunity.opportunityNumber} — {contract.opportunity.name}
+                  <Link href={`/opportunities/${contract.opportunity?.id}`} className="text-primary hover:underline">
+                    {contract.opportunity?.opportunityNumber} — {contract.opportunity?.name}
                   </Link>
                 ) : "—"}
               </DetailRow>
               <DetailRow label="From quote">
                 {contract.quotation ? (
-                  <Link href={`/quotations/${contract.quotation.id}`} className="text-primary hover:underline">
-                    {contract.quotation.quoteNumber} (v{contract.quotation.versionNumber})
+                  <Link href={`/quotations/${contract.quotation?.id}`} className="text-primary hover:underline">
+                    {contract.quotation?.quoteNumber} (v{contract.quotation?.versionNumber})
                   </Link>
                 ) : "—"}
               </DetailRow>

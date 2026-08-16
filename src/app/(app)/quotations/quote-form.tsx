@@ -115,7 +115,7 @@ export function QuoteForm({
         return {
           key: `i${importSeq}`,
           productId: l.productId,
-          description: l.product.name,
+          description: l.product?.name,
           quantity: String(Number(l.quantity)),
           unitPrice: String(Number(l.unitPrice)),
           discountPercent: l.discountPercent ? String(Number(l.discountPercent)) : "",
@@ -199,7 +199,7 @@ export function QuoteForm({
                 <option value="">Select a deal…</option>
                 {options.opportunities.map((o) => (
                   <option key={o.id} value={o.id}>
-                    {o.opportunityNumber} — {o.name} ({o.account.name})
+                    {o.opportunityNumber} — {o.name} ({o.account?.name})
                   </option>
                 ))}
               </Select>

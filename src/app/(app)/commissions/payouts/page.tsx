@@ -66,13 +66,13 @@ export default async function PayoutsPage() {
                       <span className="font-mono text-sm">{p.payoutNumber}</span>
                       <Badge tone={statusTone(p.status)}>{humanize(p.status)}</Badge>
                     </div>
-                    <Link href={`/partners/${p.partner.id}`} className="mt-1 block text-sm font-medium hover:underline">
-                      {p.partner.displayName}
+                    <Link href={`/partners/${p.partner?.id}`} className="mt-1 block text-sm font-medium hover:underline">
+                      {p.partner?.displayName}
                     </Link>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {p._count.records} commission{p._count.records === 1 ? "" : "s"}
                       {p.periodStart && ` · ${formatDate(p.periodStart)} – ${formatDate(p.periodEnd)}`}
-                      {p.approvedBy && ` · approved by ${p.approvedBy.fullName}`}
+                      {p.approvedBy && ` · approved by ${p.approvedBy?.fullName}`}
                     </p>
                   </div>
 
@@ -122,8 +122,8 @@ export default async function PayoutsPage() {
                   <TR key={p.id}>
                     <TD className="font-mono text-xs">{p.payoutNumber}</TD>
                     <TD>
-                      <Link href={`/partners/${p.partner.id}`} className="text-sm hover:underline">
-                        {p.partner.displayName}
+                      <Link href={`/partners/${p.partner?.id}`} className="text-sm hover:underline">
+                        {p.partner?.displayName}
                       </Link>
                     </TD>
                     <TD className="text-sm">{formatDate(p.paymentDate)}</TD>

@@ -5,7 +5,7 @@ import { z } from "zod";
 import Decimal from "decimal.js";
 import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
-import { createRecord, updateRecord } from "@/lib/db";
+import { createRecord, updateRecord, LIST_LIMIT } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { accrueForInvoice, accrueForPayment } from "./commission-engine";
@@ -716,7 +716,7 @@ export async function listPayments(filters?: { accountId?: string; unappliedOnly
   if (filters?.accountId) query = query.eq("accountId", filters.accountId);
   if (filters?.unappliedOnly) query = query.gt("unallocatedAmount", 0);
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(LIST_LIMIT);
   if (error) throw new Error(`Could not load payments: ${error.message}`);
 
   type Row = Record<string, unknown>;

@@ -5,7 +5,7 @@ import { z } from "zod";
 import Decimal from "decimal.js";
 import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
-import { updateRecord, applyScope } from "@/lib/db";
+import { updateRecord, applyScope, LIST_LIMIT } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission, scopedContext } from "@/lib/authz";
 import { auditChanges } from "@/lib/audit";
@@ -351,7 +351,7 @@ export async function listOpportunities(filters?: { stage?: string; search?: str
     query = query.or(clauses.join(","));
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(LIST_LIMIT);
   if (error) throw new Error(`Could not load opportunities: ${error.message}`);
 
   const countOf = (v: unknown) => (v as { count: number }[] | undefined)?.[0]?.count ?? 0;

@@ -39,7 +39,7 @@ export default async function EditCasePage({
     <div className="mx-auto max-w-4xl">
       <PageHeader
         title={`Edit ${supportCase.caseNumber}`}
-        description={`${supportCase.subject} · ${supportCase.account.name}`}
+        description={`${supportCase.subject} · ${supportCase.account?.name}`}
       />
       <CaseForm
         options={serialize(options) as unknown as CaseFormOptions}

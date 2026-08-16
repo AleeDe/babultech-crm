@@ -66,9 +66,9 @@ export default async function ContactsPage({
               {contacts.map((c) => (
                 <TR key={c.id}>
                   <TD>
-                    <span className="font-medium">
+                    <Link href={`/contacts/${c.id}`} className="font-medium hover:underline">
                       {c.firstName} {c.lastName}
-                    </span>
+                    </Link>
                     {c.isPrimary && <Badge tone="info" className="ml-2">Primary</Badge>}
                     {c.partnerAsPerson && (
                       <Link href={`/partners/${c.partnerAsPerson.id}`} className="ml-2">
@@ -80,8 +80,8 @@ export default async function ContactsPage({
                   </TD>
                   <TD className="text-sm">
                     {c.account ? (
-                      <Link href={`/accounts/${c.account.id}`} className="hover:underline">
-                        {c.account.name}
+                      <Link href={`/accounts/${c.account?.id}`} className="hover:underline">
+                        {c.account?.name}
                       </Link>
                     ) : (
                       <span className="text-muted-foreground">Independent</span>

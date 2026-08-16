@@ -149,15 +149,15 @@ export default async function CasesPage({
                       </p>
                     </TD>
                     <TD className="text-sm">
-                      <Link href={`/accounts/${c.account.id}`} className="hover:underline">
-                        {c.account.name}
+                      <Link href={`/accounts/${c.account?.id}`} className="hover:underline">
+                        {c.account?.name}
                       </Link>
                       {c.contact && (
                         <Link
-                          href={`/contacts/${c.contact.id}/edit`}
+                          href={`/contacts/${c.contact?.id}/edit`}
                           className="block text-xs text-muted-foreground hover:underline"
                         >
-                          {c.contact.firstName} {c.contact.lastName}
+                          {c.contact?.firstName} {c.contact?.lastName}
                         </Link>
                       )}
                     </TD>

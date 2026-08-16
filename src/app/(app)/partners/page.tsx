@@ -68,7 +68,7 @@ export default async function PartnersPage({
     .reduce(
       (s, d) =>
         s.plus(
-          toDecimal(d.opportunity.amount).times(d.revenueSharePercent).dividedBy(100),
+          toDecimal(d.opportunity?.amount).times(d.revenueSharePercent).dividedBy(100),
         ),
       toDecimal(0),
     );

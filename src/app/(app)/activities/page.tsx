@@ -99,8 +99,8 @@ export default async function ActivitiesPage() {
                       </TD>
                       <TD className="text-sm">
                         {a.contact ? (
-                          <Link href={`/contacts/${a.contact.id}/edit`} className="hover:underline">
-                            {a.contact.firstName} {a.contact.lastName}
+                          <Link href={`/contacts/${a.contact?.id}/edit`} className="hover:underline">
+                            {a.contact?.firstName} {a.contact?.lastName}
                           </Link>
                         ) : (
                           <span className="text-muted-foreground">—</span>

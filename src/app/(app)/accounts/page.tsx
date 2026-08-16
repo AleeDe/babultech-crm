@@ -76,12 +76,12 @@ export default async function AccountsPage({
                       {humanize(a.accountType)}
                     </Badge>
                     {a.partner && (
-                      <Link href={`/partners/${a.partner.id}`} className="mt-0.5 block text-xs text-primary hover:underline">
-                        {humanize(a.partner.partnerType)} partner
+                      <Link href={`/partners/${a.partner?.id}`} className="mt-0.5 block text-xs text-primary hover:underline">
+                        {humanize(a.partner?.partnerType)} partner
                       </Link>
                     )}
                   </TD>
-                  <TD className="text-sm text-muted-foreground">{a.owner.fullName}</TD>
+                  <TD className="text-sm text-muted-foreground">{a.owner?.fullName}</TD>
                   <TD className="text-sm text-muted-foreground">{a.industry ?? "—"}</TD>
                   <TD className="text-right tabular">{a._count.contacts}</TD>
                   <TD className="text-right tabular">{a._count.opportunities}</TD>

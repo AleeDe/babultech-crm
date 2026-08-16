@@ -45,7 +45,7 @@ export function CommissionTable({ rows }: { rows: Row[] }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const selectedRows = rows.filter((r) => selected.has(r.id));
-  const partnerIds = new Set(selectedRows.map((r) => r.partner.id));
+  const partnerIds = new Set(selectedRows.map((r) => r.partner?.id));
   const currencies = new Set(selectedRows.map((r) => r.currencyCode));
   const allPayable = selectedRows.length > 0 && selectedRows.every((r) => ["APPROVED", "PAYABLE"].includes(r.status) && !r.payout);
   const canPayout = allPayable && partnerIds.size === 1 && currencies.size === 1;
@@ -189,18 +189,18 @@ export function CommissionTable({ rows }: { rows: Row[] }) {
                   </TD>
                   <TD className="font-mono text-xs">{r.commissionNumber}</TD>
                   <TD>
-                    <Link href={`/partners/${r.partner.id}`} className="text-sm font-medium hover:underline">
-                      {r.partner.displayName}
+                    <Link href={`/partners/${r.partner?.id}`} className="text-sm font-medium hover:underline">
+                      {r.partner?.displayName}
                     </Link>
                     <p className="text-xs text-muted-foreground">
-                      {r.partner.kind === "INDIVIDUAL" ? "Individual" : "Company"}
+                      {r.partner?.kind === "INDIVIDUAL" ? "Individual" : "Company"}
                     </p>
                   </TD>
                   <TD>
-                    <Link href={`/opportunities/${r.opportunity.id}`} className="text-sm hover:underline">
-                      {r.opportunity.name}
+                    <Link href={`/opportunities/${r.opportunity?.id}`} className="text-sm hover:underline">
+                      {r.opportunity?.name}
                     </Link>
-                    <p className="text-xs text-muted-foreground">{r.opportunity.account.name}</p>
+                    <p className="text-xs text-muted-foreground">{r.opportunity?.account?.name}</p>
                   </TD>
                   <TD className="text-sm">{formatDate(r.earnedDate)}</TD>
                   <TD className="text-right tabular">{formatMoney(r.basisAmount, r.currencyCode)}</TD>

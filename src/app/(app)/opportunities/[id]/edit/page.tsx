@@ -51,7 +51,7 @@ export default async function EditOpportunityPage({
     <div className="mx-auto max-w-5xl">
       <PageHeader
         title={`Edit ${opp.name}`}
-        description={`${opp.opportunityNumber} · ${opp.account.name}`}
+        description={`${opp.opportunityNumber} · ${opp.account?.name}`}
       />
       {accrued && (
         <div className="mb-6">

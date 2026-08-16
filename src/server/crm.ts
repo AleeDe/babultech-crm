@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase";
-import { createRecord, updateRecord, applyScope } from "@/lib/db";
+import { createRecord, updateRecord, applyScope, LIST_LIMIT } from "@/lib/db";
 import { one, toDecimal } from "@/lib/decimal";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission, requireUser, scopedContext } from "@/lib/authz";
@@ -119,7 +119,7 @@ export async function listAccounts(filters?: { search?: string; accountType?: st
     query = query.or(`name.ilike.%${s}%,accountNumber.ilike.%${s}%`);
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(LIST_LIMIT);
   if (error) throw new Error(`Could not load accounts: ${error.message}`);
 
   // Reshape PostgREST's aggregate relations into the _count shape pages read.
@@ -369,7 +369,7 @@ export async function listContacts(filters?: { search?: string; accountId?: stri
     );
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(LIST_LIMIT);
   if (error) throw new Error(`Could not load contacts: ${error.message}`);
 
   return (data ?? []).map((c) => ({
@@ -646,7 +646,7 @@ export async function listLeads(filters?: { search?: string; status?: string; so
     );
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(LIST_LIMIT);
   if (error) throw new Error(`Could not load leads: ${error.message}`);
 
   return (data ?? []).map((l) => ({
@@ -738,7 +738,7 @@ export async function listProducts(activeOnly = true) {
 
   if (activeOnly) query = query.eq("active", true);
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(LIST_LIMIT);
   if (error) throw new Error(`Could not load products: ${error.message}`);
 
   return (data ?? []).map((p) => ({ ...p, defaultTaxRate: one(p.defaultTaxRate as never) }));
@@ -1024,6 +1024,174 @@ export async function createActivity(
     return { ok: true, data: { id: created.id } };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
+  }
+}
+
+export async function getCampaign(id: string) {
+  await requirePermission(PERMISSIONS.LEAD_READ);
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("campaign")
+    .select(
+      `*,
+       campaignType:campaign_type ( id, name, channel ),
+       owner:app_user!campaign_ownerUserId_fkey ( id, fullName )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load campaign: ${error.message}`);
+  if (!data) return null;
+
+  return {
+    ...data,
+    campaignType: one(data.campaignType as never),
+    owner: one(data.owner as never),
+  };
+}
+
+export async function updateCampaign(
+  id: string,
+  input: z.infer<typeof campaignSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const _auth = await authorize(PERMISSIONS.LEAD_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  const parsed = campaignSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const d = parsed.data;
+
+  if (d.startDate && d.endDate && d.endDate < d.startDate) {
+    return {
+      ok: false,
+      error: "The campaign cannot end before it starts.",
+      fieldErrors: { endDate: ["Must be on or after the start date."] },
+    };
+  }
+
+  try {
+    await updateRecord(
+      "campaign",
+      id,
+      {
+        name: d.name,
+        campaignTypeId: d.campaignTypeId,
+        ownerUserId: d.ownerUserId,
+        status: d.status,
+        description: d.description || null,
+        startDate: d.startDate || null,
+        endDate: d.endDate || null,
+        budgetAmount: d.budgetAmount ?? null,
+        expectedLeads: d.expectedLeads ?? null,
+        expectedRevenue: d.expectedRevenue ?? null,
+      },
+      "Campaign",
+      _auth.user.id,
+    );
+
+    revalidatePath("/campaigns");
+    revalidatePath(`/campaigns/${id}`);
+    return { ok: true, data: { id } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Could not update the campaign." };
+  }
+}
+
+export async function getProduct(id: string) {
+  await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("product")
+    .select("*, defaultTaxRate:tax_rate ( id, name, ratePercent )")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load product: ${error.message}`);
+  if (!data) return null;
+
+  return { ...data, defaultTaxRate: one(data.defaultTaxRate as never) };
+}
+
+export async function updateProduct(
+  id: string,
+  input: z.infer<typeof productSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  const parsed = productSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const d = parsed.data;
+
+  if (d.standardPrice != null && d.standardCost != null && d.standardPrice < d.standardCost) {
+    return {
+      ok: false,
+      error: "The price is below the cost. Change one of them, or leave the cost blank.",
+      fieldErrors: { standardPrice: ["Below the standard cost."] },
+    };
+  }
+
+  try {
+    const db = await supabaseServer();
+
+    // The code is unique, so a rename onto another product's code has to be
+    // caught here rather than surfacing as a constraint violation.
+    const { data: clash } = await db
+      .from("product")
+      .select("id")
+      .eq("productCode", d.productCode)
+      .neq("id", id)
+      .maybeSingle();
+
+    if (clash) {
+      return {
+        ok: false,
+        error: `Product code ${d.productCode} is already in use.`,
+        fieldErrors: { productCode: ["Already in use."] },
+      };
+    }
+
+    await updateRecord(
+      "product",
+      id,
+      {
+        productCode: d.productCode,
+        name: d.name,
+        productType: d.productType,
+        billingType: d.billingType,
+        description: d.description || null,
+        category: d.category || null,
+        unitOfMeasure: d.unitOfMeasure || null,
+        standardPrice: d.standardPrice ?? null,
+        standardCost: d.standardCost ?? null,
+        defaultTaxRateId: d.defaultTaxRateId || null,
+        commissionPercent: d.commissionPercent ?? null,
+        commissionable: d.commissionable,
+        active: d.active,
+      },
+      "Product",
+      _auth.user.id,
+    );
+
+    revalidatePath("/products");
+    revalidatePath(`/products/${id}`);
+    return { ok: true, data: { id } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Could not update the product." };
   }
 }
 

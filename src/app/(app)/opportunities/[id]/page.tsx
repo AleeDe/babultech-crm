@@ -41,7 +41,7 @@ export default async function OpportunityDetailPage({
 
   return (
     <>
-      <PageHeader title={opp.name} description={`${opp.opportunityNumber} · ${opp.account.name}`}>
+      <PageHeader title={opp.name} description={`${opp.opportunityNumber} · ${opp.account?.name}`}>
         <Badge tone={statusTone(opp.stage)}>{humanize(opp.stage)}</Badge>
         <Button asChild variant="outline">
           <Link href={`/opportunities/${opp.id}/edit`}>Edit</Link>
@@ -103,10 +103,10 @@ export default async function OpportunityDetailPage({
                     {opp.lines.map((l: Record<string, any>) => (
                       <TR key={l.id}>
                         <TD className="text-sm">
-                          <Link href={`/products/${l.product.id}`} className="font-medium hover:underline">
-                            {l.product.name}
+                          <Link href={`/products/${l.product?.id}`} className="font-medium hover:underline">
+                            {l.product?.name}
                           </Link>
-                          <p className="text-xs text-muted-foreground">{l.product.productCode}</p>
+                          <p className="text-xs text-muted-foreground">{l.product?.productCode}</p>
                         </TD>
                         <TD className="text-right tabular">{Number(l.quantity)}</TD>
                         <TD className="text-right tabular">{formatMoney(l.unitPrice, opp.currencyCode)}</TD>
@@ -151,8 +151,8 @@ export default async function OpportunityDetailPage({
                       <TR key={r.id}>
                         <TD className="font-mono text-xs">{r.commissionNumber}</TD>
                         <TD className="text-sm">
-                          <Link href={`/partners/${r.partner.id}`} className="hover:underline">
-                            {r.partner.displayName}
+                          <Link href={`/partners/${r.partner?.id}`} className="hover:underline">
+                            {r.partner?.displayName}
                           </Link>
                         </TD>
                         <TD className="text-sm">{formatDate(r.earnedDate)}</TD>
@@ -181,18 +181,18 @@ export default async function OpportunityDetailPage({
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <Row label="Account">
-                <Link href={`/accounts/${opp.account.id}`} className="text-primary hover:underline">
-                  {opp.account.name}
+                <Link href={`/accounts/${opp.account?.id}`} className="text-primary hover:underline">
+                  {opp.account?.name}
                 </Link>
               </Row>
               <Row label="Primary contact">
                 {opp.primaryContact ? (
-                  <Link href={`/contacts/${opp.primaryContact.id}/edit`} className="text-primary hover:underline">
-                    {opp.primaryContact.firstName} {opp.primaryContact.lastName}
+                  <Link href={`/contacts/${opp.primaryContact?.id}/edit`} className="text-primary hover:underline">
+                    {opp.primaryContact?.firstName} {opp.primaryContact?.lastName}
                   </Link>
                 ) : "—"}
               </Row>
-              <Row label="Owner">{opp.owner.fullName}</Row>
+              <Row label="Owner">{opp.owner?.fullName}</Row>
               <Row label="Campaign">
                 {opp.campaign ? (
                   <Link href={`/campaigns/${opp.campaign.id}`} className="text-primary hover:underline">

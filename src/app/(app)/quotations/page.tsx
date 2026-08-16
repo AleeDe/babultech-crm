@@ -101,13 +101,13 @@ export default async function QuotationsPage() {
                       <p className="text-xs text-muted-foreground">v{q.versionNumber} · {q._count.lines} lines</p>
                     </TD>
                     <TD className="text-sm">
-                      <Link href={`/accounts/${q.account.id}`} className="hover:underline">
-                        {q.account.name}
+                      <Link href={`/accounts/${q.account?.id}`} className="hover:underline">
+                        {q.account?.name}
                       </Link>
                     </TD>
                     <TD className="text-sm">
-                      <Link href={`/opportunities/${q.opportunity.id}`} className="hover:underline">
-                        {q.opportunity.name}
+                      <Link href={`/opportunities/${q.opportunity?.id}`} className="hover:underline">
+                        {q.opportunity?.name}
                       </Link>
                     </TD>
                     <TD className="text-sm">{formatDate(q.quoteDate)}</TD>

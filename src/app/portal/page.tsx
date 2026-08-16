@@ -146,21 +146,21 @@ export default async function PortalHomePage() {
               <>
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Plan</p>
-                  <p className="mt-0.5 font-medium">{partner.commissionPlan.name}</p>
+                  <p className="mt-0.5 font-medium">{partner.commissionPlan?.name}</p>
                 </div>
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Rate</p>
                   <p className="mt-0.5">
-                    {partner.commissionPlan.rateType === "TIERED_PERCENT"
+                    {partner.commissionPlan?.rateType === "TIERED_PERCENT"
                       ? "Tiered — see below"
-                      : partner.commissionPlan.rateType === "FIXED_AMOUNT"
-                        ? formatMoney(partner.commissionPlan.fixedAmount, partner.payoutCurrencyCode)
-                        : formatPercent(partner.commissionPlan.flatPercent, 2)}
+                      : partner.commissionPlan?.rateType === "FIXED_AMOUNT"
+                        ? formatMoney(partner.commissionPlan?.fixedAmount, partner.payoutCurrencyCode)
+                        : formatPercent(partner.commissionPlan?.flatPercent, 2)}
                   </p>
                 </div>
-                {partner.commissionPlan.tiers.length > 0 && (
+                {(partner.commissionPlan?.tiers?.length ?? 0) > 0 && (
                   <div className="space-y-1">
-                    {partner.commissionPlan.tiers.map((t, i) => (
+                    {partner.commissionPlan?.tiers?.map((t, i) => (
                       <div key={i} className="flex justify-between text-xs">
                         <span className="text-muted-foreground">
                           {formatMoney(t.fromAmount, partner.payoutCurrencyCode)}
@@ -173,7 +173,7 @@ export default async function PortalHomePage() {
                 )}
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Paid when</p>
-                  <p className="mt-0.5">{humanize(partner.commissionPlan.trigger)}</p>
+                  <p className="mt-0.5">{humanize(partner.commissionPlan?.trigger)}</p>
                 </div>
               </>
             ) : (

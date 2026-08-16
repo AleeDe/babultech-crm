@@ -51,9 +51,9 @@ export default async function AccountDetailPage({
       {account.partner && (
         <div className="mb-5">
           <Alert tone="info">
-            This account is also a <strong>{humanize(account.partner.partnerType)}</strong> partner
-            ({humanize(account.partner.tier)} tier).{" "}
-            <Link href={`/partners/${account.partner.id}`} className="underline">
+            This account is also a <strong>{humanize(account.partner?.partnerType)}</strong> partner
+            ({humanize(account.partner?.tier)} tier).{" "}
+            <Link href={`/partners/${account.partner?.id}`} className="underline">
               Open the partner record
             </Link>{" "}
             to see sourced deals and commission.
@@ -74,7 +74,7 @@ export default async function AccountDetailPage({
             <CardTitle>Company</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <Row label="Owner">{account.owner.fullName}</Row>
+            <Row label="Owner">{account.owner?.fullName}</Row>
             <Row label="Industry">{account.industry ?? "—"}</Row>
             <Row label="Website">
               {account.website ? (
@@ -91,8 +91,8 @@ export default async function AccountDetailPage({
             </Row>
             {account.parentAccount && (
               <Row label="Parent">
-                <Link href={`/accounts/${account.parentAccount.id}`} className="text-primary hover:underline">
-                  {account.parentAccount.name}
+                <Link href={`/accounts/${account.parentAccount?.id}`} className="text-primary hover:underline">
+                  {account.parentAccount?.name}
                 </Link>
               </Row>
             )}

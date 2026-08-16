@@ -89,8 +89,8 @@ export default async function PaymentsPage({
                     )}
                   </TD>
                   <TD className="text-sm">
-                    <Link href={`/accounts/${p.account.id}`} className="hover:underline">
-                      {p.account.name}
+                    <Link href={`/accounts/${p.account?.id}`} className="hover:underline">
+                      {p.account?.name}
                     </Link>
                   </TD>
                   <TD className="whitespace-nowrap text-sm">{formatDate(p.paymentDate)}</TD>
@@ -111,10 +111,10 @@ export default async function PaymentsPage({
                         {p.allocations.map((a: Record<string, any>) => (
                           <Link
                             key={a.id}
-                            href={`/invoices/${a.invoice.id}`}
+                            href={`/invoices/${a.invoice?.id}`}
                             className="block font-mono text-xs hover:underline"
                           >
-                            {a.invoice.invoiceNumber}
+                            {a.invoice?.invoiceNumber}
                           </Link>
                         ))}
                       </div>

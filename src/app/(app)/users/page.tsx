@@ -122,10 +122,10 @@ export default async function UsersPage({
                       </Badge>
                       {u.partner && (
                         <Link
-                          href={`/partners/${u.partner.id}`}
+                          href={`/partners/${u.partner?.id}`}
                           className="mt-0.5 block text-xs text-primary hover:underline"
                         >
-                          {u.partner.displayName}
+                          {u.partner?.displayName}
                         </Link>
                       )}
                     </TD>

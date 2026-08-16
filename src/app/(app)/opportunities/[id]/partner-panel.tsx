@@ -55,16 +55,16 @@ export function PartnerPanel({
   const usedShare = links.reduce((s, l) => s + Number(l.revenueSharePercent), 0);
   const remainingShare = Math.max(0, 100 - usedShare);
 
-  const alreadyLinked = new Set(links.map((l) => l.partner.id));
+  const alreadyLinked = new Set(links.map((l) => l.partner?.id));
   const selectable = availablePartners.filter((p) => !alreadyLinked.has(p.id));
 
   function estimate(link: PartnerLink): number | null {
     const rate =
       link.commissionPercentOverride ??
-      (link.partner.commissionPlan?.rateType === "FLAT_PERCENT"
-        ? link.partner.commissionPlan.flatPercent
+      (link.partner?.commissionPlan?.rateType === "FLAT_PERCENT"
+        ? link.partner?.commissionPlan?.flatPercent
         : null) ??
-      link.partner.defaultCommissionPercent;
+      link.partner?.defaultCommissionPercent;
 
     if (rate === null || rate === undefined) return null;
     return (Number(amount) * Number(link.revenueSharePercent) * Number(rate)) / 10_000;
@@ -142,12 +142,12 @@ export function PartnerPanel({
                 return (
                   <TR key={l.id}>
                     <TD>
-                      <Link href={`/partners/${l.partner.id}`} className="text-sm font-medium hover:underline">
-                        {l.partner.displayName}
+                      <Link href={`/partners/${l.partner?.id}`} className="text-sm font-medium hover:underline">
+                        {l.partner?.displayName}
                       </Link>
                       <p className="text-xs text-muted-foreground">
-                        {l.partner.kind === "INDIVIDUAL" ? "Individual" : "Company"} ·{" "}
-                        {humanize(l.partner.partnerType)}
+                        {l.partner?.kind === "INDIVIDUAL" ? "Individual" : "Company"} ·{" "}
+                        {humanize(l.partner?.partnerType)}
                       </p>
                     </TD>
                     <TD>
@@ -157,9 +157,9 @@ export function PartnerPanel({
                     <TD className="text-sm text-muted-foreground">
                       {l.commissionPercentOverride
                         ? `Override ${formatPercent(l.commissionPercentOverride)}`
-                        : l.partner.commissionPlan
-                          ? l.partner.commissionPlan.name
-                          : `Default ${formatPercent(l.partner.defaultCommissionPercent)}`}
+                        : l.partner?.commissionPlan
+                          ? l.partner?.commissionPlan?.name
+                          : `Default ${formatPercent(l.partner?.defaultCommissionPercent)}`}
                     </TD>
                     <TD className="text-right tabular">
                       {est === null ? (
@@ -173,7 +173,7 @@ export function PartnerPanel({
                         onClick={() => onRemove(l.id)}
                         disabled={pending}
                         className="text-muted-foreground hover:text-destructive"
-                        aria-label={`Remove ${l.partner.displayName}`}
+                        aria-label={`Remove ${l.partner?.displayName}`}
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>

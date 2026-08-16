@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { supabaseServer } from "@/lib/supabase";
-import { createRecord, updateRecord } from "@/lib/db";
+import { createRecord, updateRecord, LIST_LIMIT } from "@/lib/db";
 import { one } from "@/lib/decimal";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { writeAudit } from "@/lib/audit";
@@ -382,7 +382,7 @@ export async function listUsers(filters?: { search?: string; roleId?: string; st
     );
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(LIST_LIMIT);
   if (error) throw new Error(`Could not load users: ${error.message}`);
 
   const countOf = (v: unknown) => (v as { count: number }[] | undefined)?.[0]?.count ?? 0;

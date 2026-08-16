@@ -109,11 +109,11 @@ export default async function OpportunitiesPage({
                       <p className="text-xs text-muted-foreground">{d.opportunityNumber}</p>
                     </TD>
                     <TD className="text-sm">
-                      <Link href={`/accounts/${d.account.id}`} className="hover:underline">
-                        {d.account.name}
+                      <Link href={`/accounts/${d.account?.id}`} className="hover:underline">
+                        {d.account?.name}
                       </Link>
                     </TD>
-                    <TD className="text-sm text-muted-foreground">{d.owner.fullName}</TD>
+                    <TD className="text-sm text-muted-foreground">{d.owner?.fullName}</TD>
                     <TD>
                       {d.partners.length === 0 ? (
                         <span className="text-sm text-muted-foreground">—</span>
@@ -121,10 +121,10 @@ export default async function OpportunitiesPage({
                         <div className="flex items-center gap-1.5">
                           <Handshake className="h-3.5 w-3.5 text-muted-foreground" />
                           <Link
-                            href={`/partners/${d.partners[0].partner.id}`}
+                            href={`/partners/${d.partners[0].partner?.id}`}
                             className="text-sm hover:underline"
                           >
-                            {d.partners[0].partner.displayName}
+                            {d.partners[0].partner?.displayName}
                           </Link>
                           {d.partners.length > 1 && (
                             <span className="text-xs text-muted-foreground">+{d.partners.length - 1}</span>

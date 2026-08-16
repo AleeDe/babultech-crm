@@ -44,7 +44,7 @@ export default async function ProfilePage() {
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader title="My account" description="Your profile, your access, and your password.">
-        <Badge tone="neutral">{me.role.name}</Badge>
+        <Badge tone="neutral">{me.role?.name}</Badge>
       </PageHeader>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -59,7 +59,7 @@ export default async function ProfilePage() {
             <DetailRow label="Phone">{me.phone ?? "—"}</DetailRow>
             {me.partner ? (
               <DetailRow label="Partner">
-                {me.partner.displayName} ({me.partner.partnerNumber})
+                {me.partner?.displayName} ({me.partner?.partnerNumber})
               </DetailRow>
             ) : (
               <>
@@ -83,12 +83,12 @@ export default async function ProfilePage() {
               <CardTitle>Your access</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <DetailRow label="Role">{me.role.name}</DetailRow>
+              <DetailRow label="Role">{me.role?.name}</DetailRow>
               <DetailRow label="You can see">
-                {SCOPE_EXPLAINER[me.role.dataScope] ?? humanize(me.role.dataScope)}
+                {SCOPE_EXPLAINER[me.role?.dataScope] ?? humanize(me.role?.dataScope)}
               </DetailRow>
               <div className="flex flex-wrap gap-1.5 pt-1">
-                {me.role.permissions.map((p: string) => (
+                {(me.role?.permissions ?? []).map((p: string) => (
                   <Badge key={p} tone={p === "*" ? "danger" : "neutral"} className="font-mono">
                     {p === "*" ? "everything" : p}
                   </Badge>

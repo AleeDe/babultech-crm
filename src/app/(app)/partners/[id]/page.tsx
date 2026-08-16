@@ -69,17 +69,17 @@ export default async function PartnerDetailPage({
           <CardContent className="space-y-3 text-sm">
             {partner.kind === "COMPANY" && partner.account && (
               <Row label="Account">
-                <Link href={`/accounts/${partner.account.id}`} className="text-primary hover:underline">
-                  {partner.account.name}
+                <Link href={`/accounts/${partner.account?.id}`} className="text-primary hover:underline">
+                  {partner.account?.name}
                 </Link>
               </Row>
             )}
             {partner.kind === "INDIVIDUAL" && partner.contact && (
               <Row label="Contact">
                 <span>
-                  {partner.contact.firstName} {partner.contact.lastName}
+                  {partner.contact?.firstName} {partner.contact?.lastName}
                 </span>
-                {!partner.contact.accountId && (
+                {!partner.contact?.accountId && (
                   <p className="text-xs text-muted-foreground">Not linked to any company — by design.</p>
                 )}
               </Row>
@@ -138,20 +138,20 @@ export default async function PartnerDetailPage({
             {partner.commissionPlan ? (
               <>
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <Row label="Plan">{partner.commissionPlan.name}</Row>
-                  <Row label="Basis">{humanize(partner.commissionPlan.basis)}</Row>
-                  <Row label="Earned when">{humanize(partner.commissionPlan.trigger)}</Row>
-                  <Row label="Rate type">{humanize(partner.commissionPlan.rateType)}</Row>
-                  <Row label="Payout delay">{partner.commissionPlan.payoutDelayDays} days</Row>
+                  <Row label="Plan">{partner.commissionPlan?.name}</Row>
+                  <Row label="Basis">{humanize(partner.commissionPlan?.basis)}</Row>
+                  <Row label="Earned when">{humanize(partner.commissionPlan?.trigger)}</Row>
+                  <Row label="Rate type">{humanize(partner.commissionPlan?.rateType)}</Row>
+                  <Row label="Payout delay">{partner.commissionPlan?.payoutDelayDays} days</Row>
                   <Row label="Clawback window">
-                    {partner.commissionPlan.clawbackWindowDays
-                      ? `${partner.commissionPlan.clawbackWindowDays} days`
+                    {partner.commissionPlan?.clawbackWindowDays
+                      ? `${partner.commissionPlan?.clawbackWindowDays} days`
                       : "None"}
                   </Row>
                 </div>
 
-                {partner.commissionPlan.rateType === "TIERED_PERCENT" &&
-                  partner.commissionPlan.tiers.length > 0 && (
+                {partner.commissionPlan?.rateType === "TIERED_PERCENT" &&
+                  (partner.commissionPlan?.tiers?.length ?? 0) > 0 && (
                     <div>
                       <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         Tiers (applied progressively)
@@ -165,7 +165,7 @@ export default async function PartnerDetailPage({
                           </TR>
                         </THead>
                         <TBody>
-                          {partner.commissionPlan.tiers.map((t: Record<string, any>) => (
+                          {partner.commissionPlan?.tiers?.map((t: Record<string, any>) => (
                             <TR key={t.id}>
                               <TD className="tabular">{formatMoney(t.fromAmount)}</TD>
                               <TD className="tabular">{t.toAmount ? formatMoney(t.toAmount) : "and above"}</TD>
@@ -177,8 +177,8 @@ export default async function PartnerDetailPage({
                     </div>
                   )}
 
-                {partner.commissionPlan.rateType === "FLAT_PERCENT" && (
-                  <Row label="Flat rate">{formatPercent(partner.commissionPlan.flatPercent)}</Row>
+                {partner.commissionPlan?.rateType === "FLAT_PERCENT" && (
+                  <Row label="Flat rate">{formatPercent(partner.commissionPlan?.flatPercent)}</Row>
                 )}
               </>
             ) : (
@@ -230,12 +230,12 @@ export default async function PartnerDetailPage({
                 {partner.opportunities.map((link: Record<string, any>) => (
                   <TR key={link.id}>
                     <TD>
-                      <Link href={`/opportunities/${link.opportunity.id}`} className="font-medium hover:underline">
-                        {link.opportunity.name}
+                      <Link href={`/opportunities/${link.opportunity?.id}`} className="font-medium hover:underline">
+                        {link.opportunity?.name}
                       </Link>
-                      <p className="text-xs text-muted-foreground">{link.opportunity.opportunityNumber}</p>
+                      <p className="text-xs text-muted-foreground">{link.opportunity?.opportunityNumber}</p>
                     </TD>
-                    <TD className="text-sm">{link.opportunity.account.name}</TD>
+                    <TD className="text-sm">{link.opportunity?.account?.name}</TD>
                     <TD>
                       <Badge tone="neutral">{humanize(link.role)}</Badge>
                     </TD>
@@ -246,10 +246,10 @@ export default async function PartnerDetailPage({
                         : "plan"}
                     </TD>
                     <TD className="text-right tabular">
-                      {formatMoney(link.opportunity.amount, link.opportunity.currencyCode)}
+                      {formatMoney(link.opportunity?.amount, link.opportunity?.currencyCode)}
                     </TD>
                     <TD>
-                      <Badge tone={statusTone(link.opportunity.stage)}>{humanize(link.opportunity.stage)}</Badge>
+                      <Badge tone={statusTone(link.opportunity?.stage)}>{humanize(link.opportunity?.stage)}</Badge>
                     </TD>
                   </TR>
                 ))}
@@ -292,7 +292,7 @@ export default async function PartnerDetailPage({
                 {partner.commissionRecords.map((r: Record<string, any>) => (
                   <TR key={r.id}>
                     <TD className="font-mono text-xs">{r.commissionNumber}</TD>
-                    <TD className="text-sm">{r.opportunity.name}</TD>
+                    <TD className="text-sm">{r.opportunity?.name}</TD>
                     <TD className="text-sm">{formatDate(r.earnedDate)}</TD>
                     <TD className="text-right tabular">{formatMoney(r.basisAmount, r.currencyCode)}</TD>
                     <TD className="text-right tabular">{formatPercent(r.ratePercent)}</TD>

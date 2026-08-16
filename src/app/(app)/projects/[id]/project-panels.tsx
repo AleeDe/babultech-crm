@@ -200,7 +200,7 @@ export function TaskBoard({
           <Select name="assignedUserId" defaultValue={task?.assignedUserId ?? ""}>
             <option value="">Unassigned</option>
             {assignable.map((m) => (
-              <option key={m.userId} value={m.userId}>{m.user.fullName} — {m.projectRole}</option>
+              <option key={m.userId} value={m.userId}>{m.user?.fullName} — {m.projectRole}</option>
             ))}
           </Select>
         </Field>
@@ -305,7 +305,7 @@ export function TaskBoard({
             <span className="truncate">{t.name}</span>
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {t.assignedUser ? t.assignedUser.fullName : "Unassigned"}
+            {t.assignedUser ? t.assignedUser?.fullName : "Unassigned"}
             {t.dueDate && ` · due ${formatDate(t.dueDate)}`}
             {t.estimatedHours && ` · ${Number(t.estimatedHours)}h`}
             {!t.billable && " · non-billable"}
@@ -570,9 +570,9 @@ export function TeamPanel({
                   <TR className={cn(!m.active && "opacity-55")}>
                     <TD>
                       <Link href={`/resources#${m.userId}`} className="font-medium hover:underline">
-                        {m.user.fullName}
+                        {m.user?.fullName}
                       </Link>
-                      <p className="text-xs text-muted-foreground">{m.user.jobTitle ?? "—"}</p>
+                      <p className="text-xs text-muted-foreground">{m.user?.jobTitle ?? "—"}</p>
                     </TD>
                     <TD className="text-sm">{m.projectRole}</TD>
                     <TD className="text-right tabular">{formatPercent(m.allocationPercent, 0)}</TD>
@@ -879,8 +879,8 @@ export function PlanPanel({
                       <p className="text-sm font-medium">{m.name}</p>
                       <p className={cn("text-xs", overdue ? "text-red-600 dark:text-red-400" : "text-muted-foreground")}>
                         due {formatDate(m.dueDate)}
-                        {m.phase && ` · ${m.phase.name}`}
-                        {m.owner && ` · ${m.owner.fullName}`}
+                        {m.phase && ` · ${m.phase?.name}`}
+                        {m.owner && ` · ${m.owner?.fullName}`}
                       </p>
                     </div>
                     {m.billingTrigger && (
@@ -1062,7 +1062,7 @@ export function RaidPanel({
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">{r.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {humanize(r.probability)} probability · {humanize(r.impact)} impact · {r.owner.fullName}
+                      {humanize(r.probability)} probability · {humanize(r.impact)} impact · {r.owner?.fullName}
                       {r.targetDate && ` · by ${formatDate(r.targetDate)}`}
                     </p>
                   </div>
@@ -1126,7 +1126,7 @@ export function RaidPanel({
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">{i.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {i.owner.fullName}
+                      {i.owner?.fullName}
                       {i.dueDate && ` · due ${formatDate(i.dueDate)}`}
                     </p>
                   </div>

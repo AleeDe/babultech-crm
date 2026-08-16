@@ -112,7 +112,7 @@ export function InvoiceForm({
     () =>
       options.projects
         .find((p) => p.id === projectId)
-        ?.milestones.filter((m) => !m.invoicedAt) ?? [],
+        ?.milestones?.filter((m) => !m.invoicedAt) ?? [],
     [options.projects, projectId],
   );
 

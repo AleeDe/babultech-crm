@@ -9,11 +9,11 @@ import { REGISTRATION_EXPIRY_WARNING_DAYS } from "@/lib/partner-policy";
 export default async function PortalDealsPage() {
   const deals = await getPortalDeals();
 
-  const currency = deals[0]?.opportunity.currencyCode ?? "PKR";
-  const open = deals.filter((d) => !["CLOSED_WON", "CLOSED_LOST"].includes(d.opportunity.stage));
-  const won = deals.filter((d) => d.opportunity.stage === "CLOSED_WON");
-  const openValue = open.reduce((s, d) => s + Number(d.opportunity.amount), 0);
-  const wonValue = won.reduce((s, d) => s + Number(d.opportunity.amount), 0);
+  const currency = deals[0]?.opportunity?.currencyCode ?? "PKR";
+  const open = deals.filter((d) => !["CLOSED_WON", "CLOSED_LOST"].includes(d.opportunity?.stage));
+  const won = deals.filter((d) => d.opportunity?.stage === "CLOSED_WON");
+  const openValue = open.reduce((s, d) => s + Number(d.opportunity?.amount), 0);
+  const wonValue = won.reduce((s, d) => s + Number(d.opportunity?.amount), 0);
   const earned = deals.reduce((s, d) => s + Number(d.earnedAmount), 0);
 
   const expiringRegistrations = deals.filter((d) => {
@@ -81,16 +81,16 @@ export default async function PortalDealsPage() {
                 return (
                   <TR key={d.id}>
                     <TD>
-                      <span className="text-sm font-medium">{d.opportunity.name}</span>
+                      <span className="text-sm font-medium">{d.opportunity?.name}</span>
                       <p className="text-xs text-muted-foreground">
-                        {d.opportunity.opportunityNumber}
+                        {d.opportunity?.opportunityNumber}
                         {d.registeredAt && ` · registered ${formatDate(d.registeredAt)}`}
                       </p>
                     </TD>
                     <TD className="text-sm">
-                      {d.opportunity.account?.name}
-                      {d.opportunity.account?.industry && (
-                        <p className="text-xs text-muted-foreground">{d.opportunity.account?.industry}</p>
+                      {d.opportunity?.account?.name}
+                      {d.opportunity?.account?.industry && (
+                        <p className="text-xs text-muted-foreground">{d.opportunity?.account?.industry}</p>
                       )}
                     </TD>
                     <TD>
@@ -103,17 +103,17 @@ export default async function PortalDealsPage() {
                     </TD>
                     <TD className="text-right tabular">{formatPercent(d.revenueSharePercent, 0)}</TD>
                     <TD className="text-right tabular">
-                      {formatMoney(d.opportunity.amount, d.opportunity.currencyCode)}
+                      {formatMoney(d.opportunity?.amount, d.opportunity?.currencyCode)}
                     </TD>
                     <TD className="text-right font-medium tabular">
                       {Number(d.earnedAmount) > 0
-                        ? formatMoney(d.earnedAmount, d.opportunity.currencyCode)
+                        ? formatMoney(d.earnedAmount, d.opportunity?.currencyCode)
                         : "—"}
                     </TD>
                     <TD className="whitespace-nowrap text-sm">
-                      {formatDate(d.opportunity.actualCloseDate ?? d.opportunity.expectedCloseDate)}
+                      {formatDate(d.opportunity?.actualCloseDate ?? d.opportunity?.expectedCloseDate)}
                     </TD>
-                    <TD><Badge tone={statusTone(d.opportunity.stage)}>{humanize(d.opportunity.stage)}</Badge></TD>
+                    <TD><Badge tone={statusTone(d.opportunity?.stage)}>{humanize(d.opportunity?.stage)}</Badge></TD>
                   </TR>
                 );
               })}

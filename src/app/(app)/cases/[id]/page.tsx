@@ -140,21 +140,21 @@ export default async function CaseDetailPage({
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <Row label="Customer">
-                <Link href={`/accounts/${c.account.id}`} className="text-primary hover:underline">
-                  {c.account.name}
+                <Link href={`/accounts/${c.account?.id}`} className="text-primary hover:underline">
+                  {c.account?.name}
                 </Link>
-                <p className="text-xs text-muted-foreground">{c.account.accountNumber}</p>
+                <p className="text-xs text-muted-foreground">{c.account?.accountNumber}</p>
               </Row>
               <Row label="Contact">
                 {c.contact ? (
                   <>
-                    <Link href={`/contacts/${c.contact.id}/edit`} className="text-primary hover:underline">
-                      {c.contact.firstName} {c.contact.lastName}
+                    <Link href={`/contacts/${c.contact?.id}/edit`} className="text-primary hover:underline">
+                      {c.contact?.firstName} {c.contact?.lastName}
                     </Link>
-                    {c.contact.email && (
+                    {c.contact?.email && (
                       <p className="text-xs">
-                        <a href={`mailto:${c.contact.email}`} className="text-muted-foreground hover:underline">
-                          {c.contact.email}
+                        <a href={`mailto:${c.contact?.email}`} className="text-muted-foreground hover:underline">
+                          {c.contact?.email}
                         </a>
                       </p>
                     )}
@@ -169,13 +169,13 @@ export default async function CaseDetailPage({
               <Row label="Came in via">{humanize(c.source)}</Row>
               <Row label="SLA policy">
                 {c.slaPolicy
-                  ? `${c.slaPolicy.name} (${c.slaPolicy.firstResponseMinutes}m / ${c.slaPolicy.resolutionMinutes}m)`
+                  ? `${c.slaPolicy?.name} (${c.slaPolicy?.firstResponseMinutes}m / ${c.slaPolicy?.resolutionMinutes}m)`
                   : "None matched"}
               </Row>
               {c.project && (
                 <Row label="Project">
                   <Link href={`/projects`} className="text-primary hover:underline">
-                    {c.project.projectNumber} — {c.project.name}
+                    {c.project?.projectNumber} — {c.project?.name}
                   </Link>
                 </Row>
               )}

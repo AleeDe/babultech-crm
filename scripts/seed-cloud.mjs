@@ -5,9 +5,8 @@
  * team, users, number sequences — using the service-role client rather than
  * Prisma, so it runs without a database password.
  *
- * This is NOT a replacement for prisma/seed.ts. That file also builds the demo
- * CRM data (partners, opportunities, commission) and is ported as part of the
- * wider Prisma removal. This exists so the cloud project is usable now.
+ * The demo CRM data — accounts, opportunities, quotations, partners,
+ * commission — lives in scripts/seed-demo.mjs and runs after this one.
  *
  * Idempotent: every write is an upsert keyed on a natural unique column.
  *
