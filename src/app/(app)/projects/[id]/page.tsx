@@ -11,7 +11,8 @@ import {
   StatTile, Button, Alert, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, formatNumber, humanize, serialize } from "@/lib/utils";
-import { TaskBoard, TeamPanel, PlanPanel, RaidPanel } from "./project-panels";
+import { TaskBoard, TeamPanel, PlanPanel, RaidPanel } from "./project-panels";
+import { ChangeRequestsPanel } from "./change-requests-panel";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 export default async function ProjectWorkspacePage({
@@ -145,6 +146,8 @@ export default async function ProjectWorkspacePage({
             issues={s.issues as never}
             users={s.users as never}
           />
+
+          <ChangeRequestsPanel changeRequests={project.changeRequests} />
         </div>
 
         <div className="space-y-6">

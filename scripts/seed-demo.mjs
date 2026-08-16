@@ -1037,6 +1037,55 @@ for (const projId of new Set(taskRows.map((r) => r.projectId))) {
 const taskByName = Object.fromEntries(tasks.map((t) => [t.name, t]));
 console.log(`  ok project_task        ${tasks.length}`);
 
+// ------------------------------------------------------- risks and issues
+//
+// A risk might happen; an issue already has. riskScore is probability × impact
+// on a 1–4 scale each, matching LEVEL_SCORE in src/server/projects.ts.
+const riskRows = [
+  { projectId: p1, title: "Legacy data quality is unknown", description: "Two source systems with no documented schema. If the extracts are dirty the migration slips.", probability: "MEDIUM", impact: "HIGH", riskScore: 6, mitigationPlan: "Profile both extracts in week one and agree a cleansing budget before build starts.", ownerUserId: pm, targetDate: day(10), status: "MONITORING" },
+  { projectId: p1, title: "Key user availability over Eid", description: "The finance team is the main UAT group and will be on leave for part of the test window.", probability: "HIGH", impact: "MEDIUM", riskScore: 6, mitigationPlan: "Pull UAT forward by a week and record walkthroughs for anyone who misses them.", ownerUserId: consultant, targetDate: day(25), status: "OPEN" },
+  { projectId: p3, title: "DRAP reference data not supplied", description: "The build cannot be validated without the regulator's current product register.", probability: "CRITICAL", impact: "CRITICAL", riskScore: 16, mitigationPlan: "Escalated to the customer's director of operations. Weekly follow-up until received.", ownerUserId: admin, targetDate: day(3), status: "OPEN" },
+  { projectId: p3, title: "Single developer on the compliance module", description: "One person holds all the domain knowledge for the batch traceability work.", probability: "MEDIUM", impact: "HIGH", riskScore: 6, mitigationPlan: "Pair a second developer in from next sprint and write the design down.", ownerUserId: pm, targetDate: day(14), status: "MITIGATED" },
+];
+
+for (const projId of new Set(riskRows.map((r) => r.projectId))) {
+  await replaceChildren(
+    "project_risk",
+    "projectId",
+    projId,
+    riskRows.filter((r) => r.projectId === projId),
+  );
+}
+console.log(`  ok project_risk        ${riskRows.length}`);
+
+const issueRows = [
+  { projectId: p1, title: "Contact import dropped 340 records", description: "Rows without an email address were silently skipped by the first import pass.", severity: "HIGH", ownerUserId: consultant, resolutionPlan: "Re-run with email made optional and reconcile counts against the source.", dueDate: day(4), status: "IN_PROGRESS" },
+  { projectId: p1, title: "Stage names do not match the customer's process", description: "The customer uses a seven-stage pipeline; the default configuration has six.", severity: "MEDIUM", ownerUserId: consultant, resolutionPlan: "Agreed to add the extra stage. Configuration change, no code.", dueDate: day(-2), status: "RESOLVED", resolvedAt: at(-2) },
+  { projectId: p3, title: "Report templates blocked pending data", description: "Template work cannot proceed without the reference register — see the linked risk.", severity: "CRITICAL", ownerUserId: exec, resolutionPlan: "Blocked. Developer reassigned to the Karachi build until the data arrives.", dueDate: day(2), status: "OPEN" },
+];
+
+for (const projId of new Set(issueRows.map((r) => r.projectId))) {
+  await replaceChildren(
+    "project_issue",
+    "projectId",
+    projId,
+    issueRows.filter((r) => r.projectId === projId),
+  );
+}
+console.log(`  ok project_issue       ${issueRows.length}`);
+
+// ------------------------------------------------------- change requests
+const changeRequests = await upsert(
+  "change_request",
+  [
+    { requestNumber: "CR-2026-00001", projectId: p1, title: "Add a seventh pipeline stage", description: "Customer's sales process has a formal 'legal review' step between negotiation and close.", businessReason: "Their deals cannot be tracked accurately without it.", scopeImpact: "Configuration only — one extra stage and its probability default.", costImpact: 0, scheduleImpactDays: 0, approvalStatus: "APPROVED", status: "IMPLEMENTED" },
+    { requestNumber: "CR-2026-00002", projectId: p1, title: "WhatsApp notifications for case updates", description: "Send the customer a WhatsApp message whenever a support case changes status.", businessReason: "Their customers do not read email reliably.", scopeImpact: "New integration, outside the agreed scope. Needs a provider account and template approval.", costImpact: 450000, scheduleImpactDays: 15, approvalStatus: "PENDING", status: "ASSESSED" },
+    { requestNumber: "CR-2026-00003", projectId: p3, title: "Additional regulatory report format", description: "A second export layout for the provincial regulator alongside the DRAP one.", businessReason: "Required by Sindh health authority from next quarter.", scopeImpact: "One more report template and its mapping.", costImpact: 185000, scheduleImpactDays: 7, approvalStatus: "PENDING", status: "REQUESTED" },
+  ],
+  "requestNumber",
+);
+console.log(`  ok change_request      ${changeRequests.length}`);
+
 // ------------------------------------------------------------- time logs
 const timeLogRows = [
   { userId: consultant, projectId: p1, projectTaskId: taskByName["Migrate account and contact records"].id, workDate: day(-12), hours: 7.5, description: "Mapped legacy account fields and ran the first import pass.", billable: true, billingRate: 6500, costRate: 3100, approvalStatus: "APPROVED", approvedById: pm, approvedAt: at(-10) },
@@ -1220,6 +1269,7 @@ Done. Demo data seeded:
   ${campaigns.length} campaigns       ${contracts.length} contracts      ${phases.length} phases
   ${milestones.length} milestones      ${tasks.length} tasks          ${timeLogRows.length} time logs
   ${expenses.length} expenses        ${vendorBills.length} vendor bills   ${vendorPayments.length} vendor payments
+  ${riskRows.length} risks           ${issueRows.length} issues         ${changeRequests.length} change requests
 
 Sign in with any seeded user — see scripts/seed-cloud.mjs for credentials.
 `);

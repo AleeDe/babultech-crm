@@ -27,7 +27,7 @@ interface Step {
   what: string;
   how: string;
   then: string;
-  needs?: string;
+  needs?: string | string[];
   optional?: boolean;
 }
 
@@ -112,7 +112,8 @@ interface Reference {
   title: string;
   href: string;
   body: string;
-  needs?: string;
+  /** Several permissions means any one of them is enough. */
+  needs?: string | string[];
 }
 
 const REFERENCE: Reference[] = [
@@ -120,6 +121,12 @@ const REFERENCE: Reference[] = [
     icon: Stamp,
     title: "Approvals",
     href: "/approvals",
+    needs: [
+      PERMISSIONS.QUOTATION_APPROVE,
+      PERMISSIONS.INVOICE_APPROVE,
+      PERMISSIONS.TIME_APPROVE,
+      PERMISSIONS.COMMISSION_APPROVE,
+    ],
     body: "Everything waiting on a decision from you, gathered from quotations, expenses, timesheets, vendor bills and commission — oldest first. Each one opens where the decision is actually made, because that screen has the context.",
   },
   {
@@ -233,7 +240,12 @@ function openingFor(me: SessionUser): string {
 export default async function GuidePage() {
   const me = await requireUser();
 
-  const allowed = (needs?: string) => !needs || can(me, needs);
+  // A section can name several permissions when any one of them opens the
+  // screen — the approvals queue is reachable by four different approvers.
+  const allowed = (needs?: string | string[]) => {
+    if (!needs) return true;
+    return Array.isArray(needs) ? needs.some((n) => can(me, n)) : can(me, needs);
+  };
   const flow = FLOW.filter((step) => allowed(step.needs));
   const reference = REFERENCE.filter((item) => allowed(item.needs));
 
@@ -350,6 +362,18 @@ export default async function GuidePage() {
             looks emptier than you expect, that is usually why — the rows exist, they are just not
             yours to see.
           </p>
+
+          {can(me, PERMISSIONS.PROJECT_READ) && (
+            <p>
+              <strong className="text-foreground">
+                Projects track risks, issues and change requests.
+              </strong>{" "}
+              Open a project and scroll past the tasks. A risk is something that might happen,
+              scored by probability × impact; an issue already has. A change request is scope asked
+              for after the project started — recording one is how an added fifteen days shows up
+              next to the request rather than as a missed date at the end.
+            </p>
+          )}
 
           {can(me, PERMISSIONS.PROJECT_READ) && (
             <p>
