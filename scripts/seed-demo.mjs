@@ -125,6 +125,11 @@ const manager = userId["sales.manager@babultech.com"];
 const exec = userId["sales.exec@babultech.com"];
 const finance = userId["finance@babultech.com"];
 
+// Delivery staff are optional: an older seed-cloud.mjs did not create them, and
+// the demo should still run rather than fail on a missing key.
+const pm = userId["pm@babultech.com"] ?? admin;
+const consultant = userId["consultant@babultech.com"] ?? exec;
+
 // ------------------------------------------------------------- tax rates
 // tax_rate.name is not unique in the schema, so upsert's ON CONFLICT has no
 // index to target. Look each row up by name and insert only when missing.
@@ -859,11 +864,11 @@ const caseCategory = await ensureRow(
 const cases = await upsert(
   "support_case",
   [
-    { caseNumber: "CASE-2026-00001", subject: "Stock valuation report shows negative quantities", description: "After the month-end close, the valuation report lists three SKUs with negative on-hand quantities. Suspected to be a timing issue between the goods receipt and the invoice posting.", accountId: account["ACC-2026-00006"].id, contactId: contact["tariq.mehmood@gsw.com.pk"].id, categoryId: caseCategory.id, caseType: "PROBLEM", status: "IN_PROGRESS", priority: "CRITICAL", source: "EMAIL", ownerUserId: admin },
+    { caseNumber: "CASE-2026-00001", subject: "Stock valuation report shows negative quantities", description: "After the month-end close, the valuation report lists three SKUs with negative on-hand quantities. Suspected to be a timing issue between the goods receipt and the invoice posting.", accountId: account["ACC-2026-00006"].id, contactId: contact["tariq.mehmood@gsw.com.pk"].id, categoryId: caseCategory.id, caseType: "PROBLEM", status: "IN_PROGRESS", priority: "CRITICAL", source: "EMAIL", ownerUserId: pm },
     { caseNumber: "CASE-2026-00002", subject: "Cannot generate the batch traceability export", description: "The export runs for several minutes and then fails without an error message. Reproducible on batches with more than 500 line items.", accountId: account["ACC-2026-00002"].id, contactId: contact["faisal.qureshi@induspharma.pk"].id, categoryId: caseCategory.id, caseType: "INCIDENT", status: "WAITING_FOR_CUSTOMER", priority: "HIGH", source: "PORTAL", ownerUserId: admin },
-    { caseNumber: "CASE-2026-00003", subject: "Request: add a warehouse to the receiving workflow", description: "The new Sheikhupura warehouse needs adding to the goods receipt dropdown and the stock transfer routes.", accountId: account["ACC-2026-00001"].id, contactId: contact["nadia.baig@sapphiretextiles.com.pk"].id, caseType: "REQUEST", status: "NEW", priority: "MEDIUM", source: "EMAIL", ownerUserId: exec },
-    { caseNumber: "CASE-2026-00004", subject: "How do I schedule a recurring invoice?", description: "Customer asked whether the CRM can raise the support retainer invoice automatically each month.", accountId: account["ACC-2026-00003"].id, contactId: contact["zainab.ali@klg.com.pk"].id, caseType: "QUESTION", status: "RESOLVED", priority: "LOW", source: "WHATSAPP", ownerUserId: exec, resolution: "Walked the customer through the recurring invoice template. No product change needed.", resolvedAt: at(-3), satisfactionScore: 5 },
-    { caseNumber: "CASE-2026-00005", subject: "Login fails for three finance users", description: "Three finance team members receive an invalid credentials error despite a successful password reset.", accountId: account["ACC-2026-00006"].id, contactId: contact["tariq.mehmood@gsw.com.pk"].id, categoryId: caseCategory.id, caseType: "INCIDENT", status: "ASSIGNED", priority: "HIGH", source: "PHONE", ownerUserId: admin },
+    { caseNumber: "CASE-2026-00003", subject: "Request: add a warehouse to the receiving workflow", description: "The new Sheikhupura warehouse needs adding to the goods receipt dropdown and the stock transfer routes.", accountId: account["ACC-2026-00001"].id, contactId: contact["nadia.baig@sapphiretextiles.com.pk"].id, caseType: "REQUEST", status: "NEW", priority: "MEDIUM", source: "EMAIL", ownerUserId: consultant },
+    { caseNumber: "CASE-2026-00004", subject: "How do I schedule a recurring invoice?", description: "Customer asked whether the CRM can raise the support retainer invoice automatically each month.", accountId: account["ACC-2026-00003"].id, contactId: contact["zainab.ali@klg.com.pk"].id, caseType: "QUESTION", status: "RESOLVED", priority: "LOW", source: "WHATSAPP", ownerUserId: consultant, resolution: "Walked the customer through the recurring invoice template. No product change needed.", resolvedAt: at(-3), satisfactionScore: 5 },
+    { caseNumber: "CASE-2026-00005", subject: "Login fails for three finance users", description: "Three finance team members receive an invalid credentials error despite a successful password reset.", accountId: account["ACC-2026-00006"].id, contactId: contact["tariq.mehmood@gsw.com.pk"].id, categoryId: caseCategory.id, caseType: "INCIDENT", status: "ASSIGNED", priority: "HIGH", source: "PHONE", ownerUserId: pm },
     { caseNumber: "CASE-2026-00006", subject: "Dashboard totals differ from the ledger", description: "The revenue tile on the finance dashboard reads about 4% lower than the general ledger for the same period.", accountId: account["ACC-2026-00001"].id, contactId: contact["imran.sheikh@sapphiretextiles.com.pk"].id, categoryId: caseCategory.id, caseType: "PROBLEM", status: "CLOSED", priority: "MEDIUM", source: "EMAIL", ownerUserId: admin, rootCause: "Currency rounding applied at display time rather than at conversion.", resolution: "Corrected the multi-currency rounding order. Fixed in release 4.2.1.", resolvedAt: at(-20), closedAt: at(-18), satisfactionScore: 4 },
   ],
   "caseNumber",
@@ -874,8 +879,8 @@ console.log(`  ok support_case        ${cases.length}`);
 const projects = await upsert(
   "project",
   [
-    { projectNumber: "PRJ-2026-00001", name: "Karachi Logistics — CRM Implementation", accountId: account["ACC-2026-00003"].id, projectManagerId: manager, opportunityId: opp["OPP-2026-00003"].id, status: "ACTIVE", billingType: "MILESTONE", startDate: day(-35), plannedEndDate: day(55), currencyCode: "PKR", contractValue: 3275000, approvedHours: 1200, completionPercent: 45, scope: "Full CRM rollout with data migration from two legacy systems.", health: "GREEN" },
-    { projectNumber: "PRJ-2026-00002", name: "Sapphire Textiles — Second Site Rollout", accountId: account["ACC-2026-00001"].id, projectManagerId: manager, status: "PLANNING", billingType: "MILESTONE", startDate: day(14), plannedEndDate: day(140), currencyCode: "PKR", contractValue: 4850000, approvedHours: 1800, completionPercent: 0, scope: "ERP extension to the Sheikhupura plant. Awaiting contract signature.", health: "GREEN" },
+    { projectNumber: "PRJ-2026-00001", name: "Karachi Logistics — CRM Implementation", accountId: account["ACC-2026-00003"].id, projectManagerId: pm, opportunityId: opp["OPP-2026-00003"].id, status: "ACTIVE", billingType: "MILESTONE", startDate: day(-35), plannedEndDate: day(55), currencyCode: "PKR", contractValue: 3275000, approvedHours: 1200, completionPercent: 45, scope: "Full CRM rollout with data migration from two legacy systems.", health: "GREEN" },
+    { projectNumber: "PRJ-2026-00002", name: "Sapphire Textiles — Second Site Rollout", accountId: account["ACC-2026-00001"].id, projectManagerId: pm, status: "PLANNING", billingType: "MILESTONE", startDate: day(14), plannedEndDate: day(140), currencyCode: "PKR", contractValue: 4850000, approvedHours: 1800, completionPercent: 0, scope: "ERP extension to the Sheikhupura plant. Awaiting contract signature.", health: "GREEN" },
     { projectNumber: "PRJ-2026-00003", name: "Indus Pharma — Compliance Module Build", accountId: account["ACC-2026-00002"].id, projectManagerId: admin, status: "AT_RISK", billingType: "FIXED", startDate: day(-70), plannedEndDate: day(10), currencyCode: "PKR", contractValue: 1850000, approvedHours: 640, completionPercent: 70, scope: "DRAP reporting build. Slipping on the customer-side data readiness.", health: "AMBER" },
   ],
   "projectNumber",
@@ -887,11 +892,11 @@ console.log(`  ok project             ${projects.length}`);
 await upsert(
   "project_member",
   [
-    { projectId: project["PRJ-2026-00001"].id, userId: manager, projectRole: "Project Manager", allocationPercent: 50, billingRate: 8500, costRate: 4200, active: true },
-    { projectId: project["PRJ-2026-00001"].id, userId: exec, projectRole: "Functional Consultant", allocationPercent: 80, billingRate: 6500, costRate: 3100, active: true },
-    { projectId: project["PRJ-2026-00002"].id, userId: manager, projectRole: "Project Manager", allocationPercent: 30, billingRate: 8500, costRate: 4200, active: true },
+    { projectId: project["PRJ-2026-00001"].id, userId: pm, projectRole: "Project Manager", allocationPercent: 50, billingRate: 8500, costRate: 4200, active: true },
+    { projectId: project["PRJ-2026-00001"].id, userId: consultant, projectRole: "Functional Consultant", allocationPercent: 80, billingRate: 6500, costRate: 3100, active: true },
+    { projectId: project["PRJ-2026-00002"].id, userId: pm, projectRole: "Project Manager", allocationPercent: 30, billingRate: 8500, costRate: 4200, active: true },
     { projectId: project["PRJ-2026-00003"].id, userId: admin, projectRole: "Project Manager", allocationPercent: 40, billingRate: 9000, costRate: 4500, active: true },
-    { projectId: project["PRJ-2026-00003"].id, userId: exec, projectRole: "Technical Lead", allocationPercent: 60, billingRate: 7200, costRate: 3600, active: true },
+    { projectId: project["PRJ-2026-00003"].id, userId: consultant, projectRole: "Technical Lead", allocationPercent: 60, billingRate: 7200, costRate: 3600, active: true },
   ],
   "projectId,userId",
 );
@@ -984,12 +989,12 @@ for (const projId of new Set(milestoneRows.map((r) => r.projectId))) {
 console.log(`  ok milestone           ${milestones.length}`);
 
 const taskRows = [
-  { projectId: p1, phaseId: phase[`${p1}:Build & Configuration`].id, name: "Migrate account and contact records", assignedUserId: exec, status: "COMPLETED", priority: "HIGH", startDate: day(-14), dueDate: day(-6), completedDate: day(-7), estimatedHours: 40, completionPercent: 100, billable: true, sortOrder: 0 },
-  { projectId: p1, phaseId: phase[`${p1}:Build & Configuration`].id, name: "Configure sales pipeline stages", assignedUserId: exec, status: "IN_PROGRESS", priority: "MEDIUM", startDate: day(-6), dueDate: day(6), estimatedHours: 32, completionPercent: 60, billable: true, sortOrder: 1 },
-  { projectId: p1, phaseId: phase[`${p1}:Build & Configuration`].id, name: "Build management dashboards", assignedUserId: manager, status: "NOT_STARTED", priority: "MEDIUM", startDate: day(6), dueDate: day(18), estimatedHours: 48, completionPercent: 0, billable: true, sortOrder: 2 },
-  { projectId: p1, phaseId: phase[`${p1}:UAT & Go-Live`].id, name: "Write UAT scripts", assignedUserId: manager, status: "NOT_STARTED", priority: "HIGH", startDate: day(21), dueDate: day(30), estimatedHours: 24, completionPercent: 0, billable: true, sortOrder: 3 },
-  { projectId: p3, phaseId: phase[`${p3}:Build`].id, name: "Batch traceability data model", assignedUserId: exec, status: "COMPLETED", priority: "CRITICAL", startDate: day(-38), dueDate: day(-20), completedDate: day(-22), estimatedHours: 60, completionPercent: 100, billable: true, sortOrder: 0 },
-  { projectId: p3, phaseId: phase[`${p3}:Build`].id, name: "DRAP reporting templates", assignedUserId: exec, status: "BLOCKED", priority: "CRITICAL", startDate: day(-20), dueDate: day(2), estimatedHours: 80, completionPercent: 45, billable: true, acceptanceCriteria: "Blocked: awaiting the customer's reference data extract.", sortOrder: 1 },
+  { projectId: p1, phaseId: phase[`${p1}:Build & Configuration`].id, name: "Migrate account and contact records", assignedUserId: consultant, status: "COMPLETED", priority: "HIGH", startDate: day(-14), dueDate: day(-6), completedDate: day(-7), estimatedHours: 40, completionPercent: 100, billable: true, sortOrder: 0 },
+  { projectId: p1, phaseId: phase[`${p1}:Build & Configuration`].id, name: "Configure sales pipeline stages", assignedUserId: consultant, status: "IN_PROGRESS", priority: "MEDIUM", startDate: day(-6), dueDate: day(6), estimatedHours: 32, completionPercent: 60, billable: true, sortOrder: 1 },
+  { projectId: p1, phaseId: phase[`${p1}:Build & Configuration`].id, name: "Build management dashboards", assignedUserId: pm, status: "NOT_STARTED", priority: "MEDIUM", startDate: day(6), dueDate: day(18), estimatedHours: 48, completionPercent: 0, billable: true, sortOrder: 2 },
+  { projectId: p1, phaseId: phase[`${p1}:UAT & Go-Live`].id, name: "Write UAT scripts", assignedUserId: pm, status: "NOT_STARTED", priority: "HIGH", startDate: day(21), dueDate: day(30), estimatedHours: 24, completionPercent: 0, billable: true, sortOrder: 3 },
+  { projectId: p3, phaseId: phase[`${p3}:Build`].id, name: "Batch traceability data model", assignedUserId: consultant, status: "COMPLETED", priority: "CRITICAL", startDate: day(-38), dueDate: day(-20), completedDate: day(-22), estimatedHours: 60, completionPercent: 100, billable: true, sortOrder: 0 },
+  { projectId: p3, phaseId: phase[`${p3}:Build`].id, name: "DRAP reporting templates", assignedUserId: consultant, status: "BLOCKED", priority: "CRITICAL", startDate: day(-20), dueDate: day(2), estimatedHours: 80, completionPercent: 45, billable: true, acceptanceCriteria: "Blocked: awaiting the customer's reference data extract.", sortOrder: 1 },
 ];
 
 const tasks = [];
@@ -1008,13 +1013,13 @@ console.log(`  ok project_task        ${tasks.length}`);
 
 // ------------------------------------------------------------- time logs
 const timeLogRows = [
-  { userId: exec, projectId: p1, projectTaskId: taskByName["Migrate account and contact records"].id, workDate: day(-12), hours: 7.5, description: "Mapped legacy account fields and ran the first import pass.", billable: true, billingRate: 6500, costRate: 3100, approvalStatus: "APPROVED", approvedById: manager, approvedAt: at(-10) },
-  { userId: exec, projectId: p1, projectTaskId: taskByName["Migrate account and contact records"].id, workDate: day(-11), hours: 8, description: "Contact deduplication and second import pass.", billable: true, billingRate: 6500, costRate: 3100, approvalStatus: "APPROVED", approvedById: manager, approvedAt: at(-10) },
-  { userId: exec, projectId: p1, projectTaskId: taskByName["Configure sales pipeline stages"].id, workDate: day(-4), hours: 6, description: "Configured stages and probability defaults with the customer.", billable: true, billingRate: 6500, costRate: 3100, approvalStatus: "SUBMITTED" },
-  { userId: exec, projectId: p1, projectTaskId: taskByName["Configure sales pipeline stages"].id, workDate: day(-1), hours: 5.5, description: "Stage transition rules and validation.", billable: true, billingRate: 6500, costRate: 3100, approvalStatus: "DRAFT" },
-  { userId: manager, projectId: p1, workDate: day(-3), hours: 3, description: "Weekly steering call and status pack.", billable: false, billingRate: 8500, costRate: 4200, approvalStatus: "SUBMITTED" },
-  { userId: exec, projectId: p3, projectTaskId: taskByName["Batch traceability data model"].id, workDate: day(-25), hours: 8, description: "Data model for batch genealogy.", billable: true, billingRate: 7200, costRate: 3600, approvalStatus: "APPROVED", approvedById: admin, approvedAt: at(-23) },
-  { userId: exec, projectId: p3, projectTaskId: taskByName["DRAP reporting templates"].id, workDate: day(-6), hours: 4, description: "Template scaffolding — paused pending customer data.", billable: true, billingRate: 7200, costRate: 3600, approvalStatus: "REJECTED" },
+  { userId: consultant, projectId: p1, projectTaskId: taskByName["Migrate account and contact records"].id, workDate: day(-12), hours: 7.5, description: "Mapped legacy account fields and ran the first import pass.", billable: true, billingRate: 6500, costRate: 3100, approvalStatus: "APPROVED", approvedById: pm, approvedAt: at(-10) },
+  { userId: consultant, projectId: p1, projectTaskId: taskByName["Migrate account and contact records"].id, workDate: day(-11), hours: 8, description: "Contact deduplication and second import pass.", billable: true, billingRate: 6500, costRate: 3100, approvalStatus: "APPROVED", approvedById: pm, approvedAt: at(-10) },
+  { userId: consultant, projectId: p1, projectTaskId: taskByName["Configure sales pipeline stages"].id, workDate: day(-4), hours: 6, description: "Configured stages and probability defaults with the customer.", billable: true, billingRate: 6500, costRate: 3100, approvalStatus: "SUBMITTED" },
+  { userId: consultant, projectId: p1, projectTaskId: taskByName["Configure sales pipeline stages"].id, workDate: day(-1), hours: 5.5, description: "Stage transition rules and validation.", billable: true, billingRate: 6500, costRate: 3100, approvalStatus: "DRAFT" },
+  { userId: pm, projectId: p1, workDate: day(-3), hours: 3, description: "Weekly steering call and status pack.", billable: false, billingRate: 8500, costRate: 4200, approvalStatus: "SUBMITTED" },
+  { userId: consultant, projectId: p3, projectTaskId: taskByName["Batch traceability data model"].id, workDate: day(-25), hours: 8, description: "Data model for batch genealogy.", billable: true, billingRate: 7200, costRate: 3600, approvalStatus: "APPROVED", approvedById: admin, approvedAt: at(-23) },
+  { userId: consultant, projectId: p3, projectTaskId: taskByName["DRAP reporting templates"].id, workDate: day(-6), hours: 4, description: "Template scaffolding — paused pending customer data.", billable: true, billingRate: 7200, costRate: 3600, approvalStatus: "REJECTED" },
 ];
 
 {

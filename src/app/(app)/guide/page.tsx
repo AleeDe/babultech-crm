@@ -201,6 +201,19 @@ export default function GuidePage() {
             everything. If a list looks emptier than you expect, that is usually why.
           </p>
           <p>
+            <strong className="text-foreground">Delivery staff start at My work.</strong>{" "}
+            The project screens are organised by project, which suits whoever is running them.{" "}
+            <Link href="/my-work" className="text-primary hover:underline">My work</Link> shows the
+            same tasks, projects, cases and activities indexed by who they are assigned to — and
+            lets you move your own tasks along without opening each project.
+          </p>
+          <p>
+            <strong className="text-foreground">Partners sign in somewhere else.</strong>{" "}
+            An external partner logs in to the partner portal, not this app, and sees only their
+            own deals, referrals and commission. Customers have no login at all — they exist here
+            as account records.
+          </p>
+          <p>
             <strong className="text-foreground">Dropdowns come from Settings.</strong>{" "}
             Currencies, tax rates, departments and categories are all editable lists — an
             administrator can change them under{" "}
