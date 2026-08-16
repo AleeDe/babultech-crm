@@ -119,7 +119,7 @@ export function AppShell({
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r bg-card transition-transform lg:static lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r bg-card shadow-lg transition-transform lg:static lg:translate-x-0 lg:shadow-none",
           open ? "translate-x-0" : "-translate-x-full",
         )}
       >
@@ -150,13 +150,26 @@ export function AppShell({
                         href={item.href}
                         onClick={() => setOpen(false)}
                         className={cn(
-                          "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors",
+                          "group relative flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-all",
                           isActive(item.href)
                             ? "bg-primary/10 font-medium text-primary"
                             : "text-muted-foreground hover:bg-accent hover:text-foreground",
                         )}
                       >
-                        <Icon className="h-4 w-4 shrink-0" />
+                        {/* A bar on the active item, so the current page is
+                            findable without reading every label. */}
+                        {isActive(item.href) && (
+                          <span
+                            className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary"
+                            aria-hidden
+                          />
+                        )}
+                        <Icon
+                          className={cn(
+                            "h-4 w-4 shrink-0 transition-transform",
+                            !isActive(item.href) && "group-hover:scale-110",
+                          )}
+                        />
                         <span className="flex-1">{item.label}</span>
                         {item.soon && (
                           <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
@@ -173,7 +186,7 @@ export function AppShell({
         </nav>
 
         <div className="border-t p-3">
-          <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5">
+          <div className="flex items-center gap-2.5 rounded-lg bg-muted/40 px-2 py-2 transition-colors hover:bg-muted/70">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-secondary text-xs font-semibold">
               {initials(user.fullName)}
             </span>
@@ -191,13 +204,15 @@ export function AppShell({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center gap-3 border-b bg-card px-4 lg:hidden">
+        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-card/95 px-4 backdrop-blur lg:hidden">
           <button onClick={() => setOpen(true)} aria-label="Open menu">
             <Menu className="h-5 w-5" />
           </button>
           <span className="font-semibold">BabulTech CRM</span>
         </header>
-        <main className="flex-1 p-5 lg:p-8">{children}</main>
+        <main className="flex-1 p-5 lg:p-8">
+          <div className="mx-auto w-full max-w-[1600px] fade-in">{children}</div>
+        </main>
       </div>
     </div>
   );

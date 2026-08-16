@@ -49,12 +49,75 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
   /* Tabular figures keep money columns aligned. */
   .tabular {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* A visible focus ring on keyboard navigation only — the mouse path stays
+     clean, but tabbing through a form is never a guessing game. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Long tables scroll inside their own container rather than pushing the
+     page sideways. */
+  .table-scroll {
+    @apply -mx-px overflow-x-auto;
+    scrollbar-width: thin;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full border-2 border-solid border-transparent bg-border bg-clip-content;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/40 bg-clip-content;
+  }
+}
+
+@layer utilities {
+  /* Cards and rows lift slightly on hover. Kept as a utility so every surface
+     that opts in moves the same distance at the same speed. */
+  .lift {
+    @apply transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md;
+  }
+
+  /* Content that has just arrived — list rows after a filter, a panel after a
+     tab change — fades in rather than snapping. */
+  .fade-in {
+    animation: fade-in 0.25s ease-out;
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(2px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lift,
+    .fade-in {
+      animation: none;
+      transition: none;
+    }
+    .lift:hover {
+      transform: none;
+    }
   }
 }
