@@ -7,7 +7,7 @@ import {
   Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter,
   Input, Textarea, Button, Alert, Field, Badge,
 } from "@/components/ui";
-import { saveEmailSettings, previewEmail, sendTestEmail } from "@/server/email";
+import { saveEmailSettings, previewEmail, sendTestEmail, uploadLogo } from "@/server/email";
 
 export interface EmailSettingsValues {
   companyName: string;
@@ -51,6 +51,22 @@ export function EmailSettingsPanel({ values }: { values: EmailSettingsValues }) 
   const [saved, setSaved] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [testSent, setTestSent] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  function uploadNow(file: File) {
+    setError(null);
+    setUploading(true);
+
+    const formData = new FormData();
+    formData.set("logo", file);
+
+    start(async () => {
+      const result = await uploadLogo(formData);
+      setUploading(false);
+      if (result.ok) router.refresh();
+      else setError(result.error);
+    });
+  }
 
   function save(formData: FormData) {
     setError(null);
@@ -166,20 +182,51 @@ export function EmailSettingsPanel({ values }: { values: EmailSettingsValues }) 
               </Field>
             </div>
 
-            <div className="mt-4">
-              <Field label="Logo URL">
+            <div className="mt-4 space-y-3">
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <p className="mb-2 text-sm font-medium">Logo</p>
+
+                {values.logoUrl && (
+                  <div className="mb-3 flex items-center gap-3 rounded-md border bg-white p-3">
+                    {/* Plain img, not next/image: this is the same file the email
+                        references, so seeing it unoptimised is the point. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={values.logoUrl} alt="Current logo" className="h-12 w-auto" />
+                    <p className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+                      {values.logoUrl}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) uploadNow(file);
+                    }}
+                    className="cursor-pointer text-xs file:mr-3 file:rounded file:border-0 file:bg-secondary file:px-2 file:py-1 file:text-xs file:font-medium"
+                  />
+                  {uploading && <span className="text-xs text-muted-foreground">Uploading…</span>}
+                </div>
+
+                <p className="mt-2 text-xs text-muted-foreground">
+                  PNG or JPEG, under 2 MB. Uploading stores it publicly so email clients can fetch
+                  it without a login — a private or protected URL shows as a broken image.
+                </p>
+              </div>
+
+              <Field label="Or paste a URL">
                 <Input name="logoUrl" defaultValue={values.logoUrl ?? ""} placeholder="https://…/logo.png" />
               </Field>
+
               <Alert tone="info">
-                <p className="font-medium">Two things email clients insist on.</p>
-                <p className="mt-1">
-                  It must be a <strong>PNG or JPEG</strong> — Gmail, Outlook and Apple Mail all
-                  block SVG. And it must be reachable <strong>without a login</strong>: if the URL
-                  sits behind a security check, the recipient sees a broken image.
-                </p>
-                <p className="mt-1">
-                  Leave it empty and the company name is used as a wordmark instead. That is not a
-                  poor second — many recipients block images by default and see the text either way.
+                <p>
+                  <strong>SVG will not work.</strong> Gmail, Outlook and Apple Mail all block it —
+                  export as PNG instead. Leave the logo empty and the company name is used as a
+                  wordmark, which is what many recipients see anyway since images are often blocked
+                  by default.
                 </p>
               </Alert>
             </div>

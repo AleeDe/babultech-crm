@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { Resend } from "resend";
-import { supabaseServer } from "@/lib/supabase";
+import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { one } from "@/lib/decimal";
 import { formatMoney, formatDate } from "@/lib/utils";
@@ -167,6 +167,74 @@ export async function saveEmailSettings(
 
   revalidatePath("/settings");
   return { ok: true, data: { id: SETTINGS_ID } };
+}
+
+const LOGO_BUCKET = "branding";
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Uploads a logo and returns its public URL.
+ *
+ * The bucket is public by design: an email client fetches the image with no
+ * session, so a signed URL would expire and leave a broken image in every mail
+ * already sent. Only branding lives here — customer documents stay private.
+ *
+ * SVG is refused rather than accepted and left to fail silently in the
+ * recipient's client, which is where the problem would otherwise appear.
+ */
+export async function uploadLogo(formData: FormData): Promise<ActionResult<{ url: string }>> {
+  const me = await requireUser();
+  if (!can(me, PERMISSIONS.ADMIN)) {
+    return { ok: false, error: "Only an administrator can change the logo." };
+  }
+
+  const file = formData.get("logo");
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "Choose an image to upload." };
+  }
+
+  if (file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg")) {
+    return {
+      ok: false,
+      error:
+        "SVG will not display in email — Gmail, Outlook and Apple Mail all block it. Export the logo as PNG and upload that.",
+    };
+  }
+
+  const allowed = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+  if (!allowed.includes(file.type)) {
+    return { ok: false, error: "Use a PNG or JPEG. Those are what email clients render." };
+  }
+
+  if (file.size > LOGO_MAX_BYTES) {
+    return { ok: false, error: "That file is over 2 MB. A logo should be far smaller." };
+  }
+
+  const storage = supabaseAdmin();
+  const extension = file.type === "image/png" ? "png" : file.type.split("/")[1];
+
+  // A fresh name each time: overwriting would leave the old image cached by
+  // every client that has already fetched it.
+  const path = `logo-${Date.now()}.${extension}`;
+
+  const { error: uploadError } = await storage.storage
+    .from(LOGO_BUCKET)
+    .upload(path, file, { contentType: file.type, upsert: false, cacheControl: "31536000" });
+
+  if (uploadError) return { ok: false, error: `Upload failed: ${uploadError.message}` };
+
+  const { data } = storage.storage.from(LOGO_BUCKET).getPublicUrl(path);
+
+  const db = await supabaseServer();
+  const { error } = await db
+    .from("email_settings")
+    .update({ logoUrl: data.publicUrl, updatedAt: new Date().toISOString() })
+    .eq("id", SETTINGS_ID);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/settings");
+  return { ok: true, data: { url: data.publicUrl } };
 }
 
 /** Renders the current template with sample data, for the Settings preview. */
