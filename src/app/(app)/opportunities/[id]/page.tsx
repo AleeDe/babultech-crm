@@ -1,5 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { listNotes } from "@/server/notes";
+import { listDocuments } from "@/server/documents";
+import { NotesPanel } from "@/components/notes-panel";
+import { DocumentsPanel } from "@/components/documents-panel";
 import { getOpportunity } from "@/server/opportunities";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
@@ -21,6 +25,11 @@ export default async function OpportunityDetailPage({
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="opportunities" />;
 
   const { id } = await params;
+
+  const [notes, documents] = await Promise.all([
+    listNotes("Opportunity", id),
+    listDocuments("Opportunity", id),
+  ]);
   const [opp, availablePartners] = await Promise.all([
     getOpportunity(id),
     (async () => {
@@ -264,6 +273,11 @@ export default async function OpportunityDetailPage({
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <NotesPanel entityType="Opportunity" entityId={id} notes={notes} />
+        <DocumentsPanel entityType="Opportunity" entityId={id} documents={documents} />
       </div>
     </>
   );

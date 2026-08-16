@@ -312,6 +312,13 @@ export default async function GuidePage() {
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           <p>
+            <strong className="text-foreground">Notes and documents sit on every record.</strong>{" "}
+            Open an account, deal, project or case and you will find both at the bottom. A note can
+            be private to you, shared with your team, or open to everyone. Attachments are stored
+            privately — links are generated when you open one and expire shortly after, so nothing
+            is left permanently reachable.
+          </p>
+          <p>
             <strong className="text-foreground">What you see depends on your role.</strong>{" "}
             Yours shows {scopeExplainer[me.dataScope] ?? me.dataScope.toLowerCase()}. If a list
             looks emptier than you expect, that is usually why — the rows exist, they are just not

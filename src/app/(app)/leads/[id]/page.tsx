@@ -1,5 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { listNotes } from "@/server/notes";
+import { listDocuments } from "@/server/documents";
+import { NotesPanel } from "@/components/notes-panel";
+import { DocumentsPanel } from "@/components/documents-panel";
 import { Mail, Phone, MessageCircle, ArrowRight } from "lucide-react";
 import { getLead } from "@/server/crm";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
@@ -18,6 +22,11 @@ export default async function LeadDetailPage({
   if (!can(me, PERMISSIONS.LEAD_READ)) return <Forbidden what="leads" />;
 
   const { id } = await params;
+
+  const [notes, documents] = await Promise.all([
+    listNotes("Lead", id),
+    listDocuments("Lead", id),
+  ]);
   const lead = await getLead(id);
   if (!lead) notFound();
 
@@ -148,13 +157,20 @@ export default async function LeadDetailPage({
       {lead.description && (
         <Card className="mt-6">
           <CardHeader>
-            <CardTitle>Notes</CardTitle>
+            {/* The lead's own description field, distinct from the Notes panel
+                below where anyone can add to the record over time. */}
+            <CardTitle>Description</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="whitespace-pre-line text-sm text-muted-foreground">{lead.description}</p>
           </CardContent>
         </Card>
       )}
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <NotesPanel entityType="Lead" entityId={id} notes={notes} />
+        <DocumentsPanel entityType="Lead" entityId={id} documents={documents} />
+      </div>
     </>
   );
 }

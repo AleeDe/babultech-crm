@@ -1,5 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { listNotes } from "@/server/notes";
+import { listDocuments } from "@/server/documents";
+import { NotesPanel } from "@/components/notes-panel";
+import { DocumentsPanel } from "@/components/documents-panel";
 import { Building2, User, Mail, Phone, Globe, MapPin } from "lucide-react";
 import { getPartner, getPartnerSummary } from "@/server/partners";
 import { getAuditTrail } from "@/lib/audit";
@@ -20,6 +24,11 @@ export default async function PartnerDetailPage({
   if (!can(_me, PERMISSIONS.PARTNER_READ)) return <Forbidden what="partners" />;
 
   const { id } = await params;
+
+  const [notes, documents] = await Promise.all([
+    listNotes("Partner", id),
+    listDocuments("Partner", id),
+  ]);
   const [partner, summary] = await Promise.all([getPartner(id), getPartnerSummary(id)]);
   if (!partner) notFound();
 
@@ -372,6 +381,11 @@ export default async function PartnerDetailPage({
             )}
           </CardContent>
         </Card>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <NotesPanel entityType="Partner" entityId={id} notes={notes} />
+        <DocumentsPanel entityType="Partner" entityId={id} documents={documents} />
       </div>
     </>
   );

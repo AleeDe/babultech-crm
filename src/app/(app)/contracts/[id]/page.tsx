@@ -1,5 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { listNotes } from "@/server/notes";
+import { listDocuments } from "@/server/documents";
+import { NotesPanel } from "@/components/notes-panel";
+import { DocumentsPanel } from "@/components/documents-panel";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
@@ -15,6 +19,11 @@ export default async function ContractDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+
+  const [notes, documents] = await Promise.all([
+    listNotes("Contract", id),
+    listDocuments("Contract", id),
+  ]);
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="contracts" />;
   const db = await supabaseServer();
@@ -258,6 +267,11 @@ export default async function ContractDetailPage({
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <NotesPanel entityType="Contract" entityId={id} notes={notes} />
+        <DocumentsPanel entityType="Contract" entityId={id} documents={documents} />
       </div>
     </>
   );

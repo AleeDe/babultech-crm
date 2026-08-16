@@ -1,5 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { listNotes } from "@/server/notes";
+import { listDocuments } from "@/server/documents";
+import { NotesPanel } from "@/components/notes-panel";
+import { DocumentsPanel } from "@/components/documents-panel";
 import { getAccount } from "@/server/crm";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
@@ -17,6 +21,11 @@ export default async function AccountDetailPage({
   if (!can(_me, PERMISSIONS.ACCOUNT_READ)) return <Forbidden what="accounts" />;
 
   const { id } = await params;
+
+  const [notes, documents] = await Promise.all([
+    listNotes("Account", id),
+    listDocuments("Account", id),
+  ]);
   const account = await getAccount(id);
   if (!account) notFound();
 
@@ -245,6 +254,11 @@ export default async function AccountDetailPage({
             )}
           </CardContent>
         </Card>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <NotesPanel entityType="Account" entityId={id} notes={notes} />
+        <DocumentsPanel entityType="Account" entityId={id} documents={documents} />
       </div>
     </>
   );

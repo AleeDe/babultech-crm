@@ -1,5 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { listNotes } from "@/server/notes";
+import { listDocuments } from "@/server/documents";
+import { NotesPanel } from "@/components/notes-panel";
+import { DocumentsPanel } from "@/components/documents-panel";
 import { getProject, getProjectBurn, getProjectFormOptions } from "@/server/projects";
 import { getAuditTrail } from "@/lib/audit";
 import {
@@ -19,6 +23,11 @@ export default async function ProjectWorkspacePage({
   if (!can(_me, PERMISSIONS.PROJECT_READ)) return <Forbidden what="projects" />;
 
   const { id } = await params;
+
+  const [notes, documents] = await Promise.all([
+    listNotes("Project", id),
+    listDocuments("Project", id),
+  ]);
   const project = await getProject(id);
   if (!project) notFound();
 
@@ -236,6 +245,11 @@ export default async function ProjectWorkspacePage({
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <NotesPanel entityType="Project" entityId={id} notes={notes} />
+        <DocumentsPanel entityType="Project" entityId={id} documents={documents} />
       </div>
     </>
   );

@@ -1,5 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { listNotes } from "@/server/notes";
+import { listDocuments } from "@/server/documents";
+import { NotesPanel } from "@/components/notes-panel";
+import { DocumentsPanel } from "@/components/documents-panel";
 import { getCase } from "@/server/cases";
 import { getAuditTrail } from "@/lib/audit";
 import {
@@ -19,6 +23,11 @@ export default async function CaseDetailPage({
   if (!can(_me, PERMISSIONS.CASE_READ)) return <Forbidden what="support cases" />;
 
   const { id } = await params;
+
+  const [notes, documents] = await Promise.all([
+    listNotes("SupportCase", id),
+    listDocuments("SupportCase", id),
+  ]);
   const c = await getCase(id);
   if (!c) notFound();
 
@@ -190,6 +199,11 @@ export default async function CaseDetailPage({
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <NotesPanel entityType="SupportCase" entityId={id} notes={notes} />
+        <DocumentsPanel entityType="SupportCase" entityId={id} documents={documents} />
       </div>
     </>
   );

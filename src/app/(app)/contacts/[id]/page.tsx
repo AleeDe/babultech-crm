@@ -1,5 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { listNotes } from "@/server/notes";
+import { listDocuments } from "@/server/documents";
+import { NotesPanel } from "@/components/notes-panel";
+import { DocumentsPanel } from "@/components/documents-panel";
 import { Mail, Phone, MessageCircle, Star } from "lucide-react";
 import { getContact } from "@/server/crm";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
@@ -18,6 +22,11 @@ export default async function ContactDetailPage({
   if (!can(me, PERMISSIONS.ACCOUNT_READ)) return <Forbidden what="contacts" />;
 
   const { id } = await params;
+
+  const [notes, documents] = await Promise.all([
+    listNotes("Contact", id),
+    listDocuments("Contact", id),
+  ]);
   const contact = await getContact(id);
   if (!contact) notFound();
 
@@ -125,6 +134,11 @@ export default async function ContactDetailPage({
             )}
           </CardContent>
         </Card>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <NotesPanel entityType="Contact" entityId={id} notes={notes} />
+        <DocumentsPanel entityType="Contact" entityId={id} documents={documents} />
       </div>
     </>
   );
