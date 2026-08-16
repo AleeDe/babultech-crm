@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Megaphone, UserPlus, Building2, Users, Target,
   FileText, FileSignature, Handshake, Coins, LifeBuoy, FolderKanban,
   Receipt, Package, CalendarCheck, Menu, X, LogOut, Clock, UsersRound, Banknote,
-  ShieldCheck, UserCog, Settings, BookOpen, CheckSquare,
+  ShieldCheck, UserCog, Settings, BookOpen, CheckSquare, FileInput, Wallet,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { signOutAction } from "@/lib/sign-out-action";
@@ -75,6 +75,8 @@ const NAV: NavGroup[] = [
     items: [
       { href: "/invoices", label: "Invoices", icon: Receipt },
       { href: "/payments", label: "Payments", icon: Banknote },
+      { href: "/vendor-bills", label: "Vendor Bills", icon: FileInput },
+      { href: "/expenses", label: "Expenses", icon: Wallet },
     ],
   },
   {

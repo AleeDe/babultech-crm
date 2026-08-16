@@ -24,6 +24,7 @@ import type { ActionResult } from "./partners";
 const ENTITY_TYPES = [
   "Account", "Contact", "Lead", "Opportunity", "Quotation", "Contract",
   "SupportCase", "Project", "Invoice", "Partner", "Campaign", "Product",
+  "Expense", "VendorBill",
   "Payment", "ProjectTask",
 ] as const;
 

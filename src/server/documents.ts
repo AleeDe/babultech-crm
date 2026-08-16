@@ -27,6 +27,7 @@ const SIGNED_URL_SECONDS = 300;
 const ENTITY_TYPES = [
   "Account", "Contact", "Lead", "Opportunity", "Quotation", "Contract",
   "SupportCase", "Project", "Invoice", "Partner", "Campaign", "Product",
+  "Expense", "VendorBill",
 ] as const;
 
 /**

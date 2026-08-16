@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/authz";
 import { getPipelineByStage } from "@/server/opportunities";
 import { getCommissionTotals } from "@/server/commissions";
 import { getModuleSummary, getAttentionItems } from "@/server/dashboard";
+import { getPayablesSummary } from "@/server/payables";
 import { ModuleSummary } from "./module-summary";
 import {
   Card, CardHeader, CardTitle, CardContent, PageHeader, StatTile,
@@ -20,7 +21,7 @@ export default async function DashboardPage() {
 
   const [
     pipeline, commissions, openCases, activeProjects, overdueInvoices, topPartners, myActivities,
-    summary, attentionData,
+    summary, attentionData, payables,
   ] =
     await Promise.all([
       getPipelineByStage(),
@@ -106,6 +107,7 @@ export default async function DashboardPage() {
       })(),
       getModuleSummary(),
       getAttentionItems(),
+      getPayablesSummary(),
     ]);
 
   const openStages = pipeline.filter(
@@ -274,6 +276,15 @@ export default async function DashboardPage() {
               { label: "Collected this month", value: formatCompactMoney(summary.finance.collectedThisMonth), href: "/payments" },
               { label: "Unallocated payments", value: formatCompactMoney(summary.finance.unallocatedPayments), href: "/payments", alert: Number(summary.finance.unallocatedPayments) > 0 },
               { label: "Draft invoices", value: String(summary.finance.draftInvoices), href: "/invoices" },
+              // Payables belong here too: receivables alone say what was earned,
+              // not what it cost.
+              { label: "Owed to suppliers", value: formatCompactMoney(payables.billsOutstanding), href: "/vendor-bills" },
+              {
+                label: "Expenses to approve",
+                value: String(payables.expensesAwaitingApprovalCount),
+                href: "/expenses?approvalStatus=SUBMITTED",
+                alert: payables.expensesAwaitingApprovalCount > 0,
+              },
             ]}
           />
         )}

@@ -902,6 +902,32 @@ await upsert(
 );
 console.log("  ok project_member      5");
 
+// ------------------------------------------------- payables reference data
+const expenseCategories = [];
+for (const spec of [
+  { name: "Travel", glCode: "6100", requiresReceipt: true, active: true },
+  { name: "Accommodation", glCode: "6110", requiresReceipt: true, active: true },
+  { name: "Subcontractor", glCode: "6200", requiresReceipt: true, active: true },
+  { name: "Software & Licences", glCode: "6300", requiresReceipt: true, active: true },
+  { name: "Office & Supplies", glCode: "6400", requiresReceipt: false, active: true },
+  { name: "Client Entertainment", glCode: "6500", requiresReceipt: true, active: true },
+]) {
+  expenseCategories.push(await ensureRow("expense_category", { name: spec.name }, spec));
+}
+const expenseCategory = Object.fromEntries(expenseCategories.map((c) => [c.name, c]));
+console.log(`  ok expense_category    ${expenseCategories.length}`);
+
+const bankAccounts = [];
+for (const spec of [
+  { name: "HBL Current — Operations", accountType: "BANK", bankName: "Habib Bank Limited", accountNumberMasked: "****1234", currencyCode: "PKR", openingBalance: 4500000, active: true },
+  { name: "Meezan USD Account", accountType: "BANK", bankName: "Meezan Bank", accountNumberMasked: "****4567", currencyCode: "USD", openingBalance: 25000, active: true },
+  { name: "Petty Cash", accountType: "CASH", currencyCode: "PKR", openingBalance: 50000, active: true },
+]) {
+  bankAccounts.push(await ensureRow("bank_account", { name: spec.name }, spec));
+}
+const bankAccount = Object.fromEntries(bankAccounts.map((b) => [b.name, b]));
+console.log(`  ok bank_account        ${bankAccounts.length}`);
+
 // -------------------------------------------------------------- campaigns
 const campaignTypes = [];
 for (const spec of [
@@ -1037,6 +1063,92 @@ const timeLogRows = [
 }
 console.log(`  ok time_log            ${timeLogRows.length}`);
 
+// --------------------------------------------------------------- expenses
+const expenses = await upsert(
+  "expense",
+  [
+    { expenseNumber: "EXP-2026-00001", categoryId: expenseCategory["Travel"].id, employeeUserId: consultant, projectId: p1, expenseDate: day(-12), amount: 34500, taxAmount: 0, currencyCode: "PKR", description: "Return flights to Karachi for the discovery workshop.", billableToCustomer: true, reimbursable: true, approvalStatus: "APPROVED", paymentStatus: "REIMBURSED" },
+    { expenseNumber: "EXP-2026-00002", categoryId: expenseCategory["Accommodation"].id, employeeUserId: consultant, projectId: p1, expenseDate: day(-11), amount: 22000, currencyCode: "PKR", description: "Two nights, Karachi.", billableToCustomer: true, reimbursable: true, approvalStatus: "APPROVED", paymentStatus: "REIMBURSED" },
+    { expenseNumber: "EXP-2026-00003", categoryId: expenseCategory["Software & Licences"].id, vendorAccountId: account["ACC-2026-00007"].id, expenseDate: day(-20), amount: 185000, taxAmount: 33300, currencyCode: "PKR", description: "Annual developer tooling renewal.", billableToCustomer: false, reimbursable: false, approvalStatus: "APPROVED", paymentStatus: "PAID" },
+    { expenseNumber: "EXP-2026-00004", categoryId: expenseCategory["Client Entertainment"].id, employeeUserId: manager, expenseDate: day(-4), amount: 18500, currencyCode: "PKR", description: "Dinner with the Sapphire Textiles board ahead of the renewal.", billableToCustomer: false, reimbursable: true, approvalStatus: "SUBMITTED", paymentStatus: "UNPAID" },
+    { expenseNumber: "EXP-2026-00005", categoryId: expenseCategory["Travel"].id, employeeUserId: pm, projectId: p3, expenseDate: day(-2), amount: 9800, currencyCode: "PKR", description: "Taxi and fuel, Indus Pharma site visits.", billableToCustomer: true, reimbursable: true, approvalStatus: "SUBMITTED", paymentStatus: "UNPAID" },
+    { expenseNumber: "EXP-2026-00006", categoryId: expenseCategory["Office & Supplies"].id, employeeUserId: exec, expenseDate: day(-1), amount: 6400, currencyCode: "PKR", description: "Printer toner and stationery.", billableToCustomer: false, reimbursable: true, approvalStatus: "DRAFT", paymentStatus: "UNPAID" },
+    { expenseNumber: "EXP-2026-00007", categoryId: expenseCategory["Subcontractor"].id, vendorAccountId: account["ACC-2026-00010"].id, projectId: p3, expenseDate: day(-8), amount: 145000, currencyCode: "PKR", description: "Contract developer, two weeks on the DRAP build.", billableToCustomer: false, reimbursable: false, approvalStatus: "APPROVED", paymentStatus: "UNPAID" },
+  ],
+  "expenseNumber",
+);
+console.log(`  ok expense             ${expenses.length}`);
+
+// ----------------------------------------------------------- vendor bills
+const vendorBills = await upsert(
+  "vendor_bill",
+  [
+    { billNumber: "VB-2026-00001", vendorAccountId: account["ACC-2026-00007"].id, vendorInvoiceNumber: "NGS-4417", projectId: p1, billDate: day(-40), dueDate: day(-10), status: "PAID", currencyCode: "PKR", subtotal: 850000, taxAmount: 153000, totalAmount: 1003000, paidAmount: 1003000, outstandingAmount: 0, notes: "Implementation support for the Karachi Logistics build." },
+    { billNumber: "VB-2026-00002", vendorAccountId: account["ACC-2026-00007"].id, vendorInvoiceNumber: "NGS-4502", projectId: p1, billDate: day(-18), dueDate: day(12), status: "PARTIALLY_PAID", currencyCode: "PKR", subtotal: 620000, taxAmount: 111600, totalAmount: 731600, paidAmount: 300000, outstandingAmount: 431600 },
+    { billNumber: "VB-2026-00003", vendorAccountId: account["ACC-2026-00010"].id, vendorInvoiceNumber: "PTR-0921", projectId: p3, billDate: day(-55), dueDate: day(-25), status: "APPROVED", currencyCode: "PKR", subtotal: 320000, taxAmount: 57600, totalAmount: 377600, paidAmount: 0, outstandingAmount: 377600, notes: "Overdue — chase before the next engagement." },
+    { billNumber: "VB-2026-00004", vendorAccountId: account["ACC-2026-00009"].id, vendorInvoiceNumber: "SBA-2026-11", billDate: day(-6), dueDate: day(24), status: "UNDER_REVIEW", currencyCode: "PKR", subtotal: 175000, taxAmount: 31500, totalAmount: 206500, paidAmount: 0, outstandingAmount: 206500, notes: "Advisory retainer — awaiting sign-off." },
+    { billNumber: "VB-2026-00005", vendorAccountId: account["ACC-2026-00008"].id, vendorInvoiceNumber: "HCD-8890", billDate: day(-2), dueDate: day(28), status: "DRAFT", currencyCode: "USD", subtotal: 4200, taxAmount: 0, totalAmount: 4200, paidAmount: 0, outstandingAmount: 4200, notes: "Cloud hosting, Gulf region." },
+  ],
+  "billNumber",
+);
+const vendorBill = Object.fromEntries(vendorBills.map((b) => [b.billNumber, b]));
+console.log(`  ok vendor_bill         ${vendorBills.length}`);
+
+const billLineRows = [
+  ["VB-2026-00001", "Subcontractor", "Senior consultant, 20 days", 20, 42500],
+  ["VB-2026-00002", "Subcontractor", "Integration developer, 16 days", 16, 38750],
+  ["VB-2026-00003", "Subcontractor", "Contract developer, 10 days", 10, 32000],
+  ["VB-2026-00004", "Office & Supplies", "Monthly advisory retainer", 1, 175000],
+  ["VB-2026-00005", "Software & Licences", "Cloud hosting, one month", 1, 4200],
+];
+
+for (const number of Object.keys(vendorBill)) {
+  const rows = billLineRows
+    .filter(([b]) => b === number)
+    .map(([, categoryName, description, quantity, unitCost], i) => ({
+      vendorBillId: vendorBill[number].id,
+      expenseCategoryId: expenseCategory[categoryName].id,
+      description,
+      quantity,
+      unitCost,
+      taxRateId: gst.id,
+      lineTotal: quantity * unitCost,
+      sortOrder: i,
+    }));
+  await replaceChildren("vendor_bill_line", "vendorBillId", vendorBill[number].id, rows);
+}
+console.log(`  ok vendor_bill_line    ${billLineRows.length}`);
+
+// -------------------------------------------------------- vendor payments
+const vendorPayments = await upsert(
+  "vendor_payment",
+  [
+    { paymentNumber: "VP-2026-00001", vendorAccountId: account["ACC-2026-00007"].id, paymentDate: day(-12), amount: 1003000, currencyCode: "PKR", paymentMethod: "BANK", bankAccountId: bankAccount["HBL Current — Operations"].id, referenceNumber: "OUT-556201", status: "CLEARED" },
+    { paymentNumber: "VP-2026-00002", vendorAccountId: account["ACC-2026-00007"].id, paymentDate: day(-3), amount: 300000, currencyCode: "PKR", paymentMethod: "BANK", bankAccountId: bankAccount["HBL Current — Operations"].id, referenceNumber: "OUT-559877", status: "CLEARED" },
+  ],
+  "paymentNumber",
+);
+const vendorPayment = Object.fromEntries(vendorPayments.map((p) => [p.paymentNumber, p]));
+console.log(`  ok vendor_payment      ${vendorPayments.length}`);
+
+// vendor_payment_allocation has no updatedAt, and a trigger caps the total
+// against a payment — so old rows go before new ones land.
+{
+  const paymentIds = vendorPayments.map((p) => p.id);
+  const { error: delErr } = await db
+    .from("vendor_payment_allocation")
+    .delete()
+    .in("vendorPaymentId", paymentIds);
+  fail("vendor_payment_allocation clear", delErr);
+
+  const { error } = await db.from("vendor_payment_allocation").insert([
+    { id: randomUUID(), vendorPaymentId: vendorPayment["VP-2026-00001"].id, vendorBillId: vendorBill["VB-2026-00001"].id, allocatedAmount: 1003000, allocatedAt: at(-12) },
+    { id: randomUUID(), vendorPaymentId: vendorPayment["VP-2026-00002"].id, vendorBillId: vendorBill["VB-2026-00002"].id, allocatedAmount: 300000, allocatedAt: at(-3) },
+  ]);
+  fail("vendor_payment_allocation insert", error);
+}
+console.log("  ok vendor_payment_allocation 2");
+
 // ------------------------------------------------------------ activities
 const activities = [
   { activityType: "CALL", subject: "Discovery call — Multan Agro Foods", ownerUserId: exec, status: "COMPLETED", priority: "MEDIUM", startAt: at(-2), dueAt: at(-2), completedAt: at(-2), description: "Walked through their current finance process.", outcome: "Budget confirmed for this financial year. Sending a proposal." },
@@ -1107,6 +1219,7 @@ Done. Demo data seeded:
   ${cases.length} support cases   ${projects.length} projects       ${activities.length} activities
   ${campaigns.length} campaigns       ${contracts.length} contracts      ${phases.length} phases
   ${milestones.length} milestones      ${tasks.length} tasks          ${timeLogRows.length} time logs
+  ${expenses.length} expenses        ${vendorBills.length} vendor bills   ${vendorPayments.length} vendor payments
 
 Sign in with any seeded user — see scripts/seed-cloud.mjs for credentials.
 `);

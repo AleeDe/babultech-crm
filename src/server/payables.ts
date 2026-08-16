@@ -1,0 +1,846 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import Decimal from "decimal.js";
+import { randomUUID } from "node:crypto";
+import { toDecimal, one } from "@/lib/decimal";
+import { supabaseServer } from "@/lib/supabase";
+import { createRecord, updateRecord, applySearch, LIST_LIMIT } from "@/lib/db";
+import { SEQUENCES } from "@/lib/numbering";
+import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
+import type { ActionResult } from "./partners";
+
+/**
+ * Money going out: expenses and vendor bills.
+ *
+ * The mirror of billing.ts. Together they are what makes a margin figure
+ * possible — until now only receivables existed, so the system could say what
+ * had been earned but not what it cost.
+ *
+ * Two balances are maintained here and never typed in:
+ *   paidAmount        = sum of the bill's vendor payment allocations
+ *   outstandingAmount = totalAmount - paidAmount
+ *
+ * recalculateVendorBill is the only place either is written.
+ */
+
+const ZERO = toDecimal(0);
+
+// ---------------------------------------------------------------------------
+// Expenses
+// ---------------------------------------------------------------------------
+
+const expenseSchema = z.object({
+  categoryId: z.string().uuid("Choose a category."),
+  expenseDate: z.string().min(1, "When was it incurred?"),
+  amount: z.coerce.number().positive("An expense has to be more than zero."),
+  taxAmount: z.coerce.number().min(0).optional().nullable(),
+  currencyCode: z.string().length(3).default("PKR"),
+  description: z.string().optional().nullable(),
+  employeeUserId: z.string().uuid().optional().nullable(),
+  vendorAccountId: z.string().uuid().optional().nullable(),
+  projectId: z.string().uuid().optional().nullable(),
+  billableToCustomer: z.coerce.boolean().default(false),
+  reimbursable: z.coerce.boolean().default(true),
+});
+
+export async function listExpenses(filters?: {
+  search?: string;
+  approvalStatus?: string;
+  paymentStatus?: string;
+  projectId?: string;
+}) {
+  await requirePermission(PERMISSIONS.INVOICE_READ);
+
+  const db = await supabaseServer();
+
+  let query = db
+    .from("expense")
+    .select(
+      `*,
+       category:expense_category ( id, name, glCode, requiresReceipt ),
+       employee:app_user!expense_employeeUserId_fkey ( id, fullName ),
+       vendor:account ( id, name ),
+       project ( id, name, projectNumber )`,
+    )
+    .is("deletedAt", null)
+    .order("expenseDate", { ascending: false });
+
+  if (filters?.approvalStatus) query = query.eq("approvalStatus", filters.approvalStatus);
+  if (filters?.paymentStatus) query = query.eq("paymentStatus", filters.paymentStatus);
+  if (filters?.projectId) query = query.eq("projectId", filters.projectId);
+  query = applySearch(query, filters?.search, ["expenseNumber", "description"]);
+
+  const { data, error } = await query.limit(LIST_LIMIT);
+  if (error) throw new Error(`Could not load expenses: ${error.message}`);
+
+  return (data ?? []).map((e) => ({
+    ...e,
+    category: one(e.category as never),
+    employee: one(e.employee as never),
+    vendor: one(e.vendor as never),
+    project: one(e.project as never),
+  }));
+}
+
+export async function createExpense(
+  input: z.infer<typeof expenseSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const _auth = await authorize(PERMISSIONS.INVOICE_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  const parsed = expenseSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const d = parsed.data;
+
+  // Someone has to be owed the money, or it has to be owed to a supplier.
+  // Neither makes the expense unattributable at reimbursement time.
+  if (!d.employeeUserId && !d.vendorAccountId) {
+    return {
+      ok: false,
+      error: "Record who paid: an employee to reimburse, or the supplier it was paid to.",
+      fieldErrors: { employeeUserId: ["Choose an employee or a vendor."] },
+    };
+  }
+
+  if (d.billableToCustomer && !d.projectId) {
+    return {
+      ok: false,
+      error: "A billable expense needs a project — that is what it gets billed through.",
+      fieldErrors: { projectId: ["Required for a billable expense."] },
+    };
+  }
+
+  try {
+    const created = await createRecord<{ id: string }>(
+      "expense",
+      {
+        categoryId: d.categoryId,
+        expenseDate: d.expenseDate,
+        amount: d.amount,
+        taxAmount: d.taxAmount ?? null,
+        currencyCode: d.currencyCode,
+        description: d.description || null,
+        employeeUserId: d.employeeUserId || null,
+        vendorAccountId: d.vendorAccountId || null,
+        projectId: d.projectId || null,
+        billableToCustomer: d.billableToCustomer,
+        reimbursable: d.reimbursable,
+        approvalStatus: "DRAFT",
+        paymentStatus: "UNPAID",
+      },
+      { field: "expenseNumber", sequence: SEQUENCES.EXPENSE },
+    );
+
+    revalidatePath("/expenses");
+    return { ok: true, data: { id: created.id } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Could not record the expense." };
+  }
+}
+
+export async function getExpense(id: string) {
+  await requirePermission(PERMISSIONS.INVOICE_READ);
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("expense")
+    .select(
+      `*,
+       category:expense_category ( id, name, glCode, requiresReceipt ),
+       employee:app_user!expense_employeeUserId_fkey ( id, fullName, email ),
+       vendor:account ( id, name ),
+       project ( id, name, projectNumber, account ( id, name ) )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load expense: ${error.message}`);
+  if (!data) return null;
+
+  const project = one(data.project as never) as Record<string, unknown> | null;
+
+  return {
+    ...data,
+    category: one(data.category as never),
+    employee: one(data.employee as never),
+    vendor: one(data.vendor as never),
+    project: project ? { ...project, account: one(project.account as never) } : null,
+  };
+}
+
+/**
+ * Moves an expense through submit → approve → reject, and marks it paid.
+ *
+ * The transitions are checked rather than assumed: an approved expense that
+ * can be re-approved, or a paid one that can be rejected, is how a
+ * reimbursement gets paid twice.
+ */
+const EXPENSE_TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ["SUBMITTED"],
+  SUBMITTED: ["APPROVED", "REJECTED"],
+  REJECTED: ["SUBMITTED"],
+  APPROVED: [],
+};
+
+export async function setExpenseApproval(
+  id: string,
+  next: "SUBMITTED" | "APPROVED" | "REJECTED",
+): Promise<ActionResult<{ id: string }>> {
+  const _auth = await authorize(
+    next === "SUBMITTED" ? PERMISSIONS.INVOICE_WRITE : PERMISSIONS.INVOICE_APPROVE,
+  );
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  const db = await supabaseServer();
+
+  const { data: expense } = await db
+    .from("expense")
+    .select("id, approvalStatus, paymentStatus, employeeUserId")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!expense) return { ok: false, error: "That expense no longer exists." };
+
+  const allowed = EXPENSE_TRANSITIONS[expense.approvalStatus] ?? [];
+  if (!allowed.includes(next)) {
+    return {
+      ok: false,
+      error: `An expense that is ${expense.approvalStatus.toLowerCase()} cannot be ${next.toLowerCase()}.`,
+    };
+  }
+
+  // Approving your own claim is the oldest hole in expense handling.
+  if (next === "APPROVED" && expense.employeeUserId === _auth.user.id) {
+    return { ok: false, error: "Someone else has to approve your own expense." };
+  }
+
+  try {
+    await updateRecord("expense", id, { approvalStatus: next }, "Expense", _auth.user.id);
+    revalidatePath("/expenses");
+    revalidatePath(`/expenses/${id}`);
+    return { ok: true, data: { id } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Could not update the expense." };
+  }
+}
+
+export async function markExpensePaid(id: string): Promise<ActionResult<{ id: string }>> {
+  const _auth = await authorize(PERMISSIONS.PAYMENT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  const db = await supabaseServer();
+
+  const { data: expense } = await db
+    .from("expense")
+    .select("id, approvalStatus, paymentStatus, reimbursable")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!expense) return { ok: false, error: "That expense no longer exists." };
+  if (expense.approvalStatus !== "APPROVED") {
+    return { ok: false, error: "Only an approved expense can be paid." };
+  }
+  if (expense.paymentStatus !== "UNPAID") {
+    return { ok: false, error: "That expense is already settled." };
+  }
+
+  try {
+    await updateRecord(
+      "expense",
+      id,
+      { paymentStatus: expense.reimbursable ? "REIMBURSED" : "PAID" },
+      "Expense",
+      _auth.user.id,
+    );
+    revalidatePath("/expenses");
+    revalidatePath(`/expenses/${id}`);
+    return { ok: true, data: { id } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Could not settle the expense." };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Vendor bills
+// ---------------------------------------------------------------------------
+
+const billLineSchema = z.object({
+  expenseCategoryId: z.string().uuid().optional().nullable(),
+  projectId: z.string().uuid().optional().nullable(),
+  description: z.string().min(1, "Every line needs a description."),
+  quantity: z.coerce.number().positive(),
+  unitCost: z.coerce.number().min(0),
+  taxRateId: z.string().uuid().optional().nullable(),
+});
+
+const vendorBillSchema = z.object({
+  vendorAccountId: z.string().uuid("Choose the supplier."),
+  vendorInvoiceNumber: z.string().max(100).optional().nullable(),
+  projectId: z.string().uuid().optional().nullable(),
+  billDate: z.string().min(1, "When was it issued?"),
+  dueDate: z.string().min(1, "When is it due?"),
+  currencyCode: z.string().length(3).default("PKR"),
+  notes: z.string().optional().nullable(),
+  lines: z.array(billLineSchema).min(1, "A bill needs at least one line."),
+});
+
+async function computeBillLines(lines: z.infer<typeof billLineSchema>[]) {
+  const db = await supabaseServer();
+
+  const taxRateIds = [...new Set(lines.map((l) => l.taxRateId).filter(Boolean))] as string[];
+  const taxRates = taxRateIds.length
+    ? (await db.from("tax_rate").select("id, ratePercent").in("id", taxRateIds)).data ?? []
+    : [];
+  const rateOf = (id: string | null | undefined) =>
+    toDecimal(taxRates.find((t) => t.id === id)?.ratePercent ?? 0);
+
+  let subtotal = ZERO;
+  let taxAmount = ZERO;
+
+  const computed = lines.map((line) => {
+    const net = toDecimal(line.quantity).times(line.unitCost).toDecimalPlaces(2);
+    const tax = net.times(rateOf(line.taxRateId)).dividedBy(100).toDecimalPlaces(2);
+
+    subtotal = subtotal.plus(net);
+    taxAmount = taxAmount.plus(tax);
+
+    return {
+      expenseCategoryId: line.expenseCategoryId ?? null,
+      projectId: line.projectId ?? null,
+      description: line.description,
+      quantity: line.quantity,
+      unitCost: line.unitCost,
+      taxRateId: line.taxRateId ?? null,
+      lineTotal: net,
+    };
+  });
+
+  subtotal = subtotal.toDecimalPlaces(2);
+  taxAmount = taxAmount.toDecimalPlaces(2);
+
+  return {
+    lines: computed,
+    subtotal,
+    taxAmount,
+    totalAmount: subtotal.plus(taxAmount).toDecimalPlaces(2),
+  };
+}
+
+export async function listVendorBills(filters?: {
+  search?: string;
+  status?: string;
+  vendorAccountId?: string;
+}) {
+  await requirePermission(PERMISSIONS.INVOICE_READ);
+
+  const db = await supabaseServer();
+
+  let query = db
+    .from("vendor_bill")
+    .select(
+      `*,
+       vendor:account ( id, name ),
+       project ( id, name, projectNumber ),
+       lines:vendor_bill_line ( count ),
+       allocations:vendor_payment_allocation ( count )`,
+    )
+    .is("deletedAt", null)
+    .order("dueDate");
+
+  if (filters?.status) query = query.eq("status", filters.status);
+  if (filters?.vendorAccountId) query = query.eq("vendorAccountId", filters.vendorAccountId);
+  query = applySearch(query, filters?.search, ["billNumber", "vendorInvoiceNumber"]);
+
+  const { data, error } = await query.limit(LIST_LIMIT);
+  if (error) throw new Error(`Could not load vendor bills: ${error.message}`);
+
+  const countOf = (v: unknown) => (v as { count: number }[] | undefined)?.[0]?.count ?? 0;
+
+  return (data ?? []).map((b) => ({
+    ...b,
+    vendor: one(b.vendor as never),
+    project: one(b.project as never),
+    _count: { lines: countOf(b.lines), allocations: countOf(b.allocations) },
+  }));
+}
+
+export async function getVendorBill(id: string) {
+  await requirePermission(PERMISSIONS.INVOICE_READ);
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("vendor_bill")
+    .select(
+      `*,
+       vendor:account ( id, name, accountNumber ),
+       project ( id, name, projectNumber ),
+       lines:vendor_bill_line (
+         *,
+         category:expense_category ( id, name ),
+         taxRate:tax_rate ( id, name, ratePercent )
+       ),
+       allocations:vendor_payment_allocation (
+         *,
+         vendorPayment:vendor_payment ( id, paymentNumber, paymentDate, paymentMethod, status )
+       )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load vendor bill: ${error.message}`);
+  if (!data) return null;
+
+  type Row = Record<string, unknown>;
+
+  return {
+    ...data,
+    vendor: one(data.vendor as never),
+    project: one(data.project as never),
+    lines: ((data.lines ?? []) as Row[])
+      .map((l): Row => ({
+        ...l,
+        category: one(l.category as never),
+        taxRate: one(l.taxRate as never),
+      }))
+      .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0)),
+    allocations: ((data.allocations ?? []) as Row[]).map((a): Row => ({
+      ...a,
+      vendorPayment: one(a.vendorPayment as never),
+    })),
+  };
+}
+
+export async function createVendorBill(
+  input: z.infer<typeof vendorBillSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const _auth = await authorize(PERMISSIONS.INVOICE_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  const parsed = vendorBillSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const d = parsed.data;
+
+  if (d.dueDate < d.billDate) {
+    return {
+      ok: false,
+      error: "A bill cannot fall due before it is issued.",
+      fieldErrors: { dueDate: ["Must be on or after the bill date."] },
+    };
+  }
+
+  try {
+    const db = await supabaseServer();
+
+    // The supplier has to be an account marked as a vendor. Billing a customer
+    // account by mistake would put the amount on the wrong side of the ledger.
+    const { data: vendor } = await db
+      .from("account")
+      .select("id, name, accountType")
+      .eq("id", d.vendorAccountId)
+      .maybeSingle();
+
+    if (!vendor) return { ok: false, error: "That supplier no longer exists." };
+
+    const totals = await computeBillLines(d.lines);
+
+    // Bill and lines in one transaction — a bill with a total and no lines
+    // reconciles against nothing.
+    const { data: bill, error } = await db.rpc("create_with_lines", {
+      p_table: "vendor_bill",
+      p_payload: {
+        vendorAccountId: d.vendorAccountId,
+        vendorInvoiceNumber: d.vendorInvoiceNumber || null,
+        projectId: d.projectId || null,
+        billDate: d.billDate,
+        dueDate: d.dueDate,
+        status: "DRAFT",
+        currencyCode: d.currencyCode,
+        subtotal: totals.subtotal.toFixed(2),
+        taxAmount: totals.taxAmount.toFixed(2),
+        totalAmount: totals.totalAmount.toFixed(2),
+        paidAmount: "0.00",
+        outstandingAmount: totals.totalAmount.toFixed(2),
+        notes: d.notes || null,
+      },
+      p_line_table: "vendor_bill_line",
+      p_lines: totals.lines.map((l) => ({ ...l, lineTotal: l.lineTotal.toFixed(2) })),
+      p_parent_field: "vendorBillId",
+      p_number_field: "billNumber",
+      p_sequence: SEQUENCES.VENDOR_BILL,
+    });
+
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/vendor-bills");
+    return { ok: true, data: { id: bill.id } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Could not create the bill." };
+  }
+}
+
+const BILL_TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ["UNDER_REVIEW", "CANCELLED"],
+  UNDER_REVIEW: ["APPROVED", "DRAFT", "CANCELLED"],
+  APPROVED: ["CANCELLED"],
+  PARTIALLY_PAID: [],
+  PAID: [],
+  OVERDUE: [],
+  CANCELLED: [],
+};
+
+export async function setVendorBillStatus(
+  id: string,
+  next: string,
+): Promise<ActionResult<{ id: string }>> {
+  const _auth = await authorize(
+    next === "APPROVED" ? PERMISSIONS.INVOICE_APPROVE : PERMISSIONS.INVOICE_WRITE,
+  );
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  const db = await supabaseServer();
+
+  const { data: bill } = await db
+    .from("vendor_bill")
+    .select("id, status, paidAmount")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!bill) return { ok: false, error: "That bill no longer exists." };
+
+  const allowed = BILL_TRANSITIONS[bill.status] ?? [];
+  if (!allowed.includes(next)) {
+    return {
+      ok: false,
+      error: `A bill that is ${bill.status.toLowerCase().replace(/_/g, " ")} cannot become ${next.toLowerCase().replace(/_/g, " ")}.`,
+    };
+  }
+
+  // Cancelling a bill money has already gone against would leave the payment
+  // allocated to nothing.
+  if (next === "CANCELLED" && Number(bill.paidAmount) > 0) {
+    return { ok: false, error: "That bill has been paid against. Reverse the payment first." };
+  }
+
+  try {
+    await updateRecord("vendor_bill", id, { status: next }, "VendorBill", _auth.user.id);
+    revalidatePath("/vendor-bills");
+    revalidatePath(`/vendor-bills/${id}`);
+    return { ok: true, data: { id } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Could not update the bill." };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Vendor payments
+// ---------------------------------------------------------------------------
+
+const vendorPaymentSchema = z.object({
+  vendorAccountId: z.string().uuid("Choose the supplier."),
+  paymentDate: z.string().min(1, "When was it paid?"),
+  amount: z.coerce.number().positive("A payment has to be more than zero."),
+  currencyCode: z.string().length(3).default("PKR"),
+  paymentMethod: z.enum(["BANK", "CHEQUE", "CASH", "CARD", "WALLET"]),
+  bankAccountId: z.string().uuid().optional().nullable(),
+  referenceNumber: z.string().max(100).optional().nullable(),
+  /** Bills this payment settles, in the order given. */
+  allocations: z
+    .array(
+      z.object({
+        vendorBillId: z.string().uuid(),
+        allocatedAmount: z.coerce.number().positive(),
+      }),
+    )
+    .default([]),
+});
+
+/**
+ * Rewrites a bill's paid and outstanding balances from its allocations.
+ *
+ * The single place either is written, so the AP ageing view can be trusted.
+ */
+async function recalculateVendorBill(billId: string) {
+  const db = await supabaseServer();
+
+  const { data: bill } = await db
+    .from("vendor_bill")
+    .select("id, totalAmount, status")
+    .eq("id", billId)
+    .maybeSingle();
+
+  if (!bill) return;
+
+  const { data: allocations } = await db
+    .from("vendor_payment_allocation")
+    .select("allocatedAmount, vendorPayment:vendor_payment ( status )")
+    .eq("vendorBillId", billId);
+
+  // Only cleared money counts. A pending cheque is not a paid bill.
+  const paid = ((allocations ?? []) as Record<string, unknown>[])
+    .filter((a) => {
+      const payment = one(a.vendorPayment as never) as { status?: string } | null;
+      return payment?.status === "CLEARED";
+    })
+    .reduce((total, a) => total.plus(toDecimal(a.allocatedAmount)), ZERO);
+
+  const total = toDecimal(bill.totalAmount);
+  const outstanding = Decimal.max(total.minus(paid), ZERO).toDecimalPlaces(2);
+
+  let status = bill.status;
+  if (!["CANCELLED", "DRAFT", "UNDER_REVIEW"].includes(bill.status)) {
+    if (outstanding.lessThanOrEqualTo(0)) status = "PAID";
+    else if (paid.greaterThan(0)) status = "PARTIALLY_PAID";
+    else status = "APPROVED";
+  }
+
+  await db
+    .from("vendor_bill")
+    .update({
+      paidAmount: paid.toDecimalPlaces(2).toFixed(2),
+      outstandingAmount: outstanding.toFixed(2),
+      status,
+      updatedAt: new Date().toISOString(),
+    })
+    .eq("id", billId);
+}
+
+export async function recordVendorPayment(
+  input: z.infer<typeof vendorPaymentSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const _auth = await authorize(PERMISSIONS.PAYMENT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  const parsed = vendorPaymentSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const d = parsed.data;
+
+  const allocated = d.allocations.reduce((s, a) => s.plus(toDecimal(a.allocatedAmount)), ZERO);
+  if (allocated.greaterThan(toDecimal(d.amount))) {
+    return {
+      ok: false,
+      error: `You have allocated ${allocated.toFixed(2)} of a ${d.amount.toFixed(2)} payment.`,
+    };
+  }
+
+  try {
+    const db = await supabaseServer();
+
+    // Every bill must belong to this supplier and still owe at least what is
+    // being put against it.
+    for (const allocation of d.allocations) {
+      const { data: bill } = await db
+        .from("vendor_bill")
+        .select("id, billNumber, vendorAccountId, outstandingAmount, status")
+        .eq("id", allocation.vendorBillId)
+        .maybeSingle();
+
+      if (!bill) return { ok: false, error: "One of those bills no longer exists." };
+
+      if (bill.vendorAccountId !== d.vendorAccountId) {
+        return {
+          ok: false,
+          error: `${bill.billNumber} belongs to a different supplier.`,
+        };
+      }
+
+      if (["DRAFT", "UNDER_REVIEW", "CANCELLED"].includes(bill.status)) {
+        return {
+          ok: false,
+          error: `${bill.billNumber} is not approved yet, so it cannot be paid.`,
+        };
+      }
+
+      if (toDecimal(allocation.allocatedAmount).greaterThan(toDecimal(bill.outstandingAmount))) {
+        return {
+          ok: false,
+          error: `${bill.billNumber} only has ${Number(bill.outstandingAmount).toFixed(2)} outstanding.`,
+        };
+      }
+    }
+
+    const payment = await createRecord<{ id: string }>(
+      "vendor_payment",
+      {
+        vendorAccountId: d.vendorAccountId,
+        paymentDate: d.paymentDate,
+        amount: d.amount,
+        currencyCode: d.currencyCode,
+        paymentMethod: d.paymentMethod,
+        bankAccountId: d.bankAccountId || null,
+        referenceNumber: d.referenceNumber || null,
+        status: "CLEARED",
+      },
+      { field: "paymentNumber", sequence: SEQUENCES.VENDOR_PAYMENT },
+    );
+
+    if (d.allocations.length) {
+      const { error } = await db.from("vendor_payment_allocation").insert(
+        d.allocations.map((a) => ({
+          id: randomUUID(),
+          vendorPaymentId: payment.id,
+          vendorBillId: a.vendorBillId,
+          allocatedAmount: a.allocatedAmount,
+        })),
+      );
+
+      if (error) throw new Error(error.message);
+
+      for (const allocation of d.allocations) {
+        await recalculateVendorBill(allocation.vendorBillId);
+      }
+    }
+
+    revalidatePath("/vendor-bills");
+    revalidatePath("/vendor-payments");
+    return { ok: true, data: { id: payment.id } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Could not record the payment." };
+  }
+}
+
+export async function listVendorPayments(filters?: { search?: string; status?: string }) {
+  await requirePermission(PERMISSIONS.INVOICE_READ);
+
+  const db = await supabaseServer();
+
+  let query = db
+    .from("vendor_payment")
+    .select(
+      `*,
+       vendor:account ( id, name ),
+       bankAccount:bank_account ( id, name ),
+       allocations:vendor_payment_allocation (
+         *,
+         vendorBill:vendor_bill ( id, billNumber )
+       )`,
+    )
+    .is("deletedAt", null)
+    .order("paymentDate", { ascending: false });
+
+  if (filters?.status) query = query.eq("status", filters.status);
+  query = applySearch(query, filters?.search, ["paymentNumber", "referenceNumber"]);
+
+  const { data, error } = await query.limit(LIST_LIMIT);
+  if (error) throw new Error(`Could not load vendor payments: ${error.message}`);
+
+  type Row = Record<string, unknown>;
+
+  return (data ?? []).map((p) => ({
+    ...p,
+    vendor: one(p.vendor as never),
+    bankAccount: one(p.bankAccount as never),
+    allocations: ((p.allocations ?? []) as Row[]).map((a): Row => ({
+      ...a,
+      vendorBill: one(a.vendorBill as never),
+    })),
+  }));
+}
+
+/** Options the expense and bill forms need. */
+export async function getPayableFormOptions() {
+  await requirePermission(PERMISSIONS.INVOICE_READ);
+  const db = await supabaseServer();
+
+  const [categories, vendors, users, projects, taxRates, currencies, banks, openBills] =
+    await Promise.all([
+      db.from("expense_category").select("id, name, requiresReceipt").eq("active", true).order("name"),
+      db
+        .from("account")
+        .select("id, name")
+        .in("accountType", ["VENDOR", "PARTNER", "OTHER"])
+        .is("deletedAt", null)
+        .order("name"),
+      db.from("app_user").select("id, fullName").eq("status", "ACTIVE").is("deletedAt", null).order("fullName"),
+      db.from("project").select("id, name, projectNumber").is("deletedAt", null).order("name"),
+      db.from("tax_rate").select("id, name, ratePercent").eq("active", true).order("name"),
+      db.from("currency").select("code, name").order("code"),
+      db.from("bank_account").select("id, name").eq("active", true).order("name"),
+      db
+        .from("vendor_bill")
+        .select("id, billNumber, vendorAccountId, outstandingAmount, dueDate, currencyCode")
+        .is("deletedAt", null)
+        .gt("outstandingAmount", 0)
+        .in("status", ["APPROVED", "PARTIALLY_PAID", "OVERDUE"])
+        .order("dueDate"),
+    ]);
+
+  return {
+    categories: categories.data ?? [],
+    vendors: vendors.data ?? [],
+    users: users.data ?? [],
+    projects: projects.data ?? [],
+    taxRates: taxRates.data ?? [],
+    currencies: currencies.data ?? [],
+    banks: banks.data ?? [],
+    openBills: openBills.data ?? [],
+  };
+}
+
+/** Totals for the payables dashboard tiles. */
+export async function getPayablesSummary() {
+  await requirePermission(PERMISSIONS.INVOICE_READ);
+  const db = await supabaseServer();
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  const [outstanding, overdue, pendingExpenses, unpaidExpenses] = await Promise.all([
+    db
+      .from("vendor_bill")
+      .select("outstandingAmount")
+      .is("deletedAt", null)
+      .not("status", "in", '("DRAFT","CANCELLED","PAID")'),
+    db
+      .from("vendor_bill")
+      .select("outstandingAmount")
+      .is("deletedAt", null)
+      .not("status", "in", '("DRAFT","CANCELLED","PAID")')
+      .lt("dueDate", today),
+    db
+      .from("expense")
+      .select("amount")
+      .is("deletedAt", null)
+      .eq("approvalStatus", "SUBMITTED"),
+    db
+      .from("expense")
+      .select("amount")
+      .is("deletedAt", null)
+      .eq("approvalStatus", "APPROVED")
+      .eq("paymentStatus", "UNPAID"),
+  ]);
+
+  const sum = (res: { data?: unknown }, column: string) =>
+    ((res.data ?? []) as Record<string, unknown>[])
+      .reduce((total, row) => total.plus(toDecimal(row[column])), ZERO)
+      .toFixed(2);
+
+  return {
+    billsOutstanding: sum(outstanding, "outstandingAmount"),
+    billsOutstandingCount: ((outstanding.data ?? []) as unknown[]).length,
+    billsOverdue: sum(overdue, "outstandingAmount"),
+    billsOverdueCount: ((overdue.data ?? []) as unknown[]).length,
+    expensesAwaitingApproval: sum(pendingExpenses, "amount"),
+    expensesAwaitingApprovalCount: ((pendingExpenses.data ?? []) as unknown[]).length,
+    expensesToPay: sum(unpaidExpenses, "amount"),
+    expensesToPayCount: ((unpaidExpenses.data ?? []) as unknown[]).length,
+  };
+}

@@ -3,7 +3,7 @@ import {
   UserPlus, Building2, Target, FileText, FileSignature, Package,
   Megaphone, Handshake, LifeBuoy, FolderKanban, Receipt, Banknote,
   Clock, CalendarCheck, ArrowRight, CheckSquare, ShieldCheck, Settings,
-  UsersRound, Coins, type LucideIcon,
+  UsersRound, Coins, FileInput, Wallet, type LucideIcon,
 } from "lucide-react";
 import { requireUser, can, PERMISSIONS, type SessionUser } from "@/lib/authz";
 import {
@@ -176,6 +176,20 @@ const REFERENCE: Reference[] = [
     href: "/payments",
     needs: PERMISSIONS.INVOICE_READ,
     body: "Money received, allocated against one or more invoices. A payment can sit unallocated until you decide where it belongs.",
+  },
+  {
+    icon: FileInput,
+    title: "Vendor bills",
+    href: "/vendor-bills",
+    needs: PERMISSIONS.INVOICE_READ,
+    body: "What suppliers invoice you. A bill is entered, approved, then paid — approval is what makes it payable, and a payment against it updates the balance automatically.",
+  },
+  {
+    icon: Wallet,
+    title: "Expenses",
+    href: "/expenses",
+    needs: PERMISSIONS.INVOICE_READ,
+    body: "What the business spends. Submitted, then approved by someone else, then settled. An expense on a project can be marked billable and recharged to the customer.",
   },
   {
     icon: ShieldCheck,
