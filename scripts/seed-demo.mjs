@@ -1049,6 +1049,50 @@ for (const a of activities) {
 }
 console.log(`  ok activity            ${activities.length}`);
 
+// ------------------------------------------------------ number sequences
+//
+// The demo rows above carry hand-written numbers (ACC-2026-00001 and so on),
+// but number_sequence still points at 1. The next record created through the
+// UI would be handed a number this seed has already used, and the unique index
+// would reject the insert. Advance each counter past what was seeded.
+{
+  const seeded = {
+    Account: accounts.length,
+    Lead: leads.length,
+    Opportunity: opportunities.length,
+    Quotation: quotations.length,
+    Partner: partners.length,
+    Invoice: invoices.length,
+    Payment: payments.length,
+    Case: cases.length,
+    Project: projects.length,
+    Campaign: campaigns.length,
+    Contract: contracts.length,
+    CommissionRecord: commissions.length,
+  };
+
+  const { data: current, error: readErr } = await db
+    .from("number_sequence")
+    .select("id, entityType, nextValue");
+  fail("number_sequence read", readErr);
+
+  const now = new Date().toISOString();
+  for (const row of current ?? []) {
+    const used = seeded[row.entityType];
+    if (!used) continue;
+
+    const shouldBe = used + 1;
+    if (row.nextValue >= shouldBe) continue;
+
+    const { error } = await db
+      .from("number_sequence")
+      .update({ nextValue: shouldBe, updatedAt: now })
+      .eq("id", row.id);
+    fail(`number_sequence ${row.entityType}`, error);
+  }
+}
+console.log("  ok number_sequence     advanced past seeded numbers");
+
 console.log(`
 Done. Demo data seeded:
 

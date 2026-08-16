@@ -4,12 +4,21 @@
 -- version relies on running inside a Prisma transaction with the surrounding
 -- insert, and supabase-js cannot provide that.
 --
+-- SECURITY DEFINER: number_sequence is reference data whose write policy
+-- requires ALL scope, but every user needs to allocate a number. See
+-- migrations/20260816000001_numbering_definer.sql.
+--
 -- entity_type matches NumberSequence.entityType exactly — the values in
 -- SEQUENCES in src/lib/numbering.ts, e.g. 'CommissionRecord', not 'COMMISSION'.
 
+-- SECURITY DEFINER: number_sequence is reference data whose write policy
+-- requires ALL scope, but every user needs to allocate a number. See
+-- migrations/20260816000001_numbering_definer.sql.
 create or replace function next_sequence_number(p_entity_type text)
 returns text
 language plpgsql
+security definer
+set search_path = public
 as $$
 declare
   v_prefix   text;
@@ -27,7 +36,7 @@ begin
   into v_value, v_prefix, v_padding, v_year;
 
   if not found then
-    raise exception 'No number sequence configured for "%". Add one in prisma/seed.ts.',
+    raise exception 'No number sequence configured for "%". Add a number_sequence row for it (see scripts/seed-cloud.mjs).',
       p_entity_type using errcode = 'no_data_found';
   end if;
 
