@@ -10,6 +10,7 @@
     "db:push": "supabase db push --linked",
     "db:diff": "supabase db diff --linked",
     "db:seed": "node scripts/seed-cloud.mjs",
+    "db:seed:demo": "node scripts/seed-demo.mjs",
     "db:preflight": "node scripts/preflight-supabase.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
