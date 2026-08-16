@@ -10,6 +10,11 @@ const credentialsSchema = z.object({
 });
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // Behind Vercel's proxy the request host is forwarded, not original, so v5
+  // refuses to infer the site URL and every CSRF check fails with MissingCSRF.
+  // AUTH_URL pins it when set; trusting the host covers preview deployments,
+  // whose URL changes per commit and so cannot be pinned in advance.
+  trustHost: true,
   session: { strategy: "jwt", maxAge: 60 * 60 * 8 },
   pages: { signIn: "/login" },
   providers: [
