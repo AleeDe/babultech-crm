@@ -77,12 +77,12 @@ export function LeadsTable({
               </TH>
             )}
             <TH>Lead</TH>
-            <TH>Company</TH>
-            <TH>Source</TH>
-            <TH>Referred by</TH>
-            <TH>Owner</TH>
-            <TH className="text-right">Est. value</TH>
-            <TH>Follow up</TH>
+            <TH priority="secondary">Company</TH>
+            <TH priority="tertiary">Source</TH>
+            <TH priority="tertiary">Referred by</TH>
+            <TH priority="secondary">Owner</TH>
+            <TH className="text-right" priority="tertiary">Est. value</TH>
+            <TH priority="secondary">Follow up</TH>
             <TH>Status</TH>
             <TH className="text-right">Actions</TH>
           </TR>
@@ -107,12 +107,12 @@ export function LeadsTable({
                   </Link>
                   <p className="text-xs text-muted-foreground">{l.leadNumber}</p>
                 </TD>
-                <TD className="text-sm">{l.companyName ?? "—"}</TD>
-                <TD className="text-sm text-muted-foreground">
+                <TD priority="secondary" className="text-sm">{l.companyName ?? "—"}</TD>
+                <TD priority="tertiary" className="text-sm text-muted-foreground">
                   {l.leadSource ?? "—"}
                   {l.campaign && <p className="text-xs">{l.campaign.name}</p>}
                 </TD>
-                <TD className="text-sm">
+                <TD priority="tertiary" className="text-sm">
                   {l.referredByPartner ? (
                     <Link
                       href={`/partners/${l.referredByPartner.id}`}
@@ -124,9 +124,9 @@ export function LeadsTable({
                     <span className="text-muted-foreground">—</span>
                   )}
                 </TD>
-                <TD className="text-sm text-muted-foreground">{l.owner?.fullName}</TD>
-                <TD className="text-right tabular">{formatMoney(l.estimatedValue)}</TD>
-                <TD className={`text-sm ${overdue ? "text-red-600 dark:text-red-400" : ""}`}>
+                <TD priority="secondary" className="text-sm text-muted-foreground">{l.owner?.fullName}</TD>
+                <TD priority="tertiary" className="text-right tabular">{formatMoney(l.estimatedValue)}</TD>
+                <TD priority="secondary" className={`text-sm ${overdue ? "text-red-600 dark:text-red-400" : ""}`}>
                   {formatDate(l.nextFollowUpAt)}
                 </TD>
                 <TD>

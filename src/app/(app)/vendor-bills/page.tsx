@@ -101,13 +101,13 @@ export default async function VendorBillsPage({
             <THead>
               <TR>
                 <TH>Bill</TH>
-                <TH>Supplier</TH>
-                <TH>Project</TH>
-                <TH>Issued</TH>
-                <TH>Due</TH>
+                <TH priority="secondary">Supplier</TH>
+                <TH priority="tertiary">Project</TH>
+                <TH priority="tertiary">Issued</TH>
+                <TH priority="secondary">Due</TH>
                 <TH className="text-right">Total</TH>
                 <TH className="text-right">Outstanding</TH>
-                <TH>Ageing</TH>
+                <TH priority="tertiary">Ageing</TH>
                 <TH>Status</TH>
               </TR>
             </THead>
@@ -137,12 +137,12 @@ export default async function VendorBillsPage({
                         </p>
                       )}
                     </TD>
-                    <TD className="text-sm">
+                    <TD priority="secondary" className="text-sm">
                       <Link href={`/accounts/${b.vendor?.id}`} className="hover:underline">
                         {b.vendor?.name}
                       </Link>
                     </TD>
-                    <TD className="text-sm">
+                    <TD priority="tertiary" className="text-sm">
                       {b.project ? (
                         <Link href={`/projects/${b.project.id}`} className="hover:underline">
                           {b.project.name}
@@ -151,8 +151,9 @@ export default async function VendorBillsPage({
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TD>
-                    <TD className="whitespace-nowrap text-sm">{formatDate(b.billDate)}</TD>
+                    <TD priority="tertiary" className="whitespace-nowrap text-sm">{formatDate(b.billDate)}</TD>
                     <TD
+                      priority="secondary"
                       className={`whitespace-nowrap text-sm ${late ? "text-red-600 dark:text-red-400" : ""}`}
                     >
                       {formatDate(b.dueDate)}
@@ -161,7 +162,7 @@ export default async function VendorBillsPage({
                     <TD className="text-right font-medium tabular">
                       {formatMoney(b.outstandingAmount, b.currencyCode)}
                     </TD>
-                    <TD>
+                    <TD priority="tertiary">
                       <Badge tone={late ? "danger" : "neutral"}>{bucket}</Badge>
                     </TD>
                     <TD>

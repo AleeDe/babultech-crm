@@ -102,13 +102,13 @@ export default async function ExpensesPage({
             <THead>
               <TR>
                 <TH>Expense</TH>
-                <TH>Category</TH>
-                <TH>Who</TH>
-                <TH>Project</TH>
-                <TH>Date</TH>
+                <TH priority="tertiary">Category</TH>
+                <TH priority="secondary">Who</TH>
+                <TH priority="tertiary">Project</TH>
+                <TH priority="tertiary">Date</TH>
                 <TH className="text-right">Amount</TH>
                 <TH>Approval</TH>
-                <TH>Payment</TH>
+                <TH priority="secondary">Payment</TH>
               </TR>
             </THead>
             <TBody>
@@ -124,19 +124,19 @@ export default async function ExpensesPage({
                       </p>
                     )}
                   </TD>
-                  <TD className="text-sm">
+                  <TD priority="tertiary" className="text-sm">
                     {e.category?.name ?? "—"}
                     {e.category?.glCode && (
                       <p className="text-xs text-muted-foreground">{e.category.glCode}</p>
                     )}
                   </TD>
-                  <TD className="text-sm">
+                  <TD priority="secondary" className="text-sm">
                     {e.employee?.fullName ?? e.vendor?.name ?? "—"}
                     {e.reimbursable && e.employee && (
                       <p className="text-xs text-muted-foreground">Reimbursable</p>
                     )}
                   </TD>
-                  <TD className="text-sm">
+                  <TD priority="tertiary" className="text-sm">
                     {e.project ? (
                       <Link href={`/projects/${e.project.id}`} className="hover:underline">
                         {e.project.name}
@@ -150,14 +150,14 @@ export default async function ExpensesPage({
                       </Badge>
                     )}
                   </TD>
-                  <TD className="whitespace-nowrap text-sm">{formatDate(e.expenseDate)}</TD>
+                  <TD priority="tertiary" className="whitespace-nowrap text-sm">{formatDate(e.expenseDate)}</TD>
                   <TD className="text-right font-medium tabular">
                     {formatMoney(e.amount, e.currencyCode)}
                   </TD>
                   <TD>
                     <Badge tone={statusTone(e.approvalStatus)}>{humanize(e.approvalStatus)}</Badge>
                   </TD>
-                  <TD>
+                  <TD priority="secondary">
                     <Badge tone={statusTone(e.paymentStatus)}>{humanize(e.paymentStatus)}</Badge>
                   </TD>
                 </TR>

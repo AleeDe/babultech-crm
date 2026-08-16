@@ -142,7 +142,7 @@ export default async function PartnersPage({
                 <TH>Type / Tier</TH>
                 <TH>Manager</TH>
                 <TH>Commission basis</TH>
-                <TH className="text-right">Deals</TH>
+                <TH className="text-right" priority="tertiary">Deals</TH>
                 <TH className="text-right">Referrals</TH>
                 <TH>Agreement</TH>
                 <TH>Status</TH>
@@ -189,7 +189,7 @@ export default async function PartnersPage({
                           ? `${formatPercent(p.defaultCommissionPercent)} default`
                           : "—")}
                     </TD>
-                    <TD className="text-right tabular">{p._count.opportunities}</TD>
+                    <TD priority="tertiary" className="text-right tabular">{p._count.opportunities}</TD>
                     <TD className="text-right tabular">{p._count.referredLeads}</TD>
                     <TD className="text-sm">
                       {p.agreementExpiryDate ? (

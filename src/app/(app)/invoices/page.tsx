@@ -127,13 +127,13 @@ export default async function InvoicesPage({
             <THead>
               <TR>
                 <TH>Invoice</TH>
-                <TH>Customer</TH>
-                <TH>Issued</TH>
-                <TH>Due</TH>
+                <TH priority="secondary">Customer</TH>
+                <TH priority="tertiary">Issued</TH>
+                <TH priority="secondary">Due</TH>
                 <TH className="text-right">Total</TH>
-                <TH className="text-right">Paid</TH>
+                <TH className="text-right" priority="tertiary">Paid</TH>
                 <TH className="text-right">Outstanding</TH>
-                <TH>Ageing</TH>
+                <TH priority="tertiary">Ageing</TH>
                 <TH>Status</TH>
               </TR>
             </THead>
@@ -148,7 +148,7 @@ export default async function InvoicesPage({
                     <TD className="font-mono text-xs">
                       <Link href={`/invoices/${i.id}`} className="hover:underline">{i.invoiceNumber}</Link>
                     </TD>
-                    <TD className="text-sm">
+                    <TD priority="secondary" className="text-sm">
                       <Link href={`/accounts/${i.account?.id}`} className="hover:underline">
                         {i.account?.name}
                       </Link>
@@ -158,18 +158,18 @@ export default async function InvoicesPage({
                         </Link>
                       )}
                     </TD>
-                    <TD className="text-sm">{formatDate(i.invoiceDate)}</TD>
-                    <TD className={`text-sm ${late ? "text-red-600 dark:text-red-400" : ""}`}>
+                    <TD priority="tertiary" className="text-sm">{formatDate(i.invoiceDate)}</TD>
+                    <TD priority="secondary" className={`text-sm ${late ? "text-red-600 dark:text-red-400" : ""}`}>
                       {formatDate(i.dueDate)}
                     </TD>
                     <TD className="text-right tabular">{formatMoney(i.totalAmount, i.currencyCode)}</TD>
-                    <TD className="text-right tabular text-muted-foreground">
+                    <TD priority="tertiary" className="text-right tabular text-muted-foreground">
                       {formatMoney(i.paidAmount, i.currencyCode)}
                     </TD>
                     <TD className="text-right font-medium tabular">
                       {formatMoney(i.outstandingAmount, i.currencyCode)}
                     </TD>
-                    <TD>
+                    <TD priority="tertiary">
                       <Badge tone={late ? "danger" : "neutral"}>{bucket}</Badge>
                     </TD>
                     <TD>

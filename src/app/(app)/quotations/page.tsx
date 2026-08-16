@@ -113,12 +113,12 @@ export default async function QuotationsPage({
             <THead>
               <TR>
                 <TH>Quote</TH>
-                <TH>Customer</TH>
-                <TH>Deal</TH>
-                <TH>Issued</TH>
-                <TH>Expires</TH>
+                <TH priority="secondary">Customer</TH>
+                <TH priority="tertiary">Deal</TH>
+                <TH priority="tertiary">Issued</TH>
+                <TH priority="secondary">Expires</TH>
                 <TH className="text-right">Total</TH>
-                <TH>Approval</TH>
+                <TH priority="tertiary">Approval</TH>
                 <TH>Status</TH>
               </TR>
             </THead>
@@ -133,24 +133,24 @@ export default async function QuotationsPage({
                       </Link>
                       <p className="text-xs text-muted-foreground">v{q.versionNumber} · {q._count.lines} lines</p>
                     </TD>
-                    <TD className="text-sm">
+                    <TD priority="secondary" className="text-sm">
                       <Link href={`/accounts/${q.account?.id}`} className="hover:underline">
                         {q.account?.name}
                       </Link>
                     </TD>
-                    <TD className="text-sm">
+                    <TD priority="tertiary" className="text-sm">
                       <Link href={`/opportunities/${q.opportunity?.id}`} className="hover:underline">
                         {q.opportunity?.name}
                       </Link>
                     </TD>
-                    <TD className="text-sm">{formatDate(q.quoteDate)}</TD>
-                    <TD className={`text-sm ${expired ? "text-red-600 dark:text-red-400" : ""}`}>
+                    <TD priority="tertiary" className="text-sm">{formatDate(q.quoteDate)}</TD>
+                    <TD priority="secondary" className={`text-sm ${expired ? "text-red-600 dark:text-red-400" : ""}`}>
                       {formatDate(q.expiryDate)}
                     </TD>
                     <TD className="text-right font-medium tabular">
                       {formatMoney(q.totalAmount, q.currencyCode)}
                     </TD>
-                    <TD>
+                    <TD priority="tertiary">
                       <Badge tone={statusTone(q.approvalStatus)}>{humanize(q.approvalStatus)}</Badge>
                     </TD>
                     <TD>

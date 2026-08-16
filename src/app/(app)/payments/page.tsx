@@ -97,12 +97,12 @@ export default async function PaymentsPage({
             <THead>
               <TR>
                 <TH>Payment</TH>
-                <TH>Customer</TH>
-                <TH>Received</TH>
-                <TH>Method</TH>
+                <TH priority="secondary">Customer</TH>
+                <TH priority="secondary">Received</TH>
+                <TH priority="tertiary">Method</TH>
                 <TH className="text-right">Amount</TH>
-                <TH className="text-right">Unapplied</TH>
-                <TH>Applied to</TH>
+                <TH className="text-right" priority="tertiary">Unapplied</TH>
+                <TH priority="tertiary">Applied to</TH>
                 <TH>Status</TH>
               </TR>
             </THead>
@@ -117,22 +117,22 @@ export default async function PaymentsPage({
                       <p className="text-xs text-muted-foreground">{p.referenceNumber}</p>
                     )}
                   </TD>
-                  <TD className="text-sm">
+                  <TD priority="secondary" className="text-sm">
                     <Link href={`/accounts/${p.account?.id}`} className="hover:underline">
                       {p.account?.name}
                     </Link>
                   </TD>
-                  <TD className="whitespace-nowrap text-sm">{formatDate(p.paymentDate)}</TD>
-                  <TD className="text-sm text-muted-foreground">{humanize(p.paymentMethod)}</TD>
+                  <TD priority="secondary" className="whitespace-nowrap text-sm">{formatDate(p.paymentDate)}</TD>
+                  <TD priority="tertiary" className="text-sm text-muted-foreground">{humanize(p.paymentMethod)}</TD>
                   <TD className="text-right font-medium tabular">{formatMoney(p.amount, p.currencyCode)}</TD>
-                  <TD className="text-right tabular">
+                  <TD priority="tertiary" className="text-right tabular">
                     {Number(p.unallocatedAmount) > 0 ? (
                       <span className="text-amber-600 dark:text-amber-400">
                         {formatMoney(p.unallocatedAmount, p.currencyCode)}
                       </span>
                     ) : "—"}
                   </TD>
-                  <TD className="text-sm">
+                  <TD priority="tertiary" className="text-sm">
                     {p.allocations.length === 0 ? (
                       <span className="text-muted-foreground">Nothing</span>
                     ) : (

@@ -102,13 +102,13 @@ export default async function CampaignsPage({
               <THead>
                 <TR>
                   <TH>Campaign</TH>
-                  <TH>Type</TH>
-                  <TH>Owner</TH>
-                  <TH>Period</TH>
-                  <TH className="text-right">Budget</TH>
-                  <TH className="text-right">Spend</TH>
-                  <TH className="text-right">Leads</TH>
-                  <TH className="text-right">Deals</TH>
+                  <TH priority="secondary">Type</TH>
+                  <TH priority="tertiary">Owner</TH>
+                  <TH priority="tertiary">Period</TH>
+                  <TH className="text-right" priority="tertiary">Budget</TH>
+                  <TH className="text-right" priority="secondary">Spend</TH>
+                  <TH className="text-right" priority="tertiary">Leads</TH>
+                  <TH className="text-right" priority="tertiary">Deals</TH>
                   <TH>Status</TH>
                 </TR>
               </THead>
@@ -121,16 +121,17 @@ export default async function CampaignsPage({
                       </Link>
                       <p className="text-xs text-muted-foreground">{c.campaignNumber}</p>
                     </TD>
-                    <TD className="text-sm text-muted-foreground">
+                    <TD priority="secondary" className="text-sm text-muted-foreground">
                       {c.campaignType?.name}
                       {c.campaignType?.channel && <p className="text-xs">{c.campaignType?.channel}</p>}
                     </TD>
-                    <TD className="text-sm text-muted-foreground">{c.owner?.fullName}</TD>
-                    <TD className="text-sm">
+                    <TD priority="tertiary" className="text-sm text-muted-foreground">{c.owner?.fullName}</TD>
+                    <TD priority="tertiary" className="text-sm">
                       {formatDate(c.startDate)} → {formatDate(c.endDate)}
                     </TD>
-                    <TD className="text-right tabular">{formatMoney(c.budgetAmount)}</TD>
+                    <TD priority="tertiary" className="text-right tabular">{formatMoney(c.budgetAmount)}</TD>
                     <TD
+                      priority="secondary"
                       className={`text-right tabular ${
                         Number(c.actualCost ?? 0) > Number(c.budgetAmount ?? 0)
                           ? "text-red-600 dark:text-red-400"
@@ -139,8 +140,8 @@ export default async function CampaignsPage({
                     >
                       {formatMoney(c.actualCost)}
                     </TD>
-                    <TD className="text-right tabular">{c._count.leads}</TD>
-                    <TD className="text-right tabular">{c._count.opportunities}</TD>
+                    <TD priority="tertiary" className="text-right tabular">{c._count.leads}</TD>
+                    <TD priority="tertiary" className="text-right tabular">{c._count.opportunities}</TD>
                     <TD>
                       <Badge tone={statusTone(c.status)}>{humanize(c.status)}</Badge>
                     </TD>
@@ -162,8 +163,8 @@ export default async function CampaignsPage({
               <THead>
                 <TR>
                   <TH>Campaign</TH>
-                  <TH className="text-right">Spend</TH>
-                  <TH className="text-right">Leads</TH>
+                  <TH className="text-right" priority="secondary">Spend</TH>
+                  <TH className="text-right" priority="tertiary">Leads</TH>
                   <TH className="text-right">Cost / lead</TH>
                   <TH className="text-right">Converted</TH>
                   <TH className="text-right">Pipeline</TH>
@@ -179,14 +180,14 @@ export default async function CampaignsPage({
                         {p.campaign_name}
                       </Link>
                     </TD>
-                    <TD className="text-right tabular">{formatMoney(p.actual_cost)}</TD>
-                    <TD className="text-right tabular">{Number(p.leads)}</TD>
-                    <TD className="text-right tabular">
+                    <TD priority="secondary" className="text-right tabular">{formatMoney(p.actual_cost)}</TD>
+                    <TD priority="tertiary" className="text-right tabular">{Number(p.leads)}</TD>
+                    <TD priority="tertiary" className="text-right tabular">
                       {p.cost_per_lead ? formatMoney(p.cost_per_lead) : "—"}
                     </TD>
-                    <TD className="text-right tabular">{Number(p.converted_leads)}</TD>
-                    <TD className="text-right tabular">{formatMoney(p.pipeline_value)}</TD>
-                    <TD className="text-right font-medium tabular">{formatMoney(p.won_value)}</TD>
+                    <TD priority="tertiary" className="text-right tabular">{Number(p.converted_leads)}</TD>
+                    <TD priority="secondary" className="text-right tabular">{formatMoney(p.pipeline_value)}</TD>
+                    <TD priority="tertiary" className="text-right font-medium tabular">{formatMoney(p.won_value)}</TD>
                     <TD
                       className={`text-right tabular ${
                         p.roi_percent && Number(p.roi_percent) > 0

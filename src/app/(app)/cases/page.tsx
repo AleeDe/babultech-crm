@@ -123,11 +123,11 @@ export default async function CasesPage({
               <TR>
                 <TH>Case</TH>
                 <TH>Customer</TH>
-                <TH>Category</TH>
+                <TH priority="tertiary">Category</TH>
                 <TH>Assigned</TH>
                 <TH>First response due</TH>
                 <TH>Resolution due</TH>
-                <TH>Priority</TH>
+                <TH priority="secondary">Priority</TH>
                 <TH>Status</TH>
               </TR>
             </THead>
@@ -161,7 +161,7 @@ export default async function CasesPage({
                         </Link>
                       )}
                     </TD>
-                    <TD className="text-sm text-muted-foreground">{c.category?.name ?? "—"}</TD>
+                    <TD priority="tertiary" className="text-sm text-muted-foreground">{c.category?.name ?? "—"}</TD>
                     <TD className="text-sm text-muted-foreground">
                       {c.owner?.fullName ?? c.team?.name ?? (
                         <span className="text-amber-600 dark:text-amber-400">Unassigned</span>
@@ -173,7 +173,7 @@ export default async function CasesPage({
                     <TD className={`text-sm ${resolutionLate ? "text-red-600 dark:text-red-400" : ""}`}>
                       {formatDateTime(c.resolutionDueAt)}
                     </TD>
-                    <TD>
+                    <TD priority="secondary">
                       <Badge tone={statusTone(c.priority)}>{humanize(c.priority)}</Badge>
                     </TD>
                     <TD>

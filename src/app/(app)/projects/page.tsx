@@ -85,11 +85,11 @@ export default async function ProjectsPage({
               <TR>
                 <TH>Project</TH>
                 <TH>Customer</TH>
-                <TH>Manager</TH>
+                <TH priority="tertiary">Manager</TH>
                 <TH>Schedule</TH>
                 <TH className="text-right">Value</TH>
-                <TH className="text-right">Progress</TH>
-                <TH>Health</TH>
+                <TH className="text-right" priority="tertiary">Progress</TH>
+                <TH priority="secondary">Health</TH>
                 <TH>Status</TH>
               </TR>
             </THead>
@@ -116,12 +116,12 @@ export default async function ProjectsPage({
                         {p.account?.name}
                       </Link>
                     </TD>
-                    <TD className="text-sm text-muted-foreground">{p.projectManager?.fullName}</TD>
+                    <TD priority="tertiary" className="text-sm text-muted-foreground">{p.projectManager?.fullName}</TD>
                     <TD className={`whitespace-nowrap text-sm ${late ? "text-red-600 dark:text-red-400" : ""}`}>
                       {formatDate(p.startDate)} → {formatDate(p.plannedEndDate)}
                     </TD>
                     <TD className="text-right tabular">{formatMoney(p.contractValue, p.currencyCode)}</TD>
-                    <TD className="text-right">
+                    <TD priority="tertiary" className="text-right">
                       <div className="ml-auto w-20">
                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                           <div className="h-full bg-primary" style={{ width: `${Number(p.completionPercent)}%` }} />
@@ -131,7 +131,7 @@ export default async function ProjectsPage({
                         </p>
                       </div>
                     </TD>
-                    <TD>
+                    <TD priority="secondary">
                       <Badge tone={statusTone(p.health)}>{humanize(p.health)}</Badge>
                     </TD>
                     <TD>

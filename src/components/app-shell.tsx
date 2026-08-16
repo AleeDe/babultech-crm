@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { signOutAction } from "@/lib/sign-out-action";
+import { MobileNav } from "./mobile-nav";
 
 interface NavItem {
   href: string;
@@ -213,10 +214,12 @@ export function AppShell({
           </button>
           <span className="font-semibold">BabulTech CRM</span>
         </header>
-        <main className="flex-1 p-5 lg:p-8">
+        <main className="flex-1 p-5 pb-24 lg:p-8 lg:pb-8">
           <div className="mx-auto w-full max-w-[1600px] fade-in">{children}</div>
         </main>
       </div>
+
+      <MobileNav onOpenMenu={() => setOpen(true)} />
     </div>
   );
 }

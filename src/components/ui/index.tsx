@@ -4,6 +4,7 @@ import { Slot } from "@radix-ui/react-slot";
 import { Inbox, Info, AlertTriangle, AlertCircle, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { priorityClass, type ColumnPriority } from "@/components/responsive-table";
 
 // ---------------------------------------------------------------------------
 // Button
@@ -255,11 +256,16 @@ export function TR({ className, ...props }: React.HTMLAttributes<HTMLTableRowEle
   );
 }
 
-export function TH({ className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
+export function TH({
+  className,
+  priority,
+  ...props
+}: React.ThHTMLAttributes<HTMLTableCellElement> & { priority?: ColumnPriority }) {
   return (
     <th
       className={cn(
         "h-10 whitespace-nowrap px-3 text-left align-middle text-[11px] font-semibold uppercase tracking-wider text-muted-foreground",
+        priorityClass(priority),
         className,
       )}
       {...props}
@@ -267,8 +273,14 @@ export function TH({ className, ...props }: React.ThHTMLAttributes<HTMLTableCell
   );
 }
 
-export function TD({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn("px-3 py-3 align-middle", className)} {...props} />;
+export function TD({
+  className,
+  priority,
+  ...props
+}: React.TdHTMLAttributes<HTMLTableCellElement> & { priority?: ColumnPriority }) {
+  return (
+    <td className={cn("px-3 py-3 align-middle", priorityClass(priority), className)} {...props} />
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -56,12 +56,12 @@ export default async function AccountsPage({
               <TR>
                 <TH>Account</TH>
                 <TH>Type</TH>
-                <TH>Owner</TH>
-                <TH>Industry</TH>
-                <TH className="text-right">Contacts</TH>
-                <TH className="text-right">Deals</TH>
-                <TH className="text-right">Cases</TH>
-                <TH>Health</TH>
+                <TH priority="secondary">Owner</TH>
+                <TH priority="tertiary">Industry</TH>
+                <TH className="text-right" priority="tertiary">Contacts</TH>
+                <TH className="text-right" priority="tertiary">Deals</TH>
+                <TH className="text-right" priority="tertiary">Cases</TH>
+                <TH priority="secondary">Health</TH>
               </TR>
             </THead>
             <TBody>
@@ -83,12 +83,12 @@ export default async function AccountsPage({
                       </Link>
                     )}
                   </TD>
-                  <TD className="text-sm text-muted-foreground">{a.owner?.fullName}</TD>
-                  <TD className="text-sm text-muted-foreground">{a.industry ?? "—"}</TD>
-                  <TD className="text-right tabular">{a._count.contacts}</TD>
-                  <TD className="text-right tabular">{a._count.opportunities}</TD>
-                  <TD className="text-right tabular">{a._count.cases}</TD>
-                  <TD>
+                  <TD priority="secondary" className="text-sm text-muted-foreground">{a.owner?.fullName}</TD>
+                  <TD priority="tertiary" className="text-sm text-muted-foreground">{a.industry ?? "—"}</TD>
+                  <TD priority="tertiary" className="text-right tabular">{a._count.contacts}</TD>
+                  <TD priority="tertiary" className="text-right tabular">{a._count.opportunities}</TD>
+                  <TD priority="tertiary" className="text-right tabular">{a._count.cases}</TD>
+                  <TD priority="secondary">
                     {a.customerHealth ? (
                       <Badge tone={statusTone(a.customerHealth)}>{humanize(a.customerHealth)}</Badge>
                     ) : (

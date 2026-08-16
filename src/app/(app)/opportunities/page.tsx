@@ -88,12 +88,12 @@ export default async function OpportunitiesPage({
               <TR>
                 <TH>Deal</TH>
                 <TH>Customer</TH>
-                <TH>Owner</TH>
+                <TH priority="tertiary">Owner</TH>
                 <TH>Partner</TH>
                 <TH className="text-right">Amount</TH>
                 <TH className="text-right">Prob.</TH>
                 <TH>Close date</TH>
-                <TH>Stage</TH>
+                <TH priority="secondary">Stage</TH>
               </TR>
             </THead>
             <TBody>
@@ -115,7 +115,7 @@ export default async function OpportunitiesPage({
                         {d.account?.name}
                       </Link>
                     </TD>
-                    <TD className="text-sm text-muted-foreground">{d.owner?.fullName}</TD>
+                    <TD priority="tertiary" className="text-sm text-muted-foreground">{d.owner?.fullName}</TD>
                     <TD>
                       {d.partners.length === 0 ? (
                         <span className="text-sm text-muted-foreground">—</span>
@@ -143,7 +143,7 @@ export default async function OpportunitiesPage({
                     <TD className={`text-sm ${overdue ? "text-red-600 dark:text-red-400" : ""}`}>
                       {formatDate(d.expectedCloseDate)}
                     </TD>
-                    <TD>
+                    <TD priority="secondary">
                       <Badge tone={statusTone(d.stage)}>{humanize(d.stage)}</Badge>
                     </TD>
                   </TR>

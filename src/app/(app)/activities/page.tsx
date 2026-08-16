@@ -113,11 +113,11 @@ export default async function ActivitiesPage({
               <THead>
                 <TR>
                   <TH>Subject</TH>
-                  <TH>Type</TH>
-                  <TH>Contact</TH>
-                  <TH>Related to</TH>
+                  <TH priority="secondary">Type</TH>
+                  <TH priority="tertiary">Contact</TH>
+                  <TH priority="tertiary">Related to</TH>
                   <TH>Due</TH>
-                  <TH>Priority</TH>
+                  <TH priority="secondary">Priority</TH>
                   <TH>Status</TH>
                 </TR>
               </THead>
@@ -131,10 +131,10 @@ export default async function ActivitiesPage({
                           {a.subject}
                         </Link>
                       </TD>
-                      <TD>
+                      <TD priority="secondary">
                         <Badge tone="neutral">{humanize(a.activityType)}</Badge>
                       </TD>
-                      <TD className="text-sm">
+                      <TD priority="tertiary" className="text-sm">
                         {a.contact ? (
                           <Link href={`/contacts/${a.contact?.id}/edit`} className="hover:underline">
                             {a.contact?.firstName} {a.contact?.lastName}
@@ -143,7 +143,7 @@ export default async function ActivitiesPage({
                           <span className="text-muted-foreground">—</span>
                         )}
                       </TD>
-                      <TD className="text-sm">
+                      <TD priority="tertiary" className="text-sm">
                         {(() => {
                           const href = entityHref(a.relatedEntityType, a.relatedEntityId);
                           if (!a.relatedEntityType) return <span className="text-muted-foreground">—</span>;
@@ -158,7 +158,7 @@ export default async function ActivitiesPage({
                       <TD className={`text-sm ${late ? "text-red-600 dark:text-red-400" : ""}`}>
                         {formatDateTime(a.dueAt)}
                       </TD>
-                      <TD>
+                      <TD priority="secondary">
                         <Badge tone={statusTone(a.priority)}>{humanize(a.priority)}</Badge>
                       </TD>
                       <TD>

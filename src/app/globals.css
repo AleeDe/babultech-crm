@@ -64,6 +64,23 @@
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 
+  /* Touch targets.
+     A 14px icon is a 14px target, and a finger contact patch is nearer 10mm —
+     about 44px. On a mouse a small target is fiddly; on a phone it is a miss,
+     and a miss on a delete icon is worse than fiddly.
+
+     Only bare icon buttons are grown — anything with its own height or padding
+     is already big enough, and inflating those would make neighbouring
+     controls overlap. */
+  @media (pointer: coarse) {
+    button:not([class*="h-"]):not([class*="py-"]):not([class*="p-"]),
+    input[type="checkbox"],
+    input[type="radio"] {
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
+
   /* Long tables scroll inside their own container rather than pushing the
      page sideways. */
   .table-scroll {

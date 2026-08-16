@@ -56,11 +56,11 @@ export default async function ContactsPage({
             <THead>
               <TR>
                 <TH>Name</TH>
-                <TH>Company</TH>
-                <TH>Title</TH>
+                <TH priority="secondary">Company</TH>
+                <TH priority="tertiary">Title</TH>
                 <TH>Email</TH>
-                <TH>Phone</TH>
-                <TH>Role</TH>
+                <TH priority="secondary">Phone</TH>
+                <TH priority="tertiary">Role</TH>
                 <TH className="text-right">Actions</TH>
               </TR>
             </THead>
@@ -80,7 +80,7 @@ export default async function ContactsPage({
                       </Link>
                     )}
                   </TD>
-                  <TD className="text-sm">
+                  <TD priority="secondary" className="text-sm">
                     {c.account ? (
                       <Link href={`/accounts/${c.account?.id}`} className="hover:underline">
                         {c.account?.name}
@@ -89,14 +89,14 @@ export default async function ContactsPage({
                       <span className="text-muted-foreground">Independent</span>
                     )}
                   </TD>
-                  <TD className="text-sm text-muted-foreground">{c.jobTitle ?? "—"}</TD>
+                  <TD priority="tertiary" className="text-sm text-muted-foreground">{c.jobTitle ?? "—"}</TD>
                   <TD className="text-sm">
                     {c.email ? (
                       <a href={`mailto:${c.email}`} className="text-primary hover:underline">{c.email}</a>
                     ) : "—"}
                   </TD>
-                  <TD className="text-sm text-muted-foreground">{c.mobile ?? c.phone ?? "—"}</TD>
-                  <TD className="text-sm text-muted-foreground">{c.contactRole ?? "—"}</TD>
+                  <TD priority="secondary" className="text-sm text-muted-foreground">{c.mobile ?? c.phone ?? "—"}</TD>
+                  <TD priority="tertiary" className="text-sm text-muted-foreground">{c.contactRole ?? "—"}</TD>
                   <TD className="text-right">
                     <Link href={`/contacts/${c.id}/edit`} className="text-sm text-primary hover:underline">
                       Edit

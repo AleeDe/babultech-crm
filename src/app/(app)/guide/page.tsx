@@ -6,6 +6,7 @@ import {
   UsersRound, Coins, FileInput, Wallet, Stamp, type LucideIcon,
 } from "lucide-react";
 import { requireUser, can, PERMISSIONS, type SessionUser } from "@/lib/authz";
+import { GuideSection } from "./guide-sections";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, Alert,
 } from "@/components/ui";
@@ -273,13 +274,12 @@ export default async function GuidePage() {
       </div>
 
       {flow.length > 0 && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>
-              {flow.length === FLOW.length ? "The main path" : "The path, as it concerns you"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-0 p-0">
+        <GuideSection
+          title={flow.length === FLOW.length ? "How a deal becomes money" : "The path, as it concerns you"}
+          summary={`${flow.length} steps, in the order they happen`}
+          defaultOpen
+        >
+          <div className="-mx-5 -mb-5 space-y-0">
             {flow.map((step, i) => (
               <div key={step.title} className="flex gap-4 border-b p-5 last:border-0">
                 <div className="flex flex-col items-center">
@@ -316,14 +316,15 @@ export default async function GuidePage() {
                 </div>
               </div>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </GuideSection>
       )}
 
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-        {flow.length > 0 ? "Everything else" : "Your screens"}
-      </h2>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <GuideSection
+        title={flow.length > 0 ? "Every other screen" : "Your screens"}
+        summary={`${reference.length} screens you have access to`}
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
         {reference.map((r) => (
           <Card key={r.title}>
             <CardContent className="p-5">
@@ -336,13 +337,14 @@ export default async function GuidePage() {
             </CardContent>
           </Card>
         ))}
-      </div>
+        </div>
+      </GuideSection>
 
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Worth knowing</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm text-muted-foreground">
+      <GuideSection
+        title="Things that catch people out"
+        summary="Why a list looks empty, where the dropdowns come from, and who sees what"
+      >
+        <div className="space-y-3 text-sm text-muted-foreground">
           <p>
             <strong className="text-foreground">Quotations and invoices email out.</strong>{" "}
             Open one and use Send to customer. The number, dates and totals are appended for you,
@@ -413,8 +415,8 @@ export default async function GuidePage() {
               <Link href="/users" className="text-primary hover:underline">Users</Link>.
             </p>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </GuideSection>
     </>
   );
 }
