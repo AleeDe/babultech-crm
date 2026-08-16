@@ -326,6 +326,12 @@ export default async function GuidePage() {
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           <p>
+            <strong className="text-foreground">Every list exports to CSV.</strong>{" "}
+            The Export button sends what you are currently looking at, filters and all — not the
+            whole table. Amounts and dates come out as raw values so a spreadsheet can sum and sort
+            them, and the file only ever contains rows your role can already see.
+          </p>
+          <p>
             <strong className="text-foreground">Notes and documents sit on every record.</strong>{" "}
             Open an account, deal, project or case and you will find both at the bottom. A note can
             be private to you, shared with your team, or open to everyone. Attachments are stored

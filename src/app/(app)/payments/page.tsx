@@ -8,6 +8,7 @@ import {
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { ExportButton } from "@/components/export-button";
 
 export default async function PaymentsPage({
   searchParams,
@@ -36,6 +37,7 @@ export default async function PaymentsPage({
         title="Payments"
         description="Cash received and how it has been applied. Unapplied cash is money you hold that no invoice has claimed."
       >
+        <ExportButton entity="payments" params={{ search: params.search, status: params.status, filter: params.filter }} />
         <Button asChild>
           <Link href="/payments/new">
             <Plus className="h-4 w-4" /> Record payment

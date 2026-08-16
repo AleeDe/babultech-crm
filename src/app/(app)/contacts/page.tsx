@@ -7,6 +7,7 @@ import {
 } from "@/components/ui";
 import { humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { ExportButton } from "@/components/export-button";
 
 export default async function ContactsPage({
   searchParams,
@@ -28,6 +29,7 @@ export default async function ContactsPage({
         title="Contacts"
         description="People. A contact may belong to an account, or stand alone — an individual partner has no company behind them."
       >
+        <ExportButton entity="contacts" params={{ search: params.search }} />
         <Button asChild>
           <Link href="/contacts/new">
             <Plus className="h-4 w-4" /> New contact

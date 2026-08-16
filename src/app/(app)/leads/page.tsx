@@ -7,6 +7,7 @@ import {
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { ExportButton } from "@/components/export-button";
 
 const STATUSES = [
   "NEW", "ASSIGNED", "ATTEMPTED_CONTACT", "CONTACTED", "DISCOVERY_SCHEDULED",
@@ -38,6 +39,7 @@ export default async function LeadsPage({
         title="Leads"
         description="Unqualified prospects. Converting one creates the account, contact and deal — and carries any partner referral through."
       >
+        <ExportButton entity="leads" params={{ search: params.search, status: params.status, source: params.source }} />
         <Button asChild>
           <Link href="/leads/new">
             <Plus className="h-4 w-4" /> New lead

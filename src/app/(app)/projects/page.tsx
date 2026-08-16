@@ -7,6 +7,7 @@ import {
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { ExportButton } from "@/components/export-button";
 
 const STATUSES = ["DRAFT", "PLANNING", "ACTIVE", "ON_HOLD", "AT_RISK", "COMPLETED", "CANCELLED"];
 
@@ -36,6 +37,7 @@ export default async function ProjectsPage({
         title="Projects"
         description="Delivery engagements. Open one to run its plan, tasks, team and RAID log."
       >
+        <ExportButton entity="projects" params={{ search: params.search, status: params.status }} />
         <Button asChild>
           <Link href="/projects/new">
             <Plus className="h-4 w-4" /> New project

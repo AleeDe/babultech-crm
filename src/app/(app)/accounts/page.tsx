@@ -7,6 +7,7 @@ import {
 } from "@/components/ui";
 import { humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { ExportButton } from "@/components/export-button";
 
 export default async function AccountsPage({
   searchParams,
@@ -25,6 +26,7 @@ export default async function AccountsPage({
         title="Accounts"
         description="Customers, prospects, partners and vendors — one organisation record, many roles."
       >
+        <ExportButton entity="accounts" params={{ search: params.search, accountType: params.accountType }} />
         <Button asChild>
           <Link href="/accounts/new">
             <Plus className="h-4 w-4" /> New account

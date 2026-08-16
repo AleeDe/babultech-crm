@@ -5,6 +5,7 @@ import { listPartners } from "@/server/partners";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { ExportButton } from "@/components/export-button";
 import {
   PageHeader, Button, Card, Table, THead, TBody, TR, TH, TD,
   Badge, statusTone, EmptyState, StatTile, Input, Select, Forbidden
@@ -79,6 +80,7 @@ export default async function PartnersPage({
         title="Partners"
         description="Resellers, referrers and implementation partners — companies and individuals alike."
       >
+        <ExportButton entity="partners" params={{ search: params.search, status: params.status }} />
         <Button asChild>
           <Link href="/partners/new">Add partner</Link>
         </Button>

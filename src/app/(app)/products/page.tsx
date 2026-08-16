@@ -7,6 +7,7 @@ import {
 } from "@/components/ui";
 import { formatMoney, formatPercent, humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { ExportButton } from "@/components/export-button";
 
 export default async function ProductsPage({
   searchParams,
@@ -25,6 +26,7 @@ export default async function ProductsPage({
         title="Products & services"
         description="The catalogue behind quotes and invoices. Commission can be overridden per product."
       >
+        <ExportButton entity="products" params={{ search: params.search, productType: params.productType }} />
         {can(_me, PERMISSIONS.OPPORTUNITY_WRITE) && (
           <Button asChild>
             <Link href="/products/new">

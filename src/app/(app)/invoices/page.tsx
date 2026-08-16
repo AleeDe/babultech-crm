@@ -5,6 +5,7 @@ import { one } from "@/lib/decimal";
 import { applySearch, LIST_LIMIT } from "@/lib/db";
 import { ListFilters, optionsFrom } from "@/components/list-filters";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { ExportButton } from "@/components/export-button";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, StatTile, Alert, Button, Forbidden
@@ -70,6 +71,7 @@ export default async function InvoicesPage({
   return (
     <>
       <PageHeader title="Invoices" description="Customer billing and what is still owed to you.">
+        <ExportButton entity="invoices" params={{ search: params.search, status: params.status }} />
         <Button asChild variant="outline">
           <Link href="/payments">Payments</Link>
         </Button>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { listVendorBills, getPayablesSummary } from "@/server/payables";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { ExportButton } from "@/components/export-button";
 import { ListFilters, optionsFrom } from "@/components/list-filters";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
@@ -29,6 +30,7 @@ export default async function VendorBillsPage({
         title="Vendor bills"
         description="What suppliers have invoiced you, and what is still owed to them."
       >
+        <ExportButton entity="vendor-bills" params={{ search: params.search, status: params.status }} />
         <Button asChild variant="outline">
           <Link href="/expenses">Expenses</Link>
         </Button>

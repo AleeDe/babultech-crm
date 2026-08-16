@@ -5,6 +5,7 @@ import { one } from "@/lib/decimal";
 import { applySearch, LIST_LIMIT } from "@/lib/db";
 import { ListFilters, optionsFrom } from "@/components/list-filters";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { ExportButton } from "@/components/export-button";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, StatTile, Button, Forbidden
@@ -64,6 +65,7 @@ export default async function QuotationsPage({
         title="Quotations"
         description="Versioned offers. Only one version per deal can be accepted, and accepted quotes are locked."
       >
+        <ExportButton entity="quotations" params={{ search: params.search, status: params.status }} />
         <Button asChild>
           <Link href="/quotations/new">
             <Plus className="h-4 w-4" /> New quote

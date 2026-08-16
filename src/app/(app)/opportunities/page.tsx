@@ -8,6 +8,7 @@ import {
 } from "@/components/ui";
 import { formatMoney, formatCompactMoney, formatDate, humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { ExportButton } from "@/components/export-button";
 
 const STAGES = [
   "DISCOVERY", "QUALIFICATION", "REQUIREMENTS", "SOLUTION_PROPOSED",
@@ -43,6 +44,7 @@ export default async function OpportunitiesPage({
   return (
     <>
       <PageHeader title="Opportunities" description="Your live pipeline, including which deals a partner brought in.">
+        <ExportButton entity="opportunities" params={{ search: params.search, stage: params.stage }} />
         <Button asChild>
           <Link href="/opportunities/new">
             <Plus className="h-4 w-4" /> New opportunity

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { listCommissions, getCommissionTotals } from "@/server/commissions";
 import { supabaseServer } from "@/lib/supabase";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { ExportButton } from "@/components/export-button";
 import {
   PageHeader, Card, StatTile, Button, Select, Input, Alert, Forbidden
 } from "@/components/ui";
@@ -38,6 +39,7 @@ export default async function CommissionsPage({
         title="Commissions"
         description="Everything owed to partners, from accrual through approval to payment."
       >
+        <ExportButton entity="commissions" params={{ status: params.status }} />
         <Button asChild variant="outline">
           <Link href="/commissions/payouts">Payouts</Link>
         </Button>

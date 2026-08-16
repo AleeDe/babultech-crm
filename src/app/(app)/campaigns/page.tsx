@@ -8,6 +8,7 @@ import {
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { ExportButton } from "@/components/export-button";
 
 export default async function CampaignsPage({
   searchParams,
@@ -46,6 +47,7 @@ export default async function CampaignsPage({
         title="Campaigns"
         description="Marketing spend against leads generated, pipeline created and revenue won."
       >
+        <ExportButton entity="campaigns" params={{ search: params.search, status: params.status }} />
         {can(_me, PERMISSIONS.LEAD_WRITE) && (
           <Button asChild>
             <Link href="/campaigns/new">
