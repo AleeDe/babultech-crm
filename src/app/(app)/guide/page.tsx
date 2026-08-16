@@ -161,7 +161,7 @@ const REFERENCE: Reference[] = [
     title: "Support cases",
     href: "/cases",
     needs: PERMISSIONS.CASE_READ,
-    body: "Raised against an account, optionally against a project. SLA timers run from the priority and the policy attached.",
+    body: "Raised against an account, optionally against a project. Every case has a conversation — customer messages, your replies and internal notes — and posting can move the case at the same time. The SLA clock pauses while you are waiting on the customer, and the deadline can be extended by exactly that time.",
   },
   {
     icon: Clock,
@@ -372,12 +372,14 @@ export default async function GuidePage() {
           {can(me, PERMISSIONS.PROJECT_READ) && (
             <p>
               <strong className="text-foreground">
-                Projects track risks, issues and change requests.
+                Projects have a board, and tasks have pages.
               </strong>{" "}
-              Open a project and scroll past the tasks. A risk is something that might happen,
-              scored by probability × impact; an issue already has. A change request is scope asked
-              for after the project started — recording one is how an added fifteen days shows up
-              next to the request rather than as a missed date at the end.
+              Drag a card between columns to move a task. Click its name to open the task itself —
+              acceptance criteria, booked time, subtasks, notes and documents. Further down sit
+              risks (something that might happen, scored by probability × impact), issues
+              (something that already has), and change requests, where scope added after kickoff
+              shows its cost and its days next to the request rather than as a missed date at the
+              end.
             </p>
           )}
 

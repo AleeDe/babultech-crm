@@ -13,6 +13,7 @@ import {
 import { formatMoney, formatDate, formatPercent, formatNumber, humanize, serialize } from "@/lib/utils";
 import { TaskBoard, TeamPanel, PlanPanel, RaidPanel } from "./project-panels";
 import { ChangeRequestsPanel } from "./change-requests-panel";
+import { TaskBoardView } from "./task-board";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 export default async function ProjectWorkspacePage({
@@ -116,6 +117,12 @@ export default async function ProjectWorkspacePage({
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          <TaskBoardView
+            projectId={project.id}
+            tasks={s.tasks as never}
+            canWrite={can(_me, PERMISSIONS.PROJECT_WRITE)}
+          />
+
           <TaskBoard
             projectId={project.id}
             tasks={s.tasks as never}
