@@ -78,3 +78,14 @@ export interface OpportunityPartnerLink {
   registrationExpiresAt: string | null;
   commissionPlanId: string | null;
 }
+
+/**
+ * The mediums a MESSAGE_SENT touch can go out on.
+ *
+ * Here rather than in server/crm.ts because that file is "use server", where
+ * every export must be an async function — a plain array there is a build
+ * error. Both the Zod schema and the form's select read it from this module.
+ */
+export const MESSAGE_CHANNELS = ["WHATSAPP", "SMS", "LINKEDIN", "OTHER"] as const;
+
+export type MessageChannel = (typeof MESSAGE_CHANNELS)[number];

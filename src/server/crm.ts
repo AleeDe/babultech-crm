@@ -8,6 +8,7 @@ import { one, toDecimal } from "@/lib/decimal";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission, requireUser, scopedContext } from "@/lib/authz";
 import { registrationExpiry, protectionDaysFor } from "@/lib/partner-policy";
+import { MESSAGE_CHANNELS } from "@/lib/types";
 import type { ActionResult } from "./partners";
 
 /** Accounts, Contacts, Leads, Campaigns and Products — the Phase 1 core. */
@@ -980,8 +981,8 @@ export async function createProduct(
   }
 }
 
-const activitySchema = z.object({
-  activityType: z.enum(["TASK", "CALL", "MEETING", "REMINDER"]),
+const activityBase = z.object({
+  activityType: z.enum(["TASK", "CALL", "MEETING", "REMINDER", "MESSAGE_SENT"]),
   subject: z.string().min(1, "Give the activity a subject.").max(255),
   ownerUserId: z.string().uuid("Choose an owner."),
   description: z.string().optional().nullable(),
@@ -990,7 +991,32 @@ const activitySchema = z.object({
   startAt: z.string().optional().nullable(),
   dueAt: z.string().optional().nullable(),
   location: z.string().max(255).optional().nullable(),
+  /** Which medium a message went out on. Only meaningful for MESSAGE_SENT. */
+  channel: z.enum(MESSAGE_CHANNELS).optional().nullable(),
+  /** Attribution: the campaign this touch was made as part of. */
+  campaignId: z.string().uuid().optional().nullable().or(z.literal("")),
+  /** What the touch concerns — the lead, case or deal it was about. */
+  relatedEntityType: z.string().max(50).optional().nullable(),
+  relatedEntityId: z.string().uuid().optional().nullable().or(z.literal("")),
 });
+
+/**
+ * Without the channel a message is unattributable to a medium, which is the
+ * entire reason MESSAGE_SENT exists as a separate type. Applied to both the
+ * create and update schemas rather than baked into the base, because
+ * `.refine()` yields a ZodEffects that can no longer be `.extend()`ed.
+ */
+const requireChannelForMessage = (d: {
+  activityType: string;
+  channel?: string | null;
+}): boolean => d.activityType !== "MESSAGE_SENT" || Boolean(d.channel);
+
+const CHANNEL_ISSUE = {
+  message: "Choose which channel the message went out on.",
+  path: ["channel"],
+};
+
+const activitySchema = activityBase.refine(requireChannelForMessage, CHANNEL_ISSUE);
 
 export async function createActivity(
   input: z.infer<typeof activitySchema>,
@@ -1028,10 +1054,23 @@ export async function createActivity(
       startAt: d.startAt || null,
       dueAt: d.dueAt || null,
       location: d.location || null,
-      status: "OPEN",
+      // A channel on a call or meeting would be noise in the reports, so it is
+      // only kept for the type it describes.
+      channel: d.activityType === "MESSAGE_SENT" ? d.channel : null,
+      campaignId: d.campaignId || null,
+      relatedEntityType: d.relatedEntityType || null,
+      relatedEntityId: d.relatedEntityId || null,
+      // "Message sent" is past tense by definition — there is nothing left to
+      // do, so filing one as OPEN would leave every logged touch sitting in
+      // the rep's task list forever. A call or meeting can still be scheduled
+      // ahead of time, so those stay OPEN.
+      ...(d.activityType === "MESSAGE_SENT"
+        ? { status: "COMPLETED", completedAt: new Date().toISOString() }
+        : { status: "OPEN" }),
     });
 
     revalidatePath("/activities");
+    if (d.campaignId) revalidatePath(`/campaigns/${d.campaignId}`);
     return { ok: true, data: { id: created.id } };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
@@ -1235,10 +1274,12 @@ export async function getActivity(id: string) {
   };
 }
 
-const activityUpdateSchema = activitySchema.extend({
-  status: z.enum(["OPEN", "COMPLETED", "CANCELLED"]).default("OPEN"),
-  outcome: z.string().optional().nullable(),
-});
+const activityUpdateSchema = activityBase
+  .extend({
+    status: z.enum(["OPEN", "COMPLETED", "CANCELLED"]).default("OPEN"),
+    outcome: z.string().optional().nullable(),
+  })
+  .refine(requireChannelForMessage, CHANNEL_ISSUE);
 
 export async function updateActivity(
   id: string,
@@ -1278,6 +1319,10 @@ export async function updateActivity(
         startAt: d.startAt || null,
         dueAt: d.dueAt || null,
         location: d.location || null,
+        channel: d.activityType === "MESSAGE_SENT" ? d.channel : null,
+        campaignId: d.campaignId || null,
+        relatedEntityType: d.relatedEntityType || null,
+        relatedEntityId: d.relatedEntityId || null,
         status: d.status,
         outcome: d.outcome || null,
         // Completing an activity stamps the time, so the list can show when it
@@ -1301,7 +1346,7 @@ export async function getCreateFormOptions() {
   await requireUser();
   const db = await supabaseServer();
 
-  const [campaignTypes, users, taxRates, contacts] = await Promise.all([
+  const [campaignTypes, users, taxRates, contacts, campaigns] = await Promise.all([
     db.from("campaign_type").select("id, name").eq("active", true).order("name"),
     db.from("app_user").select("id, fullName").eq("status", "ACTIVE").is("deletedAt", null).order("fullName"),
     db.from("tax_rate").select("id, name, ratePercent").eq("active", true).order("name"),
@@ -1312,6 +1357,16 @@ export async function getCreateFormOptions() {
       .is("deletedAt", null)
       .order("firstName")
       .limit(500),
+    // COMPLETED campaigns are excluded: attributing a touch made today to a
+    // campaign that has already been reported on would silently change a
+    // number someone has acted on. A finished campaign is history.
+    db
+      .from("campaign")
+      .select("id, name, status")
+      .in("status", ["PLANNED", "ACTIVE", "PAUSED"])
+      .is("deletedAt", null)
+      .order("name")
+      .limit(500),
   ]);
 
   return {
@@ -1319,5 +1374,6 @@ export async function getCreateFormOptions() {
     users: users.data ?? [],
     taxRates: taxRates.data ?? [],
     contacts: contacts.data ?? [],
+    campaigns: campaigns.data ?? [],
   };
 }

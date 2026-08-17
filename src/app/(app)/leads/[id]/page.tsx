@@ -17,13 +17,16 @@ import { formatMoney, formatDate, formatDateTime, humanize } from "@/lib/utils";
 
 export default async function LeadDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  /** `campaign` is set when arriving from a campaign's lead list. */
+  searchParams: Promise<{ campaign?: string }>;
 }) {
   const me = await requireUser();
   if (!can(me, PERMISSIONS.LEAD_READ)) return <Forbidden what="leads" />;
 
-  const { id } = await params;
+  const [{ id }, query] = await Promise.all([params, searchParams]);
 
   const [notes, documents, audit] = await Promise.all([
     listNotes("Lead", id),
@@ -37,11 +40,34 @@ export default async function LeadDetailPage({
   const converted = Boolean(lead.convertedAt);
   const disqualified = lead.status === "DISQUALIFIED";
 
+  /**
+   * Which campaign a touch logged from here should be attributed to.
+   *
+   * The `campaign` query parameter wins because it says which campaign the
+   * user was actually working in — a lead can be attributed to one campaign
+   * while being worked as part of another. Its own campaign is the fallback so
+   * the field is still prefilled when the lead is reached directly.
+   */
+  const attributedCampaignId = query.campaign ?? lead.campaign?.id ?? "";
+
+  const logTouchHref = `/activities/new?${new URLSearchParams({
+    relatedEntityType: "Lead",
+    relatedEntityId: lead.id,
+    activityType: "MESSAGE_SENT",
+    subject: `Outreach to ${name}`,
+    ...(attributedCampaignId ? { campaignId: String(attributedCampaignId) } : {}),
+  })}`;
+
   return (
     <>
       <PageHeader title={name} description={lead.companyName ?? lead.leadNumber}>
         <Badge tone={statusTone(lead.status)}>{humanize(lead.status)}</Badge>
         {lead.rating && <Badge tone={statusTone(lead.rating)}>{humanize(lead.rating)}</Badge>}
+        {!converted && (
+          <Button asChild variant="outline">
+            <Link href={logTouchHref}>Log a touch</Link>
+          </Button>
+        )}
         {can(me, PERMISSIONS.LEAD_WRITE) && !converted && (
           <Button asChild variant="outline">
             <Link href={`/leads/${lead.id}/edit`}>Edit</Link>

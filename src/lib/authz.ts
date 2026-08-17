@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { supabaseServer, supabaseAdmin } from "./supabase";
 import { auth as nextAuthSession } from "./auth";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -49,8 +50,20 @@ export class AuthorizationError extends Error {
  *
  * Identity comes from Supabase Auth; the profile (role, department, teams,
  * partner link) is read from app_user, which shares its id with auth.users.
+ *
+ * Wrapped in React's `cache()` at the bottom of this block, so the work below
+ * happens once per request no matter how many times it is called. It is called
+ * a lot: rendering one lead detail page went through here four times — the page
+ * itself, plus listNotes, listDocuments and getLead — and each pass made two
+ * network round trips, one to Supabase Auth for `getUser()` and one to
+ * `app_user` for the profile. Eight sequential round trips before a single row
+ * of the actual page was fetched, on every navigation and after every action.
+ *
+ * `cache()` is per-request and per-render, so this is not a session cache:
+ * nothing survives into the next request, and a user whose role changes sees it
+ * on their next navigation. The security properties are unchanged.
  */
-export async function requireUser(): Promise<SessionUser> {
+async function loadUser(): Promise<SessionUser> {
   const db = await supabaseServer();
 
   // Identity can come from either provider while the port is in progress:
@@ -118,6 +131,8 @@ export async function requireUser(): Promise<SessionUser> {
     partnerId: user.partnerId,
   };
 }
+
+export const requireUser: () => Promise<SessionUser> = cache(loadUser);
 
 /**
  * Permission strings are "<entity>:<action>", with "*" wildcards allowed,

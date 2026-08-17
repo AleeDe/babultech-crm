@@ -134,7 +134,13 @@ export default async function CampaignDetailPage({
                     {campaign.leads.map((l: Record<string, any>) => (
                       <TR key={l.id}>
                         <TD>
-                          <Link href={`/leads/${l.id}/edit`} className="font-medium hover:underline">
+                          {/* Goes to the lead, not straight into its edit form,
+                              and carries `campaign` so a touch logged from
+                              there is attributed here by default. */}
+                          <Link
+                            href={`/leads/${l.id}?campaign=${campaign.id}`}
+                            className="font-medium hover:underline"
+                          >
                             {l.firstName} {l.lastName}
                           </Link>
                           <p className="text-xs text-muted-foreground">{l.leadNumber}</p>
