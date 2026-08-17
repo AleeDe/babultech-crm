@@ -125,9 +125,9 @@ export default async function CampaignDetailPage({
                   <THead>
                     <TR>
                       <TH>Lead</TH>
-                      <TH>Company</TH>
+                      <TH priority="secondary">Company</TH>
                       <TH className="text-right">Est. value</TH>
-                      <TH>Status</TH>
+                      <TH priority="secondary">Status</TH>
                     </TR>
                   </THead>
                   <TBody>
@@ -144,10 +144,16 @@ export default async function CampaignDetailPage({
                             {l.firstName} {l.lastName}
                           </Link>
                           <p className="text-xs text-muted-foreground">{l.leadNumber}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 sm:hidden">
+                            <Badge tone={statusTone(l.status)}>{humanize(l.status)}</Badge>
+                            {l.companyName && (
+                              <span className="truncate text-xs text-muted-foreground">{l.companyName}</span>
+                            )}
+                          </div>
                         </TD>
-                        <TD className="text-sm">{l.companyName ?? "—"}</TD>
-                        <TD className="text-right tabular">{formatMoney(l.estimatedValue)}</TD>
-                        <TD><Badge tone={statusTone(l.status)}>{humanize(l.status)}</Badge></TD>
+                        <TD priority="secondary" className="text-sm">{l.companyName ?? "—"}</TD>
+                        <TD className="whitespace-nowrap text-right tabular">{formatMoney(l.estimatedValue)}</TD>
+                        <TD priority="secondary"><Badge tone={statusTone(l.status)}>{humanize(l.status)}</Badge></TD>
                       </TR>
                     ))}
                   </TBody>
@@ -168,9 +174,9 @@ export default async function CampaignDetailPage({
                   <THead>
                     <TR>
                       <TH>Deal</TH>
-                      <TH>Customer</TH>
+                      <TH priority="tertiary">Customer</TH>
                       <TH className="text-right">Amount</TH>
-                      <TH>Stage</TH>
+                      <TH priority="secondary">Stage</TH>
                     </TR>
                   </THead>
                   <TBody>
@@ -181,14 +187,18 @@ export default async function CampaignDetailPage({
                             {o.name}
                           </Link>
                           <p className="text-xs text-muted-foreground">{o.opportunityNumber}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 sm:hidden">
+                            <Badge tone={statusTone(o.stage)}>{humanize(o.stage)}</Badge>
+                            <span className="truncate text-xs text-muted-foreground">{o.account?.name}</span>
+                          </div>
                         </TD>
-                        <TD className="text-sm">
+                        <TD priority="tertiary" className="text-sm">
                           <Link href={`/accounts/${o.account?.id}`} className="hover:underline">
                             {o.account?.name}
                           </Link>
                         </TD>
-                        <TD className="text-right tabular">{formatMoney(o.amount, o.currencyCode)}</TD>
-                        <TD><Badge tone={statusTone(o.stage)}>{humanize(o.stage)}</Badge></TD>
+                        <TD className="whitespace-nowrap text-right tabular">{formatMoney(o.amount, o.currencyCode)}</TD>
+                        <TD priority="secondary"><Badge tone={statusTone(o.stage)}>{humanize(o.stage)}</Badge></TD>
                       </TR>
                     ))}
                   </TBody>

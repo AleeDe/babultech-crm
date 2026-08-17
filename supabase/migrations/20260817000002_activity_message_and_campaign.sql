@@ -27,9 +27,15 @@
 -- A real column also lets the campaign report aggregate touches with an index
 -- instead of filtering on a text discriminator.
 
--- Enum members cannot be added inside a transaction that later uses them in
--- some Postgres versions, and ALTER TYPE ... ADD VALUE is not transactional
--- before 12. IF NOT EXISTS makes this safe to run twice.
+-- IF NOT EXISTS makes this safe to re-run.
+--
+-- Nothing in this migration uses the new value — no default, no CHECK, no
+-- backfill casting a string to ActivityType. That matters because `supabase db
+-- push` runs a migration inside a transaction, and Postgres refuses to use an
+-- enum value added in the same transaction that created it (the restriction was
+-- lifted for committed types in 12, but only outside the adding transaction).
+-- The first row using MESSAGE_SENT is written by the application later, so the
+-- constraint is never hit here. Do not add a backfill to this file.
 ALTER TYPE "ActivityType" ADD VALUE IF NOT EXISTS 'MESSAGE_SENT';
 
 ALTER TABLE "activity"

@@ -94,13 +94,13 @@ export default async function UsersPage({
             <THead>
               <TR>
                 <TH>User</TH>
-                <TH>Role</TH>
-                <TH>Sees</TH>
-                <TH>Department</TH>
-                <TH>Reports to</TH>
-                <TH className="text-right">Rates</TH>
-                <TH>Last signed in</TH>
-                <TH>Status</TH>
+                <TH priority="secondary">Role</TH>
+                <TH priority="tertiary">Sees</TH>
+                <TH priority="tertiary">Department</TH>
+                <TH priority="tertiary">Reports to</TH>
+                <TH priority="tertiary" className="text-right">Rates</TH>
+                <TH priority="tertiary">Last signed in</TH>
+                <TH priority="secondary">Status</TH>
               </TR>
             </THead>
             <TBody>
@@ -114,9 +114,17 @@ export default async function UsersPage({
                         {u.partner && <Handshake className="h-3.5 w-3.5 shrink-0 text-amber-600" />}
                         {u.fullName}
                       </Link>
-                      <p className="text-xs text-muted-foreground">{u.email}</p>
+                      <p className="truncate text-xs text-muted-foreground">{u.email}</p>
+                      {/* Role and status are what an admin scans this list
+                          for, so neither drops off a phone. */}
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 sm:hidden">
+                        <Badge tone={isAdmin ? "danger" : u.partner ? "warning" : "neutral"}>
+                          {u.role?.name ?? "—"}
+                        </Badge>
+                        <Badge tone={statusTone(u.status)}>{humanize(u.status)}</Badge>
+                      </div>
                     </TD>
-                    <TD>
+                    <TD priority="secondary">
                       <Badge tone={isAdmin ? "danger" : u.partner ? "warning" : "neutral"}>
                         {(u.role?.name ?? "—")}
                       </Badge>
@@ -129,10 +137,10 @@ export default async function UsersPage({
                         </Link>
                       )}
                     </TD>
-                    <TD className="text-xs text-muted-foreground">{humanize((u.role?.dataScope ?? ""))}</TD>
-                    <TD className="text-sm text-muted-foreground">{u.department?.name ?? "—"}</TD>
-                    <TD className="text-sm text-muted-foreground">{u.manager?.fullName ?? "—"}</TD>
-                    <TD className="whitespace-nowrap text-right text-xs text-muted-foreground">
+                    <TD priority="tertiary" className="text-xs text-muted-foreground">{humanize((u.role?.dataScope ?? ""))}</TD>
+                    <TD priority="tertiary" className="text-sm text-muted-foreground">{u.department?.name ?? "—"}</TD>
+                    <TD priority="tertiary" className="text-sm text-muted-foreground">{u.manager?.fullName ?? "—"}</TD>
+                    <TD priority="tertiary" className="whitespace-nowrap text-right text-xs text-muted-foreground">
                       {u.partnerId ? (
                         "—"
                       ) : (
@@ -142,10 +150,10 @@ export default async function UsersPage({
                         </>
                       )}
                     </TD>
-                    <TD className="text-sm text-muted-foreground">
+                    <TD priority="tertiary" className="text-sm text-muted-foreground">
                       {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : "Never"}
                     </TD>
-                    <TD>
+                    <TD priority="secondary">
                       <Badge tone={statusTone(u.status)}>{humanize(u.status)}</Badge>
                     </TD>
                   </TR>

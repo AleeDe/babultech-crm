@@ -174,10 +174,10 @@ export default async function InvoiceDetailPage({
                   <THead>
                     <TR>
                       <TH>Description</TH>
-                      <TH className="text-right">Qty</TH>
-                      <TH className="text-right">Unit price</TH>
-                      <TH className="text-right">Discount</TH>
-                      <TH>Tax</TH>
+                      <TH priority="secondary" className="text-right">Qty</TH>
+                      <TH priority="secondary" className="text-right">Unit price</TH>
+                      <TH priority="tertiary" className="text-right">Discount</TH>
+                      <TH priority="tertiary">Tax</TH>
                       <TH className="text-right">Total</TH>
                     </TR>
                   </THead>
@@ -198,12 +198,20 @@ export default async function InvoiceDetailPage({
                               {l.project?.name}
                             </Link>
                           )}
+                          {/* Qty × unit price is the arithmetic that explains
+                              the total, so on a phone it moves under the
+                              description instead of disappearing — a line
+                              total nobody can check is not worth showing. */}
+                          <p className="mt-0.5 text-xs tabular text-muted-foreground sm:hidden">
+                            {formatNumber(l.quantity, 2)} × {formatMoney(l.unitPrice, invoice.currencyCode)}
+                            {Number(l.discountPercent ?? 0) > 0 && ` − ${formatPercent(l.discountPercent)}`}
+                          </p>
                         </TD>
-                        <TD className="text-right tabular">{formatNumber(l.quantity, 2)}</TD>
-                        <TD className="text-right tabular">{formatMoney(l.unitPrice, invoice.currencyCode)}</TD>
-                        <TD className="text-right tabular">{formatPercent(l.discountPercent)}</TD>
-                        <TD className="text-sm text-muted-foreground">{l.taxRate?.name ?? "—"}</TD>
-                        <TD className="text-right font-medium tabular">{formatMoney(l.lineTotal, invoice.currencyCode)}</TD>
+                        <TD priority="secondary" className="text-right tabular">{formatNumber(l.quantity, 2)}</TD>
+                        <TD priority="secondary" className="whitespace-nowrap text-right tabular">{formatMoney(l.unitPrice, invoice.currencyCode)}</TD>
+                        <TD priority="tertiary" className="text-right tabular">{formatPercent(l.discountPercent)}</TD>
+                        <TD priority="tertiary" className="text-sm text-muted-foreground">{l.taxRate?.name ?? "—"}</TD>
+                        <TD className="whitespace-nowrap text-right font-medium tabular">{formatMoney(l.lineTotal, invoice.currencyCode)}</TD>
                       </TR>
                     ))}
                   </TBody>
@@ -231,20 +239,27 @@ export default async function InvoiceDetailPage({
                   <THead>
                     <TR>
                       <TH>Payment</TH>
-                      <TH>Received</TH>
-                      <TH>Method</TH>
-                      <TH>Applied by</TH>
+                      <TH priority="secondary">Received</TH>
+                      <TH priority="tertiary">Method</TH>
+                      <TH priority="tertiary">Applied by</TH>
                       <TH className="text-right">Amount</TH>
                     </TR>
                   </THead>
                   <TBody>
                     {invoice.allocations.map((a: Record<string, any>) => (
                       <TR key={a.id}>
-                        <TD className="font-mono text-xs">{a.payment?.paymentNumber}</TD>
-                        <TD className="text-sm">{formatDate(a.payment?.paymentDate)}</TD>
-                        <TD className="text-sm text-muted-foreground">{humanize(a.payment?.paymentMethod)}</TD>
-                        <TD className="text-sm text-muted-foreground">{a.allocatedBy?.fullName ?? "System"}</TD>
-                        <TD className="text-right font-medium tabular">
+                        <TD className="font-mono text-xs">
+                          {a.payment?.paymentNumber}
+                          {/* When a payment landed is the first thing anyone
+                              asks about it. */}
+                          <p className="mt-0.5 font-sans text-xs text-muted-foreground sm:hidden">
+                            {formatDate(a.payment?.paymentDate)}
+                          </p>
+                        </TD>
+                        <TD priority="secondary" className="text-sm">{formatDate(a.payment?.paymentDate)}</TD>
+                        <TD priority="tertiary" className="text-sm text-muted-foreground">{humanize(a.payment?.paymentMethod)}</TD>
+                        <TD priority="tertiary" className="text-sm text-muted-foreground">{a.allocatedBy?.fullName ?? "System"}</TD>
+                        <TD className="whitespace-nowrap text-right font-medium tabular">
                           {formatMoney(a.allocatedAmount, invoice.currencyCode)}
                         </TD>
                       </TR>

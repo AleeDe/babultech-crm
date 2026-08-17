@@ -123,10 +123,12 @@ export default async function AccountDetailPage({
                 <THead>
                   <TR>
                     <TH>Name</TH>
-                    <TH>Title</TH>
-                    <TH>Email</TH>
-                    <TH>Phone</TH>
-                    <TH>Role</TH>
+                    <TH priority="tertiary">Title</TH>
+                    {/* Email is how you actually contact someone, so it
+                        outranks the job title on a phone. */}
+                    <TH priority="secondary">Email</TH>
+                    <TH priority="tertiary">Phone</TH>
+                    <TH priority="tertiary">Role</TH>
                   </TR>
                 </THead>
                 <TBody>
@@ -137,15 +139,26 @@ export default async function AccountDetailPage({
                           {c.firstName} {c.lastName}
                         </Link>
                         {c.isPrimary && <Badge tone="info" className="ml-2">Primary</Badge>}
+                        {/* The dropped columns still matter on a phone, so the
+                            most useful one rides along under the name rather
+                            than vanishing entirely. */}
+                        {c.email && (
+                          <a
+                            href={`mailto:${c.email}`}
+                            className="mt-0.5 block truncate text-xs font-normal text-primary sm:hidden"
+                          >
+                            {c.email}
+                          </a>
+                        )}
                       </TD>
-                      <TD className="text-sm text-muted-foreground">{c.jobTitle ?? "—"}</TD>
-                      <TD className="text-sm">
+                      <TD priority="tertiary" className="text-sm text-muted-foreground">{c.jobTitle ?? "—"}</TD>
+                      <TD priority="secondary" className="text-sm">
                         {c.email ? (
                           <a href={`mailto:${c.email}`} className="text-primary hover:underline">{c.email}</a>
                         ) : "—"}
                       </TD>
-                      <TD className="text-sm text-muted-foreground">{c.mobile ?? c.phone ?? "—"}</TD>
-                      <TD className="text-sm text-muted-foreground">{c.contactRole ?? "—"}</TD>
+                      <TD priority="tertiary" className="text-sm text-muted-foreground">{c.mobile ?? c.phone ?? "—"}</TD>
+                      <TD priority="tertiary" className="text-sm text-muted-foreground">{c.contactRole ?? "—"}</TD>
                     </TR>
                   ))}
                 </TBody>
@@ -168,8 +181,8 @@ export default async function AccountDetailPage({
                 <TR>
                   <TH>Deal</TH>
                   <TH className="text-right">Amount</TH>
-                  <TH>Expected close</TH>
-                  <TH>Stage</TH>
+                  <TH priority="tertiary">Expected close</TH>
+                  <TH priority="secondary">Stage</TH>
                 </TR>
               </THead>
               <TBody>
@@ -180,10 +193,15 @@ export default async function AccountDetailPage({
                         {o.name}
                       </Link>
                       <p className="text-xs text-muted-foreground">{o.opportunityNumber}</p>
+                      {/* Stage is what makes a deal row meaningful; on a phone
+                          it sits under the name rather than dropping out. */}
+                      <div className="mt-1 sm:hidden">
+                        <Badge tone={statusTone(o.stage)}>{humanize(o.stage)}</Badge>
+                      </div>
                     </TD>
-                    <TD className="text-right tabular">{formatMoney(o.amount, o.currencyCode)}</TD>
-                    <TD className="text-sm">{formatDate(o.expectedCloseDate)}</TD>
-                    <TD>
+                    <TD className="whitespace-nowrap text-right tabular">{formatMoney(o.amount, o.currencyCode)}</TD>
+                    <TD priority="tertiary" className="text-sm">{formatDate(o.expectedCloseDate)}</TD>
+                    <TD priority="secondary">
                       <Badge tone={statusTone(o.stage)}>{humanize(o.stage)}</Badge>
                     </TD>
                   </TR>
@@ -234,9 +252,9 @@ export default async function AccountDetailPage({
                 <THead>
                   <TR>
                     <TH>Invoice</TH>
-                    <TH>Due</TH>
+                    <TH priority="secondary">Due</TH>
                     <TH className="text-right">Outstanding</TH>
-                    <TH>Status</TH>
+                    <TH priority="secondary">Status</TH>
                   </TR>
                 </THead>
                 <TBody>
@@ -244,10 +262,16 @@ export default async function AccountDetailPage({
                     <TR key={i.id}>
                       <TD className="font-mono text-xs">
                         <Link href={`/invoices/${i.id}`} className="hover:underline">{i.invoiceNumber}</Link>
+                        {/* An unpaid invoice with no due date on screen cannot
+                            be triaged, so both ride along under the number. */}
+                        <div className="mt-1 flex items-center gap-2 sm:hidden">
+                          <Badge tone={statusTone(i.status)}>{humanize(i.status)}</Badge>
+                          <span className="font-sans text-muted-foreground">{formatDate(i.dueDate)}</span>
+                        </div>
                       </TD>
-                      <TD className="text-sm">{formatDate(i.dueDate)}</TD>
-                      <TD className="text-right tabular">{formatMoney(i.outstandingAmount, i.currencyCode)}</TD>
-                      <TD>
+                      <TD priority="secondary" className="text-sm">{formatDate(i.dueDate)}</TD>
+                      <TD className="whitespace-nowrap text-right tabular">{formatMoney(i.outstandingAmount, i.currencyCode)}</TD>
+                      <TD priority="secondary">
                         <Badge tone={statusTone(i.status)}>{humanize(i.status)}</Badge>
                       </TD>
                     </TR>

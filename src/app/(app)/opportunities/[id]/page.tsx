@@ -102,9 +102,9 @@ export default async function OpportunityDetailPage({
                   <THead>
                     <TR>
                       <TH>Product</TH>
-                      <TH className="text-right">Qty</TH>
-                      <TH className="text-right">Unit price</TH>
-                      <TH className="text-right">Discount</TH>
+                      <TH priority="secondary" className="text-right">Qty</TH>
+                      <TH priority="secondary" className="text-right">Unit price</TH>
+                      <TH priority="tertiary" className="text-right">Discount</TH>
                       <TH className="text-right">Total</TH>
                     </TR>
                   </THead>
@@ -116,11 +116,15 @@ export default async function OpportunityDetailPage({
                             {l.product?.name}
                           </Link>
                           <p className="text-xs text-muted-foreground">{l.product?.productCode}</p>
+                          <p className="mt-0.5 text-xs tabular text-muted-foreground sm:hidden">
+                            {Number(l.quantity)} × {formatMoney(l.unitPrice, opp.currencyCode)}
+                            {Number(l.discountPercent ?? 0) > 0 && ` − ${formatPercent(l.discountPercent)}`}
+                          </p>
                         </TD>
-                        <TD className="text-right tabular">{Number(l.quantity)}</TD>
-                        <TD className="text-right tabular">{formatMoney(l.unitPrice, opp.currencyCode)}</TD>
-                        <TD className="text-right tabular">{formatPercent(l.discountPercent)}</TD>
-                        <TD className="text-right font-medium tabular">
+                        <TD priority="secondary" className="text-right tabular">{Number(l.quantity)}</TD>
+                        <TD priority="secondary" className="whitespace-nowrap text-right tabular">{formatMoney(l.unitPrice, opp.currencyCode)}</TD>
+                        <TD priority="tertiary" className="text-right tabular">{formatPercent(l.discountPercent)}</TD>
+                        <TD className="whitespace-nowrap text-right font-medium tabular">
                           {formatMoney(l.lineTotal, opp.currencyCode)}
                         </TD>
                       </TR>
@@ -147,29 +151,35 @@ export default async function OpportunityDetailPage({
                 <Table>
                   <THead>
                     <TR>
-                      <TH>Number</TH>
+                      {/* The partner identifies the row better than the
+                          commission number does, so it leads on a phone. */}
                       <TH>Partner</TH>
-                      <TH>Earned</TH>
-                      <TH className="text-right">Gross</TH>
+                      <TH priority="tertiary">Number</TH>
+                      <TH priority="tertiary">Earned</TH>
+                      <TH priority="secondary" className="text-right">Gross</TH>
                       <TH className="text-right">Net</TH>
-                      <TH>Status</TH>
+                      <TH priority="secondary">Status</TH>
                     </TR>
                   </THead>
                   <TBody>
                     {opp.commissionRecords.map((r: Record<string, any>) => (
                       <TR key={r.id}>
-                        <TD className="font-mono text-xs">{r.commissionNumber}</TD>
                         <TD className="text-sm">
-                          <Link href={`/partners/${r.partner?.id}`} className="hover:underline">
+                          <Link href={`/partners/${r.partner?.id}`} className="font-medium hover:underline">
                             {r.partner?.displayName}
                           </Link>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 sm:hidden">
+                            <Badge tone={statusTone(r.status)}>{humanize(r.status)}</Badge>
+                            <span className="font-mono text-xs text-muted-foreground">{r.commissionNumber}</span>
+                          </div>
                         </TD>
-                        <TD className="text-sm">{formatDate(r.earnedDate)}</TD>
-                        <TD className="text-right tabular">{formatMoney(r.commissionAmount, r.currencyCode)}</TD>
-                        <TD className="text-right font-medium tabular">
+                        <TD priority="tertiary" className="font-mono text-xs">{r.commissionNumber}</TD>
+                        <TD priority="tertiary" className="text-sm">{formatDate(r.earnedDate)}</TD>
+                        <TD priority="secondary" className="whitespace-nowrap text-right tabular">{formatMoney(r.commissionAmount, r.currencyCode)}</TD>
+                        <TD className="whitespace-nowrap text-right font-medium tabular">
                           {formatMoney(r.netPayableAmount, r.currencyCode)}
                         </TD>
-                        <TD>
+                        <TD priority="secondary">
                           <Badge tone={statusTone(r.status)}>{humanize(r.status)}</Badge>
                         </TD>
                       </TR>
