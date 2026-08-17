@@ -10,19 +10,29 @@ import { getCommissionTotals } from "@/server/commissions";
 import { getModuleSummary, getAttentionItems } from "@/server/dashboard";
 import { getPayablesSummary } from "@/server/payables";
 import { getPendingApprovals } from "@/server/approvals";
+import { getPulse, getRecentChanges } from "@/server/pulse";
 import { ModuleSummary } from "./module-summary";
+import { PulseTile } from "./pulse-tile";
+import { LiveIndicator, LiveClock, PulseDot } from "@/components/live-indicator";
+import { ActivityStream } from "@/components/activity-stream";
 import {
   Card, CardHeader, CardTitle, CardContent, PageHeader, StatTile,
   Badge, statusTone, Table, THead, TBody, TR, TH, TD, EmptyState,
 } from "@/components/ui";
 import { formatCompactMoney, formatMoney, formatDate, humanize } from "@/lib/utils";
 
+/**
+ * The dashboard refreshes itself over a realtime socket, so a cached render
+ * would be showing figures the socket has already announced as stale.
+ */
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   const user = await requireUser();
 
   const [
     pipeline, commissions, openCases, activeProjects, overdueInvoices, topPartners, myActivities,
-    summary, attentionData, payables, approvals,
+    summary, attentionData, payables, approvals, pulse, recentChanges,
   ] =
     await Promise.all([
       getPipelineByStage(),
@@ -117,6 +127,8 @@ export default async function DashboardPage() {
         totalValue: "0",
         oldestDays: 0,
       })),
+      getPulse(30),
+      getRecentChanges(25),
     ]);
 
   const openStages = pipeline.filter(
@@ -200,40 +212,68 @@ export default async function DashboardPage() {
     }))
     .sort((a, b) => b.earned.comparedTo(a.earned));
 
+  const liveDeals = openStages.reduce(
+    (s: number, p: Record<string, any>) => s + p.count,
+    0,
+  );
+
   return (
     <>
-      <PageHeader
-        title={`Good to see you, ${user.fullName.split(" ")[0]}`}
-        description="Pipeline, partner commissions and delivery load at a glance."
-      />
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <PageHeader
+          title={`Good to see you, ${user.fullName.split(" ")[0]}`}
+          description="Pipeline, cash and delivery load — updating as it happens."
+        />
+        <div className="mb-4 flex items-center gap-3">
+          <LiveClock />
+          <LiveIndicator />
+        </div>
+      </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <PulseTile
           label="Open pipeline"
-          value={formatCompactMoney(openPipelineTotal)}
-          sublabel={`${openStages.reduce((s: any, p: Record<string, any>) => s + p.count, 0)} live deals`}
+          raw={Number(openPipelineTotal)}
+          sublabel={`${liveDeals} live deals`}
+          series={pulse.dealsCreated.values}
+          delta={pulse.deltas.dealsCreated}
           href="/opportunities"
+          icon="Target"
+          tone="primary"
         />
-        <StatTile
-          label="Closed won"
-          value={formatCompactMoney(wonTotal)}
-          sublabel={`${pipeline.find((p: Record<string, any>) => p.stage === "CLOSED_WON")?.count ?? 0} deals`}
-          tone="success"
+        <PulseTile
+          label="Won this month"
+          raw={Number(summary.sales.wonValueThisMonth)}
+          sublabel={`${summary.sales.wonThisMonth} deals closed`}
+          series={pulse.wonValue.values}
+          delta={pulse.deltas.wonValue}
           href="/opportunities?stage=CLOSED_WON"
+          icon="TrendingUp"
+          tone="success"
         />
-        <StatTile
-          label="Commission payable"
-          value={formatCompactMoney(commissions.payable.amount)}
-          sublabel={`${commissions.payable.count} approved, awaiting payout`}
-          tone={commissions.payable.count > 0 ? "warning" : "neutral"}
-          href="/commissions"
+        <PulseTile
+          label="Collected this month"
+          raw={Number(summary.finance.collectedThisMonth)}
+          sublabel={`${formatCompactMoney(summary.finance.outstanding)} still outstanding`}
+          series={pulse.collected.values}
+          delta={pulse.deltas.collected}
+          href="/payments"
+          icon="Banknote"
+          tone="success"
         />
-        <StatTile
+        <PulseTile
           label="Overdue receivables"
-          value={formatCompactMoney(overdueInvoices._sum.outstandingAmount ?? 0)}
+          raw={Number(overdueInvoices._sum.outstandingAmount ?? 0)}
           sublabel={`${overdueInvoices._count} invoices past due`}
-          tone={overdueInvoices._count > 0 ? "danger" : "neutral"}
+          // Cash collected, inverted in meaning rather than in data: money
+          // arriving is what clears this figure, so the same series is the
+          // honest trend for it. A sparkline of unrelated numbers under a
+          // headline is worse than no sparkline.
+          series={pulse.collected.values}
+          delta={pulse.deltas.collected}
           href="/invoices"
+          icon="Receipt"
+          tone={overdueInvoices._count > 0 ? "danger" : "muted"}
         />
       </div>
 
@@ -265,7 +305,8 @@ export default async function DashboardPage() {
         </Card>
       )}
 
-      <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+      <h2 className="mb-3 mt-8 flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+        <PulseDot />
         Live summary
       </h2>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -355,33 +396,43 @@ export default async function DashboardPage() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center gap-2">
             <CardTitle>Pipeline by stage</CardTitle>
+            <span className="ml-auto font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              {formatCompactMoney(openPipelineTotal)} / {liveDeals} deals
+            </span>
           </CardHeader>
           <CardContent>
             {openStages.length === 0 ? (
               <EmptyState title="No open deals yet" description="Convert a lead or create an opportunity to get started." />
             ) : (
               <div className="space-y-2.5">
-                {openStages.map((s: Record<string, any>) => (
-                  <div key={s.stage} className="flex items-center gap-3">
-                    <span className="w-44 shrink-0 truncate text-sm">{humanize(s.stage)}</span>
-                    <div className="h-6 flex-1 overflow-hidden rounded bg-muted">
-                      <div
-                        className="h-full rounded bg-primary/80"
-                        style={{
-                          width: `${Math.max(2, Number(s.total.dividedBy(maxStage).times(100)))}%`,
-                        }}
-                      />
-                    </div>
-                    <span className="w-28 shrink-0 text-right text-sm tabular">
-                      {formatCompactMoney(s.total)}
-                    </span>
-                    <span className="w-10 shrink-0 text-right text-xs text-muted-foreground tabular">
-                      {s.count}
-                    </span>
-                  </div>
-                ))}
+                {openStages.map((s: Record<string, any>) => {
+                  const share = Number(s.total.dividedBy(maxStage).times(100));
+                  return (
+                    <Link
+                      key={s.stage}
+                      href={`/opportunities?stage=${s.stage}`}
+                      className="group flex items-center gap-3 rounded px-1 py-0.5 -mx-1 transition-colors hover:bg-muted/50"
+                    >
+                      <span className="w-32 shrink-0 truncate font-mono text-[11px] uppercase tracking-wider text-muted-foreground sm:w-44">
+                        {humanize(s.stage)}
+                      </span>
+                      <div className="h-6 flex-1 overflow-hidden rounded bg-muted">
+                        <div
+                          className="h-full rounded bg-gradient-to-r from-cyan-500/70 to-cyan-400 transition-all duration-500 group-hover:from-cyan-500 group-hover:to-cyan-300"
+                          style={{ width: `${Math.max(2, share)}%` }}
+                        />
+                      </div>
+                      <span className="w-24 shrink-0 text-right font-mono text-xs tabular-nums sm:w-28">
+                        {formatCompactMoney(s.total)}
+                      </span>
+                      <span className="w-8 shrink-0 text-right font-mono text-[11px] tabular-nums text-muted-foreground sm:w-10">
+                        {s.count}
+                      </span>
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </CardContent>
@@ -414,6 +465,15 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <h2 className="mb-3 mt-8 flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+        <PulseDot />
+        Change stream
+        <span className="font-sans normal-case tracking-normal opacity-70">
+          — every edit anyone makes, as it lands
+        </span>
+      </h2>
+      <ActivityStream initial={recentChanges} />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card>
