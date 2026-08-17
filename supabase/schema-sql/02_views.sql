@@ -307,3 +307,24 @@ FROM opportunity o
 JOIN app_user u ON u.id = o."ownerUserId"
 WHERE o."deletedAt" IS NULL
 GROUP BY 1, 2, 3, 4, 8;
+
+-- --------------------------------------------------------------------------
+-- Row security for the views above.
+--
+-- A view runs as its OWNER unless this is set, which means RLS on the base
+-- tables is skipped entirely and any signed-in user can read every row through
+-- the view. security_invoker makes it run as the CALLER instead, so the same
+-- policies that filter the tables filter the view.
+--
+-- This must stay at the bottom of this file: CREATE OR REPLACE VIEW does not
+-- preserve the setting, so re-running the definitions above without also
+-- re-running this would silently reopen the leak.
+-- --------------------------------------------------------------------------
+ALTER VIEW v_accounts_receivable    SET (security_invoker = true);
+ALTER VIEW v_accounts_payable       SET (security_invoker = true);
+ALTER VIEW v_revenue_summary        SET (security_invoker = true);
+ALTER VIEW v_project_profitability  SET (security_invoker = true);
+ALTER VIEW v_campaign_performance   SET (security_invoker = true);
+ALTER VIEW v_partner_performance    SET (security_invoker = true);
+ALTER VIEW v_commission_liability   SET (security_invoker = true);
+ALTER VIEW v_sales_pipeline         SET (security_invoker = true);

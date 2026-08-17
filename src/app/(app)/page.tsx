@@ -36,7 +36,20 @@ export default async function DashboardPage() {
   ] =
     await Promise.all([
       getPipelineByStage(),
-      getCommissionTotals(),
+      // Commissions are partner-facing and this throws for anyone without
+      // commission:read, which took the whole dashboard down for Project
+      // Managers and Consultants. Empty buckets render as a ledger of zeros,
+      // and the panel is already gated on summary.visible.partners.
+      getCommissionTotals().catch(() => {
+        const empty = { amount: toDecimal(0), count: 0 };
+        return {
+          accrued: empty,
+          pendingApproval: empty,
+          payable: empty,
+          paid: empty,
+          clawedBack: empty,
+        };
+      }),
       (async () => {
         const db = await supabaseServer();
         const { count } = await db
@@ -118,7 +131,20 @@ export default async function DashboardPage() {
       })(),
       getModuleSummary(),
       getAttentionItems(),
-      getPayablesSummary(),
+      // Payables are finance-only, and this throws rather than returning empty
+      // for anyone else — which took the whole dashboard down for every
+      // OWN-scope sales role. The panel that consumes it is already behind
+      // summary.visible.finance, so zeros here are never rendered.
+      getPayablesSummary().catch(() => ({
+        billsOutstanding: "0",
+        billsOutstandingCount: 0,
+        billsOverdue: "0",
+        billsOverdueCount: 0,
+        expensesAwaitingApproval: "0",
+        expensesAwaitingApprovalCount: 0,
+        expensesToPay: "0",
+        expensesToPayCount: 0,
+      })),
       // The queue needs at least one approve permission. A reader without any
       // gets an empty list rather than a page that fails to load.
       getPendingApprovals().catch(() => ({
@@ -438,6 +464,10 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
+        {/* Omitted rather than zeroed for a reader without commission access:
+            a ledger of confident zeros reads as "no commission is owed", which
+            is a different and possibly wrong statement. */}
+        {summary.visible.partners && (
         <Card>
           <CardHeader>
             <CardTitle>Commission ledger</CardTitle>
@@ -464,6 +494,7 @@ export default async function DashboardPage() {
             </Link>
           </CardContent>
         </Card>
+        )}
       </div>
 
       <h2 className="mb-3 mt-8 flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
