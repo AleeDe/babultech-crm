@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { supabaseServer } from "@/lib/supabase";
+import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { createRecord, updateRecord, LIST_LIMIT } from "@/lib/db";
 import { one } from "@/lib/decimal";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
@@ -138,18 +138,56 @@ export async function createUser(
       };
     }
 
-    // The bcrypt hash on app_user is still what NextAuth checks at sign-in, so
-    // it is written here as before. New users are not yet mirrored into
-    // Supabase Auth — see docs/SUPABASE-MIGRATION.md; that happens when the
-    // login path moves over, and scripts/migrate-auth-users.mjs backfills.
-    const user = await createRecord<{ id: string }>("app_user", {
-      ...data,
+    // Sign-in needs BOTH halves of the identity, so both are written here.
+    //
+    // NextAuth checks the bcrypt hash on app_user, then signs the same
+    // credentials in to Supabase Auth so the request carries a JWT and RLS
+    // lets the user read anything (src/lib/auth.ts). A user created with only
+    // the app_user row passes the first check and fails the second, so the
+    // account exists, looks correct in the admin screens, and cannot log in.
+    // That is exactly what happened to every user added through this form.
+    //
+    // The auth user is created FIRST and its id reused as the app_user id.
+    // Everything downstream — ownerUserId, RLS's app_visible_owner_ids(),
+    // audit trails — assumes auth.users.id === app_user.id, and generating
+    // two different ids is the failure scripts/migrate-auth-users.mjs had to
+    // repair by hand once already.
+    const auth = supabaseAdmin();
+
+    const { data: created, error: authError } = await auth.auth.admin.createUser({
       email,
-      passwordHash: await bcrypt.hash(password, BCRYPT_ROUNDS),
+      password,
+      email_confirm: true, // No inbox round-trip: an admin created this account.
+      user_metadata: { fullName: data.fullName },
     });
 
-    revalidatePath("/users");
-    return { ok: true, data: { id: user.id } };
+    if (authError || !created?.user) {
+      return {
+        ok: false,
+        error: `Could not create the sign-in account: ${authError?.message ?? "unknown error"}`,
+        fieldErrors: /already/i.test(authError?.message ?? "")
+          ? { email: ["Already registered."] }
+          : undefined,
+      };
+    }
+
+    try {
+      const user = await createRecord<{ id: string }>("app_user", {
+        ...data,
+        id: created.user.id,
+        email,
+        passwordHash: await bcrypt.hash(password, BCRYPT_ROUNDS),
+      });
+
+      revalidatePath("/users");
+      return { ok: true, data: { id: user.id } };
+    } catch (profileError) {
+      // The profile insert failed after the auth user was created. Leaving it
+      // behind would block the email forever with an account nobody can see or
+      // administer, so it is removed before the error is reported.
+      await auth.auth.admin.deleteUser(created.user.id).catch(() => {});
+      throw profileError;
+    }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Could not create the user." };
   }
@@ -238,6 +276,26 @@ export async function updateUser(
       return { ok: false, error: "Someone cannot be their own manager." };
     }
 
+    // Sign-in looks the account up by email in BOTH stores, so a change here
+    // has to reach Supabase Auth as well or the user is locked out under their
+    // new address while the old one no longer matches a profile.
+    const { data: current } = await db
+      .from("app_user")
+      .select("email")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (current && current.email !== email) {
+      const { error: authError } = await supabaseAdmin().auth.admin.updateUserById(id, {
+        email,
+        email_confirm: true,
+      });
+
+      if (authError) {
+        return { ok: false, error: `Could not update the sign-in address: ${authError.message}` };
+      }
+    }
+
     await updateRecord("app_user", id, { ...data, email }, "User", actor.id);
 
     revalidatePath("/users");
@@ -273,6 +331,19 @@ export async function setUserPassword(id: string, password: string): Promise<Act
       .maybeSingle();
 
     if (!user) return { ok: false, error: "User not found." };
+
+    // Both stores hold the password, so both are updated. Changing only the
+    // bcrypt hash leaves NextAuth accepting the new password and Supabase Auth
+    // still expecting the old one, and sign-in fails at the second step — the
+    // reset appears to work and locks the user out instead.
+    const { error: authError } = await supabaseAdmin().auth.admin.updateUserById(
+      user.id,
+      { password: parsed.data },
+    );
+
+    if (authError) {
+      return { ok: false, error: `Could not update the sign-in password: ${authError.message}` };
+    }
 
     const { error } = await db
       .from("app_user")
@@ -334,6 +405,19 @@ export async function changeOwnPassword(
         error: "That is not your current password.",
         fieldErrors: { currentPassword: ["Incorrect."] },
       };
+    }
+
+    // Supabase Auth first, for the same reason as the admin reset above: if
+    // only the bcrypt hash moves, the next sign-in passes the NextAuth check
+    // and is then rejected by Supabase, locking the user out of their own
+    // account with a password they just set themselves.
+    const { error: authError } = await supabaseAdmin().auth.admin.updateUserById(
+      actor.id,
+      { password: parsed.data },
+    );
+
+    if (authError) {
+      return { ok: false, error: `Could not update your sign-in password: ${authError.message}` };
     }
 
     const { error } = await db
