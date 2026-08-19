@@ -10,9 +10,6 @@ export default defineConfig({
     setupFiles: ["test/setup.ts"],
     include: ["test/**/*.test.ts"],
     testTimeout: 30_000,
-    // authz.ts imports auth.ts -> next-auth, which resolves Next's ESM
-    // subpaths. Inlining lets Vite handle that resolution instead of Node.
-    server: { deps: { inline: ["next-auth", "@auth/core"] } },
   },
   resolve: {
     alias: { "@": resolve(__dirname, "src") },

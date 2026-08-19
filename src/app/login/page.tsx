@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { AuthError } from "next-auth";
-import { signIn, auth } from "@/lib/auth";
+import { signInWithCredentials } from "@/lib/auth";
+import { supabaseServer } from "@/lib/supabase";
 import { Button, Card, Field, Input, Alert } from "@/components/ui";
 import { PasswordInput } from "@/components/password-input";
 
@@ -9,24 +9,25 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const session = await auth();
-  if (session?.user) redirect("/");
+  const db = await supabaseServer();
+  const {
+    data: { user },
+  } = await db.auth.getUser();
+  if (user) redirect("/");
 
   const { error } = await searchParams;
 
   async function login(formData: FormData) {
     "use server";
-    try {
-      await signIn("credentials", {
-        email: String(formData.get("email") ?? ""),
-        password: String(formData.get("password") ?? ""),
-        redirectTo: "/",
-      });
-    } catch (err) {
-      // next-auth throws a redirect internally on success — rethrow it.
-      if (err instanceof AuthError) redirect("/login?error=1");
-      throw err;
-    }
+    const result = await signInWithCredentials(
+      String(formData.get("email") ?? ""),
+      String(formData.get("password") ?? ""),
+    );
+
+    // redirect() throws, so it must sit outside any try/catch that would
+    // swallow the control-flow exception.
+    if (!result.ok) redirect(`/login?error=${result.reason}`);
+    redirect("/");
   }
 
   return (
@@ -53,7 +54,11 @@ export default async function LoginPage({
 
         {error && (
           <div className="mb-4">
-            <Alert tone="danger">That email and password combination did not work.</Alert>
+            <Alert tone="danger">
+              {error === "inactive"
+                ? "That account is not active. Contact an administrator."
+                : "That email and password combination did not work."}
+            </Alert>
           </div>
         )}
 

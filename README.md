@@ -125,8 +125,8 @@ cp .env.example .env
 # Homebrew's PostgreSQL has no "postgres" role — the role is your macOS
 # username, with no password. So DATABASE_URL looks like:
 #   postgresql://<your-username>@localhost:5432/babultech_crm?schema=public
-# Then generate a secret:
-#   openssl rand -base64 32   →  AUTH_SECRET
+# Sign-in runs on Supabase Auth, so no separate auth secret is needed — fill in
+# the NEXT_PUBLIC_SUPABASE_* and SUPABASE_SERVICE_ROLE_KEY values instead.
 
 npx prisma migrate dev --name init      # build the schema
 # Pass the database name, not $DATABASE_URL — psql rejects the ?schema= param.

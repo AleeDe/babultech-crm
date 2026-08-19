@@ -5,3 +5,11 @@ node_modules
 dev.log
 next-env.d.ts
 .env.backup*
+
+# Database backups — contain real emails and credential hashes
+backups/
+
+# Raw ClickUp export — 1.2MB of real task data including personal email
+# addresses. Re-fetch it with the command in scripts/migrate-clickup.mjs rather
+# than committing it.
+scripts/clickup-export.json

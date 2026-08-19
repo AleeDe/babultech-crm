@@ -1,32 +1,56 @@
+import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
- * Cheap gate only. It checks for the presence of a session cookie and bounces
- * anonymous traffic to /login — it deliberately does NOT import lib/auth,
- * because the Credentials provider pulls in bcrypt, which cannot run on the
- * Edge runtime that middleware executes in.
+ * Bounces anonymous traffic to /login and keeps the Supabase session fresh.
  *
- * The real check is server-side: every page under (app) goes through
- * requireUser(), and every server action calls requirePermission(). Those hit
- * the database and enforce row-level scope. Do not rely on this file for
- * authorization.
+ * Calling getUser() here does double duty: it verifies the token with Supabase
+ * rather than trusting the cookie, and it writes back a refreshed token when the
+ * old one is close to expiring. Server Components cannot set cookies, so
+ * without this pass a long-lived tab would eventually fall off its session.
+ *
+ * This is not the authorization boundary. Every page under (app) still goes
+ * through requireUser() and every server action through requirePermission(),
+ * both of which hit the database and enforce row-level scope.
  */
-const SESSION_COOKIES = [
-  "authjs.session-token",
-  "__Secure-authjs.session-token",
-];
+export async function middleware(request: NextRequest) {
+  // Cookies set below have to travel on the response that is actually returned,
+  // so the response object is created up front and mutated in place.
+  let response = NextResponse.next({ request });
 
-export function middleware(request: NextRequest) {
-  const hasSession = SESSION_COOKIES.some((name) => request.cookies.has(name));
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          for (const { name, value } of cookiesToSet) {
+            request.cookies.set(name, value);
+          }
+          response = NextResponse.next({ request });
+          for (const { name, value, options } of cookiesToSet) {
+            response.cookies.set(name, value, options);
+          }
+        },
+      },
+    },
+  );
 
-  if (!hasSession) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
     const url = new URL("/login", request.url);
     return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {
-  matcher: ["/((?!api/auth|login|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!login|_next/static|_next/image|favicon.ico).*)"],
 };

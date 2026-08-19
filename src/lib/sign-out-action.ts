@@ -1,16 +1,16 @@
 "use server";
 
+import { redirect } from "next/navigation";
 import { signOut } from "./auth";
 
 /**
  * Sign out as a server action.
  *
- * The shells previously posted a bare form to /api/auth/signout, which
- * NextAuth v5 rejects with MissingCSRF because the form carried no token.
- * Going through the action means the framework supplies and checks the token
- * itself, and the events.signOut handler in lib/auth.ts still runs to end the
- * Supabase session alongside the NextAuth one.
+ * A server action rather than a posted form: the shells render inside the
+ * authenticated layout, and going through the action lets the Supabase client
+ * clear its cookie on the response before the redirect.
  */
 export async function signOutAction() {
-  await signOut({ redirectTo: "/login" });
+  await signOut();
+  redirect("/login");
 }

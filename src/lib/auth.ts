@@ -1,138 +1,76 @@
-import NextAuth from "next-auth";
-import Credentials from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { supabaseAdmin, supabaseServer } from "./supabase";
+
+/**
+ * Sign-in and sign-out against Supabase Auth.
+ *
+ * Supabase Auth is the only identity provider. It issues the JWT that
+ * supabaseServer() puts on every query, so the session the user holds is the
+ * same one the database authorizes against — there is no second session to keep
+ * in sync.
+ *
+ * auth.users.id === app_user.id, so the profile lookup in lib/authz.ts keys
+ * straight off the signed-in user id.
+ */
 
 const credentialsSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
-  // Behind Vercel's proxy the request host is forwarded, not original, so v5
-  // refuses to infer the site URL and every CSRF check fails with MissingCSRF.
-  // AUTH_URL pins it when set; trusting the host covers preview deployments,
-  // whose URL changes per commit and so cannot be pinned in advance.
-  trustHost: true,
-  session: { strategy: "jwt", maxAge: 60 * 60 * 8 },
-  pages: { signIn: "/login" },
-  providers: [
-    Credentials({
-      credentials: { email: {}, password: {} },
-      async authorize(raw) {
-        const parsed = credentialsSchema.safeParse(raw);
-        if (!parsed.success) return null;
+export type SignInResult = { ok: true } | { ok: false; reason: string };
 
-        // Sign-in runs before any session exists, so RLS would block the anon
-        // client from reading app_user — including the row being authenticated.
-        // The service-role client is used for this lookup only, keyed by an
-        // email that is verified against a bcrypt hash immediately below.
-        const db = supabaseAdmin();
+/**
+ * Verifies credentials and starts a session.
+ *
+ * The password is checked by Supabase Auth, not here. The app_user row is
+ * consulted only to reject accounts that are disabled or soft-deleted, which
+ * Supabase Auth knows nothing about.
+ */
+export async function signInWithCredentials(
+  email: string,
+  password: string,
+): Promise<SignInResult> {
+  const parsed = credentialsSchema.safeParse({ email, password });
+  if (!parsed.success) return { ok: false, reason: "invalid" };
 
-        const { data: user } = await db
-          .from("app_user")
-          .select("*, role:security_role!inner ( name )")
-          .eq("email", parsed.data.email.toLowerCase())
-          .maybeSingle();
+  const normalizedEmail = parsed.data.email.toLowerCase();
 
-        if (!user?.passwordHash || user.status !== "ACTIVE" || user.deletedAt) {
-          return null;
-        }
+  const db = await supabaseServer();
+  const { data, error } = await db.auth.signInWithPassword({
+    email: normalizedEmail,
+    password: parsed.data.password,
+  });
 
-        const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
-        if (!valid) return null;
+  if (error || !data.user) return { ok: false, reason: "invalid" };
 
-        // Sign in to Supabase Auth as well, so the request carries a Supabase
-        // JWT and not only the NextAuth cookie.
-        //
-        // Without this the two halves disagree: requireUser() resolves identity
-        // from the NextAuth session, but every data query runs through
-        // supabaseServer(), which is anonymous to the database. RLS then denies
-        // everything — reads come back empty and inserts fail with "new row
-        // violates row-level security policy".
-        //
-        // auth.users.id === app_user.id (scripts/migrate-auth-users.mjs), so
-        // both sessions describe the same person.
-        const sessionDb = await supabaseServer();
-        const { error: supabaseSignInError } = await sessionDb.auth.signInWithPassword({
-          email: parsed.data.email.toLowerCase(),
-          password: parsed.data.password,
-        });
+  // Status and deletedAt live on app_user, so a suspended user still passes the
+  // Supabase password check. Read them with the service role: at this instant
+  // the cookie is set but this request's client was built before it existed,
+  // and the lookup is pinned to the id Supabase just verified.
+  const adminDb = supabaseAdmin();
+  const { data: profile } = await adminDb
+    .from("app_user")
+    .select("id, status, deletedAt")
+    .eq("id", data.user.id)
+    .maybeSingle();
 
-        if (supabaseSignInError) {
-          // The bcrypt hash in app_user and the password in auth.users are
-          // stored separately, so they can drift apart. Failing loudly here
-          // beats signing the user in to a session that can read nothing.
-          console.error(
-            `Supabase Auth rejected ${parsed.data.email}: ${supabaseSignInError.message}. ` +
-              `Run scripts/migrate-auth-users.mjs to resync passwords.`,
-          );
-          return null;
-        }
-
-        await db
-          .from("app_user")
-          .update({ lastLoginAt: new Date().toISOString() })
-          .eq("id", user.id);
-
-        // PostgREST types an embedded to-one relation as an array.
-        const role = (Array.isArray(user.role) ? user.role[0] : user.role) as {
-          name: string;
-        };
-
-        return {
-          id: user.id,
-          name: user.fullName,
-          email: user.email,
-          image: user.avatarUrl,
-          role: role?.name,
-        };
-      },
-    }),
-  ],
-  events: {
-    // Sign-in creates two sessions, so sign-out has to end both. Leaving the
-    // Supabase cookie behind would keep a usable database session alive after
-    // the user believes they have signed out.
-    async signOut() {
-      try {
-        const sessionDb = await supabaseServer();
-        await sessionDb.auth.signOut();
-      } catch {
-        // Best effort: the NextAuth sign-out must complete regardless.
-      }
-    },
-  },
-  callbacks: {
-    jwt({ token, user }) {
-      if (user) {
-        token.id = user.id as string;
-        token.role = (user as { role?: string }).role;
-      }
-      return token;
-    },
-    session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.id as string;
-        session.user.role = token.role as string;
-      }
-      return session;
-    },
-  },
-});
-
-declare module "next-auth" {
-  interface Session {
-    user: {
-      id: string;
-      name?: string | null;
-      email?: string | null;
-      image?: string | null;
-      role?: string;
-    };
+  if (!profile || profile.status !== "ACTIVE" || profile.deletedAt) {
+    // Do not leave a usable session behind for an account that cannot sign in.
+    await db.auth.signOut();
+    return { ok: false, reason: "inactive" };
   }
-  interface User {
-    role?: string;
-  }
+
+  await adminDb
+    .from("app_user")
+    .update({ lastLoginAt: new Date().toISOString() })
+    .eq("id", profile.id);
+
+  return { ok: true };
+}
+
+/** Ends the Supabase session. */
+export async function signOut(): Promise<void> {
+  const db = await supabaseServer();
+  await db.auth.signOut();
 }
