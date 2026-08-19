@@ -30,6 +30,7 @@ export interface UserDefaults {
   id: string;
   fullName: string;
   email: string;
+  notificationEmail: string | null;
   employeeNumber: string | null;
   jobTitle: string | null;
   phone: string | null;
@@ -162,6 +163,7 @@ export function UserForm({
               required
               error={fieldErrors.partnerId?.[0]}
               hint="Everything this login can see is scoped through this record."
+            help="Only for external partner logins. Setting it makes this an outside user who sees only that partner's records, never your customer list."
             >
               <Select name="partnerId" required defaultValue={defaults?.partnerId ?? ""}>
                 <option value="">Select a partner…</option>
@@ -174,7 +176,8 @@ export function UserForm({
             </Field>
           )}
 
-          <Field label="Status" required>
+          <Field label="Status" required
+            help="Active people can sign in. Set to Inactive to cut off access without deleting their history.">
             <Select name="status" required defaultValue={defaults?.status ?? "ACTIVE"} className="sm:w-56">
               {STATUSES.map((s) => (
                 <option key={s} value={s}>{humanize(s)}</option>
@@ -189,8 +192,23 @@ export function UserForm({
           <CardTitle>Credentials</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field label="Email" required error={fieldErrors.email?.[0]} hint="This is what they sign in with.">
+          <Field label="Email" required error={fieldErrors.email?.[0]} hint="This is what they sign in with."
+            help="Their work email. This is also the address they sign in with, so it has to be one they can reach.">
             <Input name="email" type="email" required defaultValue={defaults?.email} />
+          </Field>
+
+          <Field
+            label="Send notifications to"
+            error={fieldErrors.notificationEmail?.[0]}
+            hint="Leave empty to use the sign-in address."
+            help="Only needed when notifications must go somewhere other than the sign-in address — for example while the mailbox behind it does not exist yet. Sign-in is unaffected either way."
+          >
+            <Input
+              name="notificationEmail"
+              type="email"
+              defaultValue={defaults?.notificationEmail ?? ""}
+              placeholder={defaults?.email ?? "same as sign-in address"}
+            />
           </Field>
 
           {editing ? (
@@ -205,6 +223,7 @@ export function UserForm({
               required
               error={fieldErrors.password?.[0]}
               hint="At least 10 characters, mixed case, with a number."
+            help="Their initial sign-in password. Ask them to change it once they are in."
             >
               <Input name="password" type="password" required autoComplete="new-password" />
             </Field>
@@ -217,22 +236,27 @@ export function UserForm({
           <CardTitle>Profile</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Full name" required error={fieldErrors.fullName?.[0]}>
+          <Field label="Full name" required error={fieldErrors.fullName?.[0]}
+            help="The person's name as it should appear across the system.">
             <Input name="fullName" required defaultValue={defaults?.fullName} />
           </Field>
-          <Field label="Job title">
+          <Field label="Job title"
+            help="Their role in words. Separate from their security role below, which is what governs access.">
             <Input name="jobTitle" defaultValue={defaults?.jobTitle ?? ""} placeholder="Senior Consultant" />
           </Field>
-          <Field label="Phone">
+          <Field label="Phone"
+            help="A contact number for them.">
             <Input name="phone" defaultValue={defaults?.phone ?? ""} placeholder="+92 300 1234567" />
           </Field>
 
           {!isPartner && (
             <>
-              <Field label="Employee number">
+              <Field label="Employee number"
+            help="Your internal staff reference, if you use one.">
                 <Input name="employeeNumber" defaultValue={defaults?.employeeNumber ?? ""} />
               </Field>
-              <Field label="Department">
+              <Field label="Department"
+            help="Which part of the business they belong to.">
                 <Select name="departmentId" defaultValue={defaults?.departmentId ?? ""}>
                   <option value="">None</option>
                   {options.departments.map((d) => (
@@ -240,7 +264,8 @@ export function UserForm({
                   ))}
                 </Select>
               </Field>
-              <Field label="Reports to">
+              <Field label="Reports to"
+            help="Their manager. This is not decoration — it decides what a manager can see. Anyone on Department scope sees their own records plus everyone beneath them in this line.">
                 <Select name="managerUserId" defaultValue={defaults?.managerUserId ?? ""}>
                   <option value="">Nobody</option>
                   {options.managers
@@ -267,10 +292,12 @@ export function UserForm({
             </p>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label="Cost rate per hour" hint="What they cost the business.">
+            <Field label="Cost rate per hour" hint="What they cost the business."
+            help="What this person costs the business per hour. Used to work out project margin, and not shown to them.">
               <Input name="costRate" type="number" step="0.01" min="0" defaultValue={defaults?.costRate ?? ""} />
             </Field>
-            <Field label="Billing rate per hour" hint="What a customer is charged.">
+            <Field label="Billing rate per hour" hint="What a customer is charged."
+            help="What a customer is charged per hour of their time, on hourly projects.">
               <Input
                 name="defaultBillingRate"
                 type="number"

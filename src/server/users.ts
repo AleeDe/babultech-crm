@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { createRecord, updateRecord, LIST_LIMIT } from "@/lib/db";
 import { one } from "@/lib/decimal";
-import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission, requireUser } from "@/lib/authz";
 import { writeAudit } from "@/lib/audit";
 import type { ActionResult } from "./partners";
 
@@ -39,6 +39,15 @@ const passwordRules = z
 const userSchema = z.object({
   fullName: z.string().min(1).max(150),
   email: z.string().email().max(255),
+  // Where notifications are delivered, when that differs from the sign-in
+  // address. Empty string from an untouched form means "no override".
+  notificationEmail: z
+    .string()
+    .email("Enter a valid email, or leave it empty.")
+    .max(255)
+    .optional()
+    .nullable()
+    .or(z.literal("")),
   employeeNumber: z.string().max(30).optional().nullable(),
   jobTitle: z.string().max(150).optional().nullable(),
   phone: z.string().max(50).optional().nullable(),
@@ -176,6 +185,7 @@ export async function createUser(
         ...data,
         id: created.user.id,
         email,
+        notificationEmail: data.notificationEmail || null,
         passwordHash: await bcrypt.hash(password, BCRYPT_ROUNDS),
       });
 
@@ -296,7 +306,15 @@ export async function updateUser(
       }
     }
 
-    await updateRecord("app_user", id, { ...data, email }, "User", actor.id);
+    // An empty field means "no override", which is null rather than "" — an
+    // empty string would read as a real address and send mail nowhere.
+    await updateRecord(
+      "app_user",
+      id,
+      { ...data, email, notificationEmail: data.notificationEmail || null },
+      "User",
+      actor.id,
+    );
 
     revalidatePath("/users");
     revalidatePath(`/users/${id}`);
@@ -595,4 +613,52 @@ export async function getAllPartners() {
 
   if (error) throw new Error(`Could not load partners: ${error.message}`);
   return data ?? [];
+}
+
+/**
+ * The caller's own place in the reporting line, for the user guide.
+ *
+ * Needs no permission beyond a session: it describes only the reader's own
+ * position, and the names it returns are people whose records they can already
+ * see under DEPARTMENT scope.
+ *
+ * `reportsBelow` walks the whole sub-tree, not just direct reports, because
+ * that is what DEPARTMENT scope actually grants — telling someone they see
+ * "3 reports" when the walk reaches 8 people would be misleading.
+ */
+export async function getMyReportingLine() {
+  const me = await requireUser();
+  const db = supabaseAdmin();
+
+  const { data: staff } = await db
+    .from("app_user")
+    .select("id, fullName, managerUserId")
+    .is("deletedAt", null);
+
+  const everyone = staff ?? [];
+  const manager = everyone.find(
+    (u) => u.id === everyone.find((x) => x.id === me.id)?.managerUserId,
+  );
+
+  const directReports = everyone.filter((u) => u.managerUserId === me.id);
+
+  // Same cycle-safe walk as scopeFilter, so the count cannot disagree with it.
+  const below = new Set<string>();
+  const queue = [me.id];
+  const seen = new Set<string>([me.id]);
+  while (queue.length) {
+    const current = queue.shift()!;
+    for (const child of everyone.filter((u) => u.managerUserId === current)) {
+      if (seen.has(child.id)) continue;
+      seen.add(child.id);
+      below.add(child.id);
+      queue.push(child.id);
+    }
+  }
+
+  return {
+    managerName: manager?.fullName ?? null,
+    directReports: directReports.map((r) => r.fullName),
+    totalBelow: below.size,
+  };
 }

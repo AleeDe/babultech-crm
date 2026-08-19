@@ -34,6 +34,7 @@ export default async function EditUserPage({
     id: user.id,
     fullName: user.fullName,
     email: user.email,
+    notificationEmail: user.notificationEmail ?? null,
     employeeNumber: user.employeeNumber,
     jobTitle: user.jobTitle,
     phone: user.phone,
