@@ -6,6 +6,7 @@ import {
   UsersRound, Coins, FileInput, Wallet, Stamp, type LucideIcon,
 } from "lucide-react";
 import { requireUser, can, PERMISSIONS, type SessionUser } from "@/lib/authz";
+import { getMyReportingLine } from "@/server/users";
 import { GuideSection } from "./guide-sections";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, Alert,
@@ -247,13 +248,17 @@ export default async function GuidePage() {
     if (!needs) return true;
     return Array.isArray(needs) ? needs.some((n) => can(me, n)) : can(me, needs);
   };
+  const line = await getMyReportingLine();
+
   const flow = FLOW.filter((step) => allowed(step.needs));
   const reference = REFERENCE.filter((item) => allowed(item.needs));
 
+  // DEPARTMENT is the reporting line, not the department roster, so the wording
+  // has to say "people who report to you" rather than "your department".
   const scopeExplainer: Record<string, string> = {
     OWN: "records you own",
     TEAM: "your team's records",
-    DEPARTMENT: "your department's records",
+    DEPARTMENT: "your own records and those of everyone who reports to you",
     ALL: "every record in the system",
   };
 
@@ -337,6 +342,115 @@ export default async function GuidePage() {
             </CardContent>
           </Card>
         ))}
+        </div>
+      </GuideSection>
+
+      <GuideSection
+        title="Who can see what"
+        summary="Why your lists show what they show, and who else can see the same rows"
+      >
+        <div className="space-y-5 text-sm">
+          <p className="text-muted-foreground">
+            Two separate things decide what you can do here, and it helps to keep them apart.
+            Your <strong className="text-foreground">role</strong> decides which screens and
+            buttons you get. Your <strong className="text-foreground">data scope</strong> decides
+            whose records appear on those screens. You have exactly one role, and it carries
+            exactly one scope — there is no way to hold two at once, which is deliberate: a second
+            role would quietly widen what you can see rather than adding to what you can do.
+          </p>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[520px] border-collapse text-sm">
+              <thead>
+                <tr className="border-b text-left">
+                  <th className="pb-2 pr-4 font-medium">Scope</th>
+                  <th className="pb-2 pr-4 font-medium">You see</th>
+                  <th className="pb-2 font-medium">Typically</th>
+                </tr>
+              </thead>
+              <tbody className="text-muted-foreground">
+                {[
+                  ["Own", "Only records you own or are assigned.", "Consultants, sales executives"],
+                  ["Team", "Everyone you share a team with.", "Managers of a working team"],
+                  ["Department", "Yourself, plus everyone who reports to you — however far down.", "Heads of department"],
+                  ["All", "Every record in the system.", "Administrators only"],
+                ].map(([scope, sees, who]) => {
+                  const mine = scope.toUpperCase() === me.dataScope;
+                  return (
+                    <tr key={scope} className={mine ? "bg-primary/5" : undefined}>
+                      <td className="border-b py-2 pr-4 align-top">
+                        <span className={mine ? "font-semibold text-foreground" : "font-medium"}>
+                          {scope}
+                        </span>
+                        {mine && <Badge tone="info" className="ml-2">Yours</Badge>}
+                      </td>
+                      <td className="border-b py-2 pr-4 align-top">{sees}</td>
+                      <td className="border-b py-2 align-top">{who}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="rounded-lg border bg-muted/40 p-4">
+            <p className="font-medium text-foreground">Your position</p>
+            <p className="mt-1.5 text-muted-foreground">
+              You are <strong className="text-foreground">{me.fullName}</strong>, signed in as{" "}
+              <strong className="text-foreground">{me.roleName}</strong>, and you see{" "}
+              {scopeExplainer[me.dataScope] ?? me.dataScope.toLowerCase()}.
+              {line.managerName && (
+                <> You report to <strong className="text-foreground">{line.managerName}</strong>.</>
+              )}
+              {line.directReports.length > 0 ? (
+                <>
+                  {" "}
+                  <strong className="text-foreground">{line.directReports.join(", ")}</strong>{" "}
+                  {line.directReports.length === 1 ? "reports" : "report"} to you
+                  {line.totalBelow > line.directReports.length && (
+                    <> ({line.totalBelow} people in total once their own reports are counted)</>
+                  )}
+                  .
+                </>
+              ) : (
+                <> Nobody currently reports to you.</>
+              )}
+            </p>
+          </div>
+
+          <div>
+            <p className="font-medium text-foreground">
+              Department scope follows the reporting line, not the department list
+            </p>
+            <p className="mt-1.5 text-muted-foreground">
+              This is the part people get wrong. Being in the same department as somebody does not
+              let you see their work. Visibility follows{" "}
+              <strong className="text-foreground">who reports to whom</strong>, and it only ever
+              flows downward:
+            </p>
+            <ul className="mt-2 space-y-1 text-muted-foreground">
+              <li>• A manager sees their own records and everyone beneath them, however many levels down.</li>
+              <li>• You never see your own manager&apos;s records.</li>
+              <li>• Two people reporting to the same manager cannot see each other&apos;s work.</li>
+              <li>• If nobody reports to you, you see only your own records.</li>
+            </ul>
+            <p className="mt-2 text-muted-foreground">
+              So a department head sees the whole department because the department reports to
+              them — not because they share a label. Reporting lines are set per person under
+              Users, on the <strong className="text-foreground">Reports to</strong> field.
+            </p>
+          </div>
+
+          <div>
+            <p className="font-medium text-foreground">Some things nobody can do, whatever their role</p>
+            <p className="mt-1.5 text-muted-foreground">
+              A few rules are enforced on the action itself rather than by your permissions, so
+              they hold even for an administrator. The clearest one: you cannot approve your own
+              expense claim. Somebody else has to, and the system refuses it regardless of who is
+              asking. Rules like that exist so that the person who spends the money is never the
+              person who signs it off.
+            </p>
+          </div>
         </div>
       </GuideSection>
 
