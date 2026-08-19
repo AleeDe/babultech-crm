@@ -1,6 +1,5 @@
 import { cache } from "react";
 import { supabaseServer, supabaseAdmin } from "./supabase";
-import { auth as nextAuthSession } from "./auth";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -59,6 +58,8 @@ export class AuthorizationError extends Error {
  * `app_user` for the profile. Eight sequential round trips before a single row
  * of the actual page was fetched, on every navigation and after every action.
  *
+ * Identity comes from Supabase Auth alone.
+ *
  * `cache()` is per-request and per-render, so this is not a session cache:
  * nothing survives into the next request, and a user whose role changes sees it
  * on their next navigation. The security properties are unchanged.
@@ -66,24 +67,16 @@ export class AuthorizationError extends Error {
 async function loadUser(): Promise<SessionUser> {
   const db = await supabaseServer();
 
-  // Identity can come from either provider while the port is in progress:
-  // Supabase Auth for the migrated modules, NextAuth for the rest. Both resolve
-  // to the same app_user row because auth.users.id === app_user.id (see
-  // scripts/migrate-auth-users.mjs), so the profile lookup below is identical.
+  // Supabase Auth is the only identity provider, and auth.users.id ===
+  // app_user.id, so the verified user id keys the profile lookup directly.
   const {
     data: { user: supabaseUser },
   } = await db.auth.getUser();
 
-  let userId = supabaseUser?.id ?? null;
-
-  if (!userId) {
-    const session = await nextAuthSession();
-    userId = session?.user?.id ?? null;
-  }
+  const userId = supabaseUser?.id ?? null;
 
   if (!userId) throw new AuthorizationError("Not signed in.");
 
-  // Always the service-role client, for either session type.
   //
   // This lookup joins security_role, which deliberately has no SELECT policy —
   // only the SECURITY DEFINER helpers read it. Through the anon client the
@@ -206,12 +199,41 @@ export async function scopeFilter(
   const db = client ?? supabaseAdmin();
 
   if (user.dataScope === "DEPARTMENT") {
-    if (!user.departmentId) return { [ownerField]: user.id };
-    const { data: peers } = await db
+    // Follows the reporting line, not the department roster: self, direct
+    // reports, and everyone beneath them. Authority flows down the org chart,
+    // so peers cannot see each other and nobody sees their own manager.
+    //
+    // Mirrors app_visible_owner_ids() in
+    // supabase/migrations/20260818000003_hierarchical_scope.sql. If the two
+    // ever disagree, RLS wins and the list silently loses rows — keep them
+    // together.
+    const { data: staff } = await db
       .from("app_user")
-      .select("id")
-      .eq("departmentId", user.departmentId);
-    return { [ownerField]: { in: (peers ?? []).map((p) => p.id) } };
+      .select("id, managerUserId")
+      .is("deletedAt", null);
+
+    const childrenOf = new Map<string, string[]>();
+    for (const row of staff ?? []) {
+      if (!row.managerUserId) continue;
+      const siblings = childrenOf.get(row.managerUserId) ?? [];
+      siblings.push(row.id);
+      childrenOf.set(row.managerUserId, siblings);
+    }
+
+    // Breadth-first with a seen set, so a manager cycle introduced by a direct
+    // database edit terminates rather than looping.
+    const visible = new Set<string>([user.id]);
+    const queue = [user.id];
+    while (queue.length) {
+      const current = queue.shift()!;
+      for (const child of childrenOf.get(current) ?? []) {
+        if (visible.has(child)) continue;
+        visible.add(child);
+        queue.push(child);
+      }
+    }
+
+    return { [ownerField]: { in: [...visible] } };
   }
 
   if (user.dataScope === "TEAM") {

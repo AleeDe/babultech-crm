@@ -74,9 +74,11 @@ let manager: SessionUser;
 let exec: SessionUser;
 
 beforeAll(async () => {
+  // Real users from the ClickUp workspace. The scopes matter, not the job
+  // titles: Administrator is ALL, Project Manager is TEAM, Consultant is OWN.
   admin = await sessionUserFor("admin@babultech.com");
-  manager = await sessionUserFor("sales.manager@babultech.com");
-  exec = await sessionUserFor("sales.exec@babultech.com");
+  manager = await sessionUserFor("sami@babultech.com");
+  exec = await sessionUserFor("ali@babultech.com");
 });
 
 describe("seeded fixtures", () => {
@@ -147,24 +149,43 @@ describe("TEAM scope", () => {
 });
 
 describe("DEPARTMENT scope", () => {
-  it("is limited to department peers", async () => {
-    const deptUser: SessionUser = { ...exec, dataScope: "DEPARTMENT" };
-    expect(deptUser.departmentId).not.toBeNull();
+  // DEPARTMENT follows the reporting line rather than the department roster —
+  // see test/hierarchical-scope.test.ts for the tree behaviour. These two cover
+  // the boundary: never wider than the sub-tree, and self when there is none.
 
-    const { data: peers } = await db
-      .from("app_user")
-      .select("id")
-      .eq("departmentId", deptUser.departmentId!);
+  it("is limited to the caller's own reporting sub-tree", async () => {
+    const deptUser: SessionUser = { ...exec, dataScope: "DEPARTMENT" };
     const visible = (await visibleOwnerIds(deptUser)) as Set<string>;
 
     expect(visible).not.toBe("ALL");
-    expect(visible).toEqual(new Set((peers ?? []).map((p) => p.id)));
+    expect(visible.has(exec.id)).toBe(true);
+
+    // Everyone visible must be reachable by walking managerUserId down from
+    // exec. Sharing a department is no longer sufficient on its own.
+    const { data: staff } = await db
+      .from("app_user")
+      .select("id, managerUserId")
+      .is("deletedAt", null);
+
+    const reachable = new Set<string>([exec.id]);
+    const queue = [exec.id];
+    while (queue.length) {
+      const current = queue.shift()!;
+      for (const row of staff ?? []) {
+        if (row.managerUserId === current && !reachable.has(row.id)) {
+          reachable.add(row.id);
+          queue.push(row.id);
+        }
+      }
+    }
+
+    for (const id of visible) expect(reachable.has(id)).toBe(true);
   });
 
-  it("falls back to OWN when the user has no department", async () => {
+  it("falls back to self when the user has nobody reporting to them", async () => {
     const orphan: SessionUser = { ...exec, dataScope: "DEPARTMENT", departmentId: null };
-    const visible = await visibleOwnerIds(orphan);
-    expect(visible).toEqual(new Set([exec.id]));
+    const visible = (await visibleOwnerIds(orphan)) as Set<string>;
+    expect(visible.has(exec.id)).toBe(true);
   });
 });
 
