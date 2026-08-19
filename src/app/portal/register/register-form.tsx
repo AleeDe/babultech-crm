@@ -106,11 +106,13 @@ export function RegisterForm() {
               required
               error={fieldErrors.companyName?.[0]}
               hint="Use their registered name — it is what we check for an existing registration against."
+            help="The prospective customer's company name."
             >
               <Input name="companyName" required placeholder="Zenith Textiles (Pvt) Ltd" />
             </Field>
           </div>
-          <Field label="Industry">
+          <Field label="Industry"
+            help="The sector they operate in.">
             <Select name="industry" defaultValue="">
               <option value="">Not sure</option>
               {INDUSTRIES.map((i) => (
@@ -118,7 +120,8 @@ export function RegisterForm() {
               ))}
             </Select>
           </Field>
-          <Field label="Estimated value" hint="Your best guess is fine.">
+          <Field label="Estimated value" hint="Your best guess is fine."
+            help="Roughly what the deal is worth. A guess is fine.">
             <Input name="estimatedValue" type="number" step="1000" min="0" placeholder="500000" />
           </Field>
         </CardContent>
@@ -129,16 +132,20 @@ export function RegisterForm() {
           <CardTitle>Your contact there</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field label="First name" required error={fieldErrors.firstName?.[0]}>
+          <Field label="First name" required error={fieldErrors.firstName?.[0]}
+            help="Given name of your contact there.">
             <Input name="firstName" required />
           </Field>
-          <Field label="Last name" required error={fieldErrors.lastName?.[0]}>
+          <Field label="Last name" required error={fieldErrors.lastName?.[0]}
+            help="Family name of your contact.">
             <Input name="lastName" required />
           </Field>
-          <Field label="Email" error={fieldErrors.email?.[0]}>
+          <Field label="Email" error={fieldErrors.email?.[0]}
+            help="Their email address.">
             <Input name="email" type="email" placeholder="name@company.com" />
           </Field>
-          <Field label="Phone">
+          <Field label="Phone"
+            help="A contact number.">
             <Input name="phone" placeholder="+92 300 1234567" />
           </Field>
         </CardContent>
@@ -149,7 +156,8 @@ export function RegisterForm() {
           <CardTitle>The opportunity</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Field label="Expected close date" hint="Roughly when you think they will decide.">
+          <Field label="Expected close date" hint="Roughly when you think they will decide."
+            help="When you expect them to decide.">
             <Input name="expectedCloseDate" type="date" className="sm:w-56" />
           </Field>
           <Field
@@ -157,6 +165,7 @@ export function RegisterForm() {
             required
             error={fieldErrors.description?.[0]}
             hint="What problem they have, what you have discussed, and where they are in their thinking. The more you give us, the faster this moves."
+            help="What the customer is actually asking for, so the team can pick it up without going back to you."
           >
             <Textarea name="description" rows={6} required />
           </Field>

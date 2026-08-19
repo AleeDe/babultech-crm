@@ -192,11 +192,13 @@ export function TaskBoard({
     <form action={(fd) => submitTask(fd, task?.id ?? null, parentTaskId)} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <Field label="Task" required>
+          <Field label="Task" required
+            help="What needs doing, in a few words.">
             <Input name="name" required defaultValue={task?.name} placeholder="Configure the chart of accounts" />
           </Field>
         </div>
-        <Field label="Assignee" hint="Must be on the project team.">
+        <Field label="Assignee" hint="Must be on the project team."
+            help="Who is doing it. It appears in their work list.">
           <Select name="assignedUserId" defaultValue={task?.assignedUserId ?? ""}>
             <option value="">Unassigned</option>
             {assignable.map((m) => (
@@ -204,7 +206,8 @@ export function TaskBoard({
             ))}
           </Select>
         </Field>
-        <Field label="Phase">
+        <Field label="Phase"
+            help="Which stage of the project this belongs to.">
           <Select name="phaseId" defaultValue={task?.phaseId ?? ""}>
             <option value="">No phase</option>
             {phases.map((p) => (
@@ -212,7 +215,8 @@ export function TaskBoard({
             ))}
           </Select>
         </Field>
-        <Field label="Milestone">
+        <Field label="Milestone"
+            help="A point the customer recognises — a delivery, a sign-off, a payment trigger.">
           <Select name="milestoneId" defaultValue={task?.milestoneId ?? ""}>
             <option value="">No milestone</option>
             {milestones.map((m) => (
@@ -220,30 +224,36 @@ export function TaskBoard({
             ))}
           </Select>
         </Field>
-        <Field label="Status">
+        <Field label="Status"
+            help="Where this item stands.">
           <Select name="status" defaultValue={task?.status ?? "NOT_STARTED"}>
             {ALL_TASK_STATUSES.map((s) => (
               <option key={s} value={s}>{humanize(s)}</option>
             ))}
           </Select>
         </Field>
-        <Field label="Priority">
+        <Field label="Priority"
+            help="How urgent it is relative to everything else here.">
           <Select name="priority" defaultValue={task?.priority ?? "MEDIUM"}>
             {PRIORITIES.map((p) => (
               <option key={p} value={p}>{humanize(p)}</option>
             ))}
           </Select>
         </Field>
-        <Field label="Estimated hours" hint="Also the weight used for progress roll-up.">
+        <Field label="Estimated hours" hint="Also the weight used for progress roll-up."
+            help="How long you expect it to take. Compared against time actually booked.">
           <Input name="estimatedHours" type="number" step="0.5" min="0" defaultValue={task?.estimatedHours ?? ""} />
         </Field>
-        <Field label="Start date">
+        <Field label="Start date"
+            help="When work on this begins.">
           <Input name="startDate" type="date" defaultValue={dateInput(task?.startDate ?? null)} />
         </Field>
-        <Field label="Due date">
+        <Field label="Due date"
+            help="When it has to be finished by.">
           <Input name="dueDate" type="date" defaultValue={dateInput(task?.dueDate ?? null)} />
         </Field>
-        <Field label="Percent complete">
+        <Field label="Percent complete"
+            help="How far along it is. Only meaningful if kept current, so update it or leave it alone.">
           <Input
             name="completionPercent"
             type="number"
@@ -264,12 +274,14 @@ export function TaskBoard({
           </label>
         </div>
         <div className="sm:col-span-2">
-          <Field label="Description">
+          <Field label="Description"
+            help="The detail that does not fit in the title.">
             <Textarea name="description" rows={2} defaultValue={task?.description ?? ""} />
           </Field>
         </div>
         <div className="sm:col-span-2">
-          <Field label="Acceptance criteria" hint="What 'done' means — the thing arguments are avoided with.">
+          <Field label="Acceptance criteria" hint="What 'done' means — the thing arguments are avoided with."
+            help="What has to be true for this to count as done. Written before the work starts, it prevents the argument at the end.">
             <Textarea name="acceptanceCriteria" rows={2} defaultValue={task?.acceptanceCriteria ?? ""} />
           </Field>
         </div>
@@ -508,7 +520,8 @@ export function TeamPanel({
         <AddSection label="Add person" open={adding} onToggle={() => setAdding(!adding)}>
           <form action={add} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Field label="Person" required>
+              <Field label="Person" required
+            help="Who is joining the project team.">
                 <Select name="userId" required>
                   <option value="">Select…</option>
                   {available.map((u) => (
@@ -518,22 +531,28 @@ export function TeamPanel({
                   ))}
                 </Select>
               </Field>
-              <Field label="Role on project" required>
+              <Field label="Role on project" required
+            help="What they do here — developer, analyst, tester. Separate from their job title.">
                 <Input name="projectRole" required placeholder="Business Analyst" />
               </Field>
-              <Field label="Allocation %" hint="Share of their week booked to this project.">
+              <Field label="Allocation %" hint="Share of their week booked to this project."
+            help="How much of their time this project has. 50% means half their week, which matters when they sit on three projects.">
                 <Input name="allocationPercent" type="number" min="0" max="100" placeholder="50" />
               </Field>
-              <Field label="From">
+              <Field label="From"
+            help="When they join the project.">
                 <Input name="startDate" type="date" />
               </Field>
-              <Field label="Until">
+              <Field label="Until"
+            help="When they leave it. Leave empty if they are on it for the duration.">
                 <Input name="endDate" type="date" />
               </Field>
-              <Field label="Billing rate" hint="Blank uses their standard rate.">
+              <Field label="Billing rate" hint="Blank uses their standard rate."
+            help="What the customer is charged per hour of this person's time on this project.">
                 <Input name="billingRate" type="number" step="0.01" min="0" />
               </Field>
-              <Field label="Cost rate" hint="Blank uses their standard cost.">
+              <Field label="Cost rate" hint="Blank uses their standard cost."
+            help="What this person costs per hour. Used for margin, never shown to the customer.">
                 <Input name="costRate" type="number" step="0.01" min="0" />
               </Field>
             </div>
@@ -746,10 +765,12 @@ export function PlanPanel({
             <AddSection label="Add phase" open={addingPhase} onToggle={() => setAddingPhase(!addingPhase)}>
               <form action={addPhase} className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <Field label="Phase name" required>
+                  <Field label="Phase name" required
+            help="A stage of the project — Discovery, Build, UAT. Tasks and milestones hang off phases.">
                     <Input name="name" required placeholder="Discovery" />
                   </Field>
-                  <Field label="Owner">
+                  <Field label="Owner"
+            help="Who is accountable for this item.">
                     <Select name="ownerUserId">
                       <option value="">Unassigned</option>
                       {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
@@ -758,10 +779,12 @@ export function PlanPanel({
                   <Field label="Budgeted hours">
                     <Input name="budgetedHours" type="number" step="0.5" min="0" />
                   </Field>
-                  <Field label="Planned start">
+                  <Field label="Planned start"
+            help="When this phase is due to begin.">
                     <Input name="plannedStart" type="date" />
                   </Field>
-                  <Field label="Planned end">
+                  <Field label="Planned end"
+            help="When it is due to finish.">
                     <Input name="plannedEnd" type="date" />
                   </Field>
                 </div>
@@ -848,12 +871,14 @@ export function PlanPanel({
                   </div>
                   {billingTrigger && (
                     <>
-                      <Field label="Bill amount" hint="Or use a percentage instead.">
+                      <Field label="Bill amount" hint="Or use a percentage instead."
+            help="The exact amount this milestone releases, if it is a fixed figure rather than a percentage.">
                         <Input name="billingAmount" type="number" step="0.01" min="0" />
                       </Field>
                       <Field
                         label="Bill % of contract"
                         hint={contractValue ? `Contract value ${formatMoney(contractValue, currency)}` : "No contract value set."}
+            help="The share of the contract value this milestone releases for invoicing."
                       >
                         <Input name="billingPercent" type="number" step="0.01" min="0" max="100" />
                       </Field>
@@ -1016,16 +1041,19 @@ export function RaidPanel({
               <form action={addRisk} className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="lg:col-span-3">
-                    <Field label="Risk" required>
+                    <Field label="Risk" required
+            help="Something that might go wrong but has not yet. If it already has, log it as an issue instead.">
                       <Input name="title" required placeholder="Customer's data migration file may not arrive on time" />
                     </Field>
                   </div>
-                  <Field label="Probability" required>
+                  <Field label="Probability" required
+            help="How likely it is to happen. Multiplied by impact to score the risk.">
                     <Select name="probability" required defaultValue="MEDIUM">
                       {LEVELS.map((l) => <option key={l} value={l}>{humanize(l)}</option>)}
                     </Select>
                   </Field>
-                  <Field label="Impact" required>
+                  <Field label="Impact" required
+            help="How bad it would be if it did happen.">
                     <Select name="impact" required defaultValue="MEDIUM">
                       {LEVELS.map((l) => <option key={l} value={l}>{humanize(l)}</option>)}
                     </Select>
@@ -1036,7 +1064,8 @@ export function RaidPanel({
                       {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
                     </Select>
                   </Field>
-                  <Field label="Target date">
+                  <Field label="Target date"
+            help="When the milestone is due.">
                     <Input name="targetDate" type="date" />
                   </Field>
                   <div className="lg:col-span-3">
@@ -1045,7 +1074,8 @@ export function RaidPanel({
                     </Field>
                   </div>
                   <div className="lg:col-span-3">
-                    <Field label="Mitigation plan">
+                    <Field label="Mitigation plan"
+            help="What you are doing to stop it happening, or to soften it if it does.">
                       <Textarea name="mitigationPlan" rows={2} />
                     </Field>
                   </div>
@@ -1085,11 +1115,13 @@ export function RaidPanel({
               <form action={addIssue} className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="lg:col-span-3">
-                    <Field label="Issue" required>
+                    <Field label="Issue" required
+            help="Something that has already gone wrong and needs resolving.">
                       <Input name="title" required />
                     </Field>
                   </div>
-                  <Field label="Severity" required>
+                  <Field label="Severity" required
+            help="How much damage it is doing now.">
                     <Select name="severity" required defaultValue="MEDIUM">
                       {LEVELS.map((l) => <option key={l} value={l}>{humanize(l)}</option>)}
                     </Select>
@@ -1109,7 +1141,8 @@ export function RaidPanel({
                     </Field>
                   </div>
                   <div className="lg:col-span-3">
-                    <Field label="Resolution plan">
+                    <Field label="Resolution plan"
+            help="How you intend to fix it, and who is doing that.">
                       <Textarea name="resolutionPlan" rows={2} />
                     </Field>
                   </div>

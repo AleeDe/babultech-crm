@@ -59,7 +59,8 @@ export default async function EditActivityPage({
               </Select>
             </FormField>
 
-            <FormField label="Priority" name="priority">
+            <FormField label="Priority" name="priority"
+            help="How urgent it is, which decides where it sorts in the owner's list.">
               <Select name="priority" defaultValue={activity.priority}>
                 <option value="LOW">Low</option>
                 <option value="MEDIUM">Medium</option>
@@ -69,12 +70,14 @@ export default async function EditActivityPage({
             </FormField>
           </div>
 
-          <FormField label="Subject" name="subject" required>
+          <FormField label="Subject" name="subject" required
+            help="What this is, in one line. It is what shows in every list and reminder.">
             <Input name="subject" required defaultValue={activity.subject} />
           </FormField>
 
           <div className="grid gap-5 sm:grid-cols-2">
-            <FormField label="Owner" name="ownerUserId" required>
+            <FormField label="Owner" name="ownerUserId" required
+            help="Whose task this is. It appears in their work list.">
               <Select name="ownerUserId" required defaultValue={activity.ownerUserId}>
                 {users.map((u) => (
                   <option key={u.id} value={u.id}>{u.fullName}</option>
@@ -82,7 +85,8 @@ export default async function EditActivityPage({
               </Select>
             </FormField>
 
-            <FormField label="Contact" name="contactId">
+            <FormField label="Contact" name="contactId"
+            help="The person it concerns, if it involves someone outside.">
               <Select name="contactId" defaultValue={activity.contactId ?? ""}>
                 <option value="">None</option>
                 {contacts.map((c) => (
@@ -93,7 +97,8 @@ export default async function EditActivityPage({
               </Select>
             </FormField>
 
-            <FormField label="Campaign" name="campaignId" hint="Attributes this touch to a campaign's results.">
+            <FormField label="Campaign" name="campaignId" hint="Attributes this touch to a campaign's results."
+            help="The campaign this activity belongs to, if any.">
               <Select name="campaignId" defaultValue={activity.campaignId ? String(activity.campaignId) : ""}>
                 <option value="">None</option>
                 {/* A COMPLETED campaign is not offered for new attribution but
@@ -108,20 +113,24 @@ export default async function EditActivityPage({
               </Select>
             </FormField>
 
-            <FormField label="Starts" name="startAt">
+            <FormField label="Starts" name="startAt"
+            help="When it begins. For a meeting or call, the actual time.">
               <Input name="startAt" type="datetime-local" defaultValue={dateTimeInput(activity.startAt)} />
             </FormField>
 
-            <FormField label="Due" name="dueAt">
+            <FormField label="Due" name="dueAt"
+            help="When it has to be done. Overdue items are flagged on the work list.">
               <Input name="dueAt" type="datetime-local" defaultValue={dateTimeInput(activity.dueAt)} />
             </FormField>
           </div>
 
-          <FormField label="Location" name="location">
+          <FormField label="Location" name="location"
+            help="Where it happens — an address, or a meeting link.">
             <Input name="location" defaultValue={activity.location ?? ""} />
           </FormField>
 
-          <FormField label="Notes" name="description">
+          <FormField label="Notes" name="description"
+            help="Anything needed to prepare, or what came out of it afterwards.">
             <Textarea name="description" rows={3} defaultValue={activity.description ?? ""} />
           </FormField>
 

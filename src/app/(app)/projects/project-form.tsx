@@ -122,10 +122,12 @@ export function ProjectForm({
           <CardTitle>Engagement</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field label="Project name" required error={fieldErrors.name?.[0]}>
+          <Field label="Project name" required error={fieldErrors.name?.[0]}
+            help="What the work is called. Use the name the customer would recognise.">
             <Input name="name" required defaultValue={defaults?.name} placeholder="Acme — ERP implementation" />
           </Field>
-          <Field label="Customer" required error={fieldErrors.accountId?.[0]}>
+          <Field label="Customer" required error={fieldErrors.accountId?.[0]}
+            help="The account this work is for. Internal product work can point at your own internal account.">
             <Select
               name="accountId"
               required
@@ -140,7 +142,8 @@ export function ProjectForm({
             </Select>
           </Field>
           <Field label="Project manager" required error={fieldErrors.projectManagerId?.[0]}
-            hint="Added to the team automatically so they can book time.">
+            hint="Added to the team automatically so they can book time."
+            help="Who runs the project. They see it in their own list and approve time booked against it.">
             <Select
               name="projectManagerId"
               required
@@ -153,7 +156,8 @@ export function ProjectForm({
               ))}
             </Select>
           </Field>
-          <Field label="Sourced from deal" hint={accountId ? "Won deals for this customer." : "Pick a customer first."}>
+          <Field label="Sourced from deal" hint={accountId ? "Won deals for this customer." : "Pick a customer first."}
+            help="The opportunity this project came out of, if it was sold. Links the delivery back to the sale.">
             <Select name="opportunityId" defaultValue={defaults?.opportunityId ?? ""} disabled={!accountId}>
               <option value="">None</option>
               {accountOpportunities.map((o) => (
@@ -161,7 +165,8 @@ export function ProjectForm({
               ))}
             </Select>
           </Field>
-          <Field label="Contract">
+          <Field label="Contract"
+            help="The signed contract this work is delivered under, if there is one.">
             <Select name="contractId" defaultValue={defaults?.contractId ?? ""} disabled={!accountId}>
               <option value="">None</option>
               {accountContracts.map((c) => (
@@ -177,24 +182,28 @@ export function ProjectForm({
           <CardTitle>Schedule and status</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Status" required>
+          <Field label="Status" required
+            help="Where the project stands. Planning, active, on hold, or finished.">
             <Select name="status" required defaultValue={defaults?.status ?? "DRAFT"}>
               {STATUSES.map((s) => (
                 <option key={s} value={s}>{humanize(s)}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Health" required hint="Your judgement, not a calculation.">
+          <Field label="Health" required hint="Your judgement, not a calculation."
+            help="A traffic light for how delivery is actually going, separate from status. A project can be Active and Red at the same time — that is the point.">
             <Select name="health" required defaultValue={defaults?.health ?? "GREEN"}>
               {HEALTH.map((h) => (
                 <option key={h} value={h}>{humanize(h)}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Start date">
+          <Field label="Start date"
+            help="When work begins or began.">
             <Input name="startDate" type="date" defaultValue={dateInput(defaults?.startDate ?? null)} />
           </Field>
-          <Field label="Planned end" error={fieldErrors.plannedEndDate?.[0]}>
+          <Field label="Planned end" error={fieldErrors.plannedEndDate?.[0]}
+            help="When it is due to finish. Compared against the actual end date to spot slippage.">
             <Input name="plannedEndDate" type="date" defaultValue={dateInput(defaults?.plannedEndDate ?? null)} />
           </Field>
         </CardContent>
@@ -205,7 +214,8 @@ export function ProjectForm({
           <CardTitle>Commercials</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Billing type" required>
+          <Field label="Billing type" required
+            help="How the customer pays: a fixed price, by the hour, a retainer, or against milestones.">
             <Select
               name="billingType"
               required
@@ -217,7 +227,8 @@ export function ProjectForm({
               ))}
             </Select>
           </Field>
-          <Field label="Contract value">
+          <Field label="Contract value"
+            help="What the customer is paying in total. Leave empty for internal work that is not billed.">
             <Input
               name="contractValue"
               type="number"
@@ -226,7 +237,8 @@ export function ProjectForm({
               defaultValue={defaults?.contractValue ?? ""}
             />
           </Field>
-          <Field label="Currency" required>
+          <Field label="Currency" required
+            help="The currency the project is billed in.">
             <Select name="currencyCode" required defaultValue={defaults?.currencyCode ?? "PKR"}>
               {options.currencies.map((c) => (
                 <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
@@ -236,6 +248,7 @@ export function ProjectForm({
           <Field
             label="Approved hours"
             hint="The budget burn-down is measured against this."
+            help="The hours budgeted. Time booked beyond this shows as an overrun rather than being silently absorbed."
           >
             <Input
               name="approvedHours"

@@ -135,10 +135,12 @@ export function ContractForm({
           <CardTitle>Agreement</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field label="Contract name" required error={fieldErrors.name?.[0]}>
+          <Field label="Contract name" required error={fieldErrors.name?.[0]}
+            help="What this agreement is called. Use something the customer would recognise.">
             <Input name="name" required defaultValue={defaults?.name} placeholder="Acme — annual support" />
           </Field>
-          <Field label="Customer" required>
+          <Field label="Customer" required
+            help="The account the contract is with.">
             <Select
               name="accountId"
               required
@@ -152,17 +154,20 @@ export function ContractForm({
               ))}
             </Select>
           </Field>
-          <Field label="Contract type" required>
+          <Field label="Contract type" required
+            help="The kind of agreement — a one-off, a subscription, a support agreement.">
             <Input name="contractType" required defaultValue={defaults?.contractType} placeholder="Support / Licence / Services" />
           </Field>
-          <Field label="Owner" required>
+          <Field label="Owner" required
+            help="Who is responsible for this agreement and its renewal.">
             <Select name="ownerUserId" required defaultValue={defaults?.ownerUserId ?? currentUserId}>
               {options.users.map((u) => (
                 <option key={u.id} value={u.id}>{u.fullName}</option>
               ))}
             </Select>
           </Field>
-          <Field label="From accepted quote" hint="Fills the value and currency for you.">
+          <Field label="From accepted quote" hint="Fills the value and currency for you."
+            help="Build the contract from a quote the customer already accepted, so the values carry across rather than being retyped.">
             <Select
               name="quotationId"
               defaultValue={defaults?.quotationId ?? ""}
@@ -177,7 +182,8 @@ export function ContractForm({
               ))}
             </Select>
           </Field>
-          <Field label="Opportunity">
+          <Field label="Opportunity"
+            help="The deal that produced this contract.">
             <Select name="opportunityId" defaultValue={defaults?.opportunityId ?? ""} disabled={!accountId}>
               <option value="">None</option>
               {accountOpportunities.map((o) => (
@@ -193,17 +199,20 @@ export function ContractForm({
           <CardTitle>Term and value</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Status" required>
+          <Field label="Status" required
+            help="Where the contract stands. Only an active contract should be billed against.">
             <Select name="status" required value={status} onChange={(e) => setStatus(e.target.value)}>
               {STATUSES.map((s) => (
                 <option key={s} value={s}>{humanize(s)}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Start date" required>
+          <Field label="Start date" required
+            help="When the agreement takes effect.">
             <Input name="startDate" type="date" required defaultValue={dateInput(defaults?.startDate ?? null)} />
           </Field>
-          <Field label="End date" required error={fieldErrors.endDate?.[0]}>
+          <Field label="End date" required error={fieldErrors.endDate?.[0]}
+            help="When it expires. Drives the renewal reminder.">
             <Input name="endDate" type="date" required defaultValue={dateInput(defaults?.endDate ?? null)} />
           </Field>
           <Field
@@ -211,10 +220,12 @@ export function ContractForm({
             required={status === "ACTIVE"}
             error={fieldErrors.signedDate?.[0]}
             hint="Required before a contract can be Active."
+            help="The date it was actually signed. Often later than the start date."
           >
             <Input name="signedDate" type="date" defaultValue={dateInput(defaults?.signedDate ?? null)} />
           </Field>
-          <Field label="Contract value" required>
+          <Field label="Contract value" required
+            help="The total value over the whole term.">
             <Input
               name="contractValue"
               type="number"
@@ -225,14 +236,16 @@ export function ContractForm({
               onChange={(e) => setValue(e.target.value)}
             />
           </Field>
-          <Field label="Currency" required>
+          <Field label="Currency" required
+            help="The currency the contract is denominated in.">
             <Select name="currencyCode" required value={currency} onChange={(e) => setCurrency(e.target.value)}>
               {options.currencies.map((c) => (
                 <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Billing frequency">
+          <Field label="Billing frequency"
+            help="How often the customer is invoiced under it — monthly, quarterly, annually, or once.">
             <Select name="billingFrequency" defaultValue={defaults?.billingFrequency ?? ""}>
               <option value="">Not set</option>
               {FREQUENCIES.map((f) => (
@@ -240,7 +253,8 @@ export function ContractForm({
               ))}
             </Select>
           </Field>
-          <Field label="Renewal">
+          <Field label="Renewal"
+            help="Whether it renews automatically or has to be re-signed each term.">
             <Select name="renewalType" defaultValue={defaults?.renewalType ?? ""}>
               <option value="">Not set</option>
               {RENEWALS.map((r) => (
@@ -248,13 +262,15 @@ export function ContractForm({
               ))}
             </Select>
           </Field>
-          <Field label="Notice period (days)" hint="Drives the renewal warning on the contract.">
+          <Field label="Notice period (days)" hint="Drives the renewal warning on the contract."
+            help="How much notice either side must give to end it. Worth knowing well before the end date arrives.">
             <Input name="noticePeriodDays" type="number" min="0" defaultValue={defaults?.noticePeriodDays ?? 90} />
           </Field>
 
           {status === "TERMINATED" && (
             <div className="sm:col-span-2 lg:col-span-4">
-              <Field label="Termination reason" required error={fieldErrors.terminationReason?.[0]}>
+              <Field label="Termination reason" required error={fieldErrors.terminationReason?.[0]}
+            help="Why it ended, if it did. Filled in when a contract is cancelled, not when it is created.">
                 <Textarea name="terminationReason" rows={2} required defaultValue={defaults?.terminationReason ?? ""} />
               </Field>
             </div>

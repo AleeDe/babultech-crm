@@ -98,7 +98,8 @@ export function ConvertForm({
           </label>
 
           {useExisting ? (
-            <Field label="Existing account" required>
+            <Field label="Existing account" required
+            help="Link to a company already in the system instead of creating a duplicate. Check here first — duplicate accounts are hard to merge later.">
               <Select name="accountId" required>
                 <option value="">Select an account…</option>
                 {options.accounts.map((a) => (
@@ -131,10 +132,12 @@ export function ConvertForm({
 
           {createOpportunity && (
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Deal name">
+              <Field label="Deal name"
+            help="What the resulting opportunity is called.">
                 <Input name="opportunityName" defaultValue={`${suggestedName} — new business`} />
               </Field>
-              <Field label="Amount" hint="Defaults to the lead's estimated value.">
+              <Field label="Amount" hint="Defaults to the lead's estimated value."
+            help="What you expect the deal to be worth.">
                 <Input
                   name="amount"
                   type="number"
@@ -143,7 +146,8 @@ export function ConvertForm({
                   defaultValue={suggestedAmount ?? ""}
                 />
               </Field>
-              <Field label="Expected close date" hint="Defaults to 60 days out.">
+              <Field label="Expected close date" hint="Defaults to 60 days out."
+            help="When you expect a decision. Drives the forecast from the moment the lead converts.">
                 <Input name="expectedCloseDate" type="date" />
               </Field>
             </div>

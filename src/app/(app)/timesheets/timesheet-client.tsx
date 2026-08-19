@@ -146,7 +146,8 @@ export function TimesheetClient({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {!entry && target === "PROJECT" && (
           <>
-            <Field label="Project" required>
+            <Field label="Project" required
+            help="The project you worked on. Pick this or a support case, not both.">
               <Select
                 name="projectId"
                 required
@@ -159,7 +160,8 @@ export function TimesheetClient({
                 ))}
               </Select>
             </Field>
-            <Field label="Task" hint={projectId ? undefined : "Pick a project first."}>
+            <Field label="Task" hint={projectId ? undefined : "Pick a project first."}
+            help="The specific task within that project.">
               <Select name="projectTaskId" disabled={!projectId}>
                 <option value="">No specific task</option>
                 {tasksForProject.map((t) => (
@@ -172,7 +174,8 @@ export function TimesheetClient({
 
         {!entry && target === "CASE" && (
           <div className="sm:col-span-2">
-            <Field label="Support case" required>
+            <Field label="Support case" required
+            help="Use this instead when the time went on a customer issue rather than project work.">
               <Select name="caseId" required>
                 <option value="">Select…</option>
                 {options.cases.map((c) => (
@@ -183,7 +186,8 @@ export function TimesheetClient({
           </div>
         )}
 
-        <Field label="Date" required>
+        <Field label="Date" required
+            help="The day you did the work, not the day you are filling this in.">
           <Input
             name="workDate"
             type="date"
@@ -193,11 +197,13 @@ export function TimesheetClient({
             max={addDays(weekStart, 6)}
           />
         </Field>
-        <Field label="Hours" required>
+        <Field label="Hours" required
+            help="How long it took, in hours. Use decimals — 1.5 for an hour and a half.">
           <Input name="hours" type="number" step="0.25" min="0.25" max="24" required defaultValue={entry?.hours ?? ""} />
         </Field>
         <div className="sm:col-span-2 lg:col-span-4">
-          <Field label="What you did" required>
+          <Field label="What you did" required
+            help="A line on what the time went on. This is what an approver reads, and what a customer sees if the time is billed.">
             <Textarea name="description" rows={2} required defaultValue={entry?.description ?? ""} />
           </Field>
         </div>

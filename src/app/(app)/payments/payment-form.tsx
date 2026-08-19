@@ -110,7 +110,8 @@ export function PaymentForm({
           <CardTitle>Receipt</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Customer" required>
+          <Field label="Customer" required
+            help="Who the money came from.">
             <Select
               name="accountId"
               required
@@ -123,7 +124,8 @@ export function PaymentForm({
               ))}
             </Select>
           </Field>
-          <Field label="Amount received" required>
+          <Field label="Amount received" required
+            help="How much actually arrived, which is not always what was invoiced. Record short payments as they came in.">
             <Input
               name="amount"
               type="number"
@@ -134,7 +136,8 @@ export function PaymentForm({
               onChange={(e) => setAmount(e.target.value)}
             />
           </Field>
-          <Field label="Currency" required hint="Cross-currency application is not supported.">
+          <Field label="Currency" required hint="Cross-currency application is not supported."
+            help="The currency it was received in.">
             <Select
               name="currencyCode"
               required
@@ -146,23 +149,27 @@ export function PaymentForm({
               ))}
             </Select>
           </Field>
-          <Field label="Received on" required>
+          <Field label="Received on" required
+            help="The date the money reached the account, not the date they say they sent it.">
             <Input name="paymentDate" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
           </Field>
-          <Field label="Method" required>
+          <Field label="Method" required
+            help="How it arrived — bank transfer, cheque, cash. Helps when reconciling the statement.">
             <Select name="paymentMethod" required defaultValue="BANK">
               {METHODS.map((m) => (
                 <option key={m} value={m}>{humanize(m)}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Reference">
+          <Field label="Reference"
+            help="The bank reference or cheque number. This is what makes the payment findable on a statement later.">
             <Input name="referenceNumber" placeholder="Cheque or transfer reference" />
           </Field>
           <Field
             label="Status"
             required
             hint="Only cleared money settles an invoice or accrues commission."
+            help="Whether the payment has cleared. Uncleared payments do not count as settled."
           >
             <Select name="status" required defaultValue="CLEARED">
               <option value="CLEARED">Cleared</option>

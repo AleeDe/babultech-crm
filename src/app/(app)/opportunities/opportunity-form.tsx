@@ -197,10 +197,12 @@ export function OpportunityForm({
           <CardTitle>The deal</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field label="Deal name" required error={fieldErrors.name?.[0]}>
+          <Field label="Deal name" required error={fieldErrors.name?.[0]}
+            help="What this deal is, in a few words. Something like 'SmartPOS — 12 tills' beats the customer name repeated.">
             <Input name="name" required defaultValue={defaults?.name} placeholder="Acme — ERP rollout" />
           </Field>
-          <Field label="Customer" required error={fieldErrors.accountId?.[0]}>
+          <Field label="Customer" required error={fieldErrors.accountId?.[0]}
+            help="The account you are selling to. Everything downstream — quotes, contracts, invoices — inherits it from here.">
             <Select
               name="accountId"
               required
@@ -217,6 +219,7 @@ export function OpportunityForm({
           <Field
             label="Primary contact"
             hint={accountId ? undefined : "Pick a customer first."}
+            help="The person you are actually dealing with. They receive the quotation when you send it."
           >
             <Select
               name="primaryContactId"
@@ -229,7 +232,8 @@ export function OpportunityForm({
               ))}
             </Select>
           </Field>
-          <Field label="Owner" required error={fieldErrors.ownerUserId?.[0]}>
+          <Field label="Owner" required error={fieldErrors.ownerUserId?.[0]}
+            help="Whoever is running this deal. It appears in their pipeline and counts towards their numbers.">
             <Select name="ownerUserId" required defaultValue={defaults?.ownerUserId ?? currentUserId}>
               {options.users.map((u) => (
                 <option key={u.id} value={u.id}>{u.fullName}</option>
@@ -238,7 +242,8 @@ export function OpportunityForm({
           </Field>
 
           {!editing && (
-            <Field label="Stage" required hint="After this, the stage moves only from the deal page — the close rules live there.">
+            <Field label="Stage" required hint="After this, the stage moves only from the deal page — the close rules live there."
+            help="How far along the deal is. Moving it to Closed Won is what makes it count as revenue.">
               <Select name="stage" required defaultValue="DISCOVERY">
                 {STAGES.map((s) => (
                   <option key={s} value={s}>{humanize(s)}</option>
@@ -247,14 +252,16 @@ export function OpportunityForm({
             </Field>
           )}
 
-          <Field label="Deal type" required>
+          <Field label="Deal type" required
+            help="Whether this is new business or expansion of an existing customer. Worth splitting in reporting.">
             <Select name="opportunityType" required defaultValue={defaults?.opportunityType ?? "NEW"}>
               {TYPES.map((t) => (
                 <option key={t} value={t}>{humanize(t)}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Expected close date" required error={fieldErrors.expectedCloseDate?.[0]}>
+          <Field label="Expected close date" required error={fieldErrors.expectedCloseDate?.[0]}
+            help="When you realistically expect a decision. Drives the forecast, so an honest date is worth more than an optimistic one.">
             <Input
               name="expectedCloseDate"
               type="date"
@@ -262,7 +269,8 @@ export function OpportunityForm({
               defaultValue={defaults?.expectedCloseDate.slice(0, 10) ?? ""}
             />
           </Field>
-          <Field label="Probability %" hint="Left blank, the stage sets it.">
+          <Field label="Probability %" hint="Left blank, the stage sets it."
+            help="Your confidence this closes, as a percentage. Used to weight the pipeline — 50% on a 100,000 deal counts as 50,000.">
             <Input
               name="probabilityPercent"
               type="number"
@@ -271,7 +279,8 @@ export function OpportunityForm({
               defaultValue={defaults ? Number(defaults.probabilityPercent).toFixed(0) : ""}
             />
           </Field>
-          <Field label="Campaign">
+          <Field label="Campaign"
+            help="The marketing push behind this deal, if there was one. Links spend to revenue.">
             <Select name="campaignId" defaultValue={defaults?.campaignId ?? ""}>
               <option value="">None</option>
               {options.campaigns.map((c) => (
@@ -279,7 +288,8 @@ export function OpportunityForm({
               ))}
             </Select>
           </Field>
-          <Field label="Lead source">
+          <Field label="Lead source"
+            help="Where the deal originally came from. Carried over automatically if it started as a lead.">
             <Input name="leadSource" defaultValue={defaults?.leadSource ?? ""} />
           </Field>
         </CardContent>
@@ -290,7 +300,8 @@ export function OpportunityForm({
           <CardTitle>Value</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-3">
-          <Field label="Amount" required error={fieldErrors.amount?.[0]}>
+          <Field label="Amount" required error={fieldErrors.amount?.[0]}
+            help="What the deal is worth. If you add product lines below, this is calculated from them rather than typed.">
             <Input
               name="amount"
               type="number"
@@ -301,7 +312,8 @@ export function OpportunityForm({
               onChange={(e) => setAmount(e.target.value)}
             />
           </Field>
-          <Field label="Currency" required>
+          <Field label="Currency" required
+            help="The currency the customer will be billed in. Leave as PKR unless they are paying from abroad.">
             <Select
               name="currencyCode"
               required
@@ -349,7 +361,8 @@ export function OpportunityForm({
               return (
                 <div key={line.key} className="grid items-end gap-3 rounded-md border p-3 sm:grid-cols-12">
                   <div className="sm:col-span-4">
-                    <Field label="Product">
+                    <Field label="Product"
+            help="The item being sold on this line, priced from the catalogue.">
                       <Select
                         value={line.productId}
                         onChange={(e) => onPickProduct(line.key, e.target.value)}
@@ -362,7 +375,8 @@ export function OpportunityForm({
                     </Field>
                   </div>
                   <div className="sm:col-span-1">
-                    <Field label="Qty">
+                    <Field label="Qty"
+            help="How many units of it.">
                       <Input
                         type="number"
                         step="0.01"
@@ -384,7 +398,8 @@ export function OpportunityForm({
                     </Field>
                   </div>
                   <div className="sm:col-span-1">
-                    <Field label="Disc %">
+                    <Field label="Disc %"
+            help="Discount on this line as a percentage. The deal total updates as you type.">
                       <Input
                         type="number"
                         step="0.01"
@@ -396,7 +411,8 @@ export function OpportunityForm({
                     </Field>
                   </div>
                   <div className="sm:col-span-2">
-                    <Field label="Tax">
+                    <Field label="Tax"
+            help="The tax rate applied to this line.">
                       <Select
                         value={line.taxRateId}
                         onChange={(e) => updateRow(line.key, { taxRateId: e.target.value })}
@@ -434,10 +450,12 @@ export function OpportunityForm({
           <CardTitle>Notes</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Field label="Next step">
+          <Field label="Next step"
+            help="The one thing that has to happen next. Read it back in a week and you will know if the deal has stalled.">
             <Input name="nextStep" defaultValue={defaults?.nextStep ?? ""} placeholder="Send revised pricing by Friday" />
           </Field>
-          <Field label="Description">
+          <Field label="Description"
+            help="Background a colleague would need if they picked this up tomorrow.">
             <Textarea name="description" rows={4} defaultValue={defaults?.description ?? ""} />
           </Field>
         </CardContent>

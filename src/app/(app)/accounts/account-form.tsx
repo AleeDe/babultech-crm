@@ -109,24 +109,28 @@ export function AccountForm({
           <CardTitle>Organisation</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field label="Account name" required error={fieldErrors.name?.[0]}>
+          <Field label="Account name" required error={fieldErrors.name?.[0]}
+            help="The organisation's registered business name, as it should appear on a quotation or invoice.">
             <Input name="name" required defaultValue={defaults?.name} placeholder="Acme (Pvt) Ltd" />
           </Field>
-          <Field label="Account type" required hint="Setting this to Partner is what allows a partner record against it.">
+          <Field label="Account type" required hint="Setting this to Partner is what allows a partner record against it."
+            help="Whether this is a prospect you are selling to, an existing customer, a partner or a supplier. It decides where the account shows up.">
             <Select name="accountType" required defaultValue={defaults?.accountType ?? "PROSPECT"}>
               {ACCOUNT_TYPES.map((t) => (
                 <option key={t} value={t}>{humanize(t)}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Owner" required error={fieldErrors.ownerUserId?.[0]}>
+          <Field label="Owner" required error={fieldErrors.ownerUserId?.[0]}
+            help="Whoever holds this relationship. They see the account in their own list, and it counts towards their pipeline.">
             <Select name="ownerUserId" required defaultValue={defaults?.ownerUserId ?? currentUserId}>
               {options.users.map((u) => (
                 <option key={u.id} value={u.id}>{u.fullName}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Parent account" hint="For subsidiaries and group companies.">
+          <Field label="Parent account" hint="For subsidiaries and group companies."
+            help="Set this when the account is a subsidiary or branch of another one already in the system. Leave it empty otherwise.">
             <Select name="parentAccountId" defaultValue={defaults?.parentAccountId ?? ""}>
               <option value="">None</option>
               {options.accounts
@@ -136,16 +140,20 @@ export function AccountForm({
                 ))}
             </Select>
           </Field>
-          <Field label="Industry">
+          <Field label="Industry"
+            help="The sector they operate in. Used for reporting and for finding similar customers.">
             <Input name="industry" defaultValue={defaults?.industry ?? ""} placeholder="Manufacturing" />
           </Field>
-          <Field label="Main phone">
+          <Field label="Main phone"
+            help="The company's general number, not a personal mobile. Contacts hold individual numbers.">
             <Input name="mainPhone" defaultValue={defaults?.mainPhone ?? ""} placeholder="+92 42 1234567" />
           </Field>
-          <Field label="Website">
+          <Field label="Website"
+            help="Their public site. Include https:// so the link works from the record.">
             <Input name="website" defaultValue={defaults?.website ?? ""} placeholder="https://" />
           </Field>
-          <Field label="Tax number / NTN">
+          <Field label="Tax number / NTN"
+            help="The National Tax Number. It is required on their invoices, so it is worth capturing before you raise the first one.">
             <Input name="taxNumberNtn" defaultValue={defaults?.taxNumberNtn ?? ""} />
           </Field>
         </CardContent>
@@ -156,7 +164,8 @@ export function AccountForm({
           <CardTitle>Customer standing</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Customer status" hint="Only meaningful once they are a customer.">
+          <Field label="Customer status" hint="Only meaningful once they are a customer."
+            help="For customers only: how healthy the relationship is — onboarding, active, at risk, or gone.">
             <Select name="customerStatus" defaultValue={defaults?.customerStatus ?? ""}>
               <option value="">Not set</option>
               {CUSTOMER_STATUSES.map((s) => (
@@ -164,7 +173,8 @@ export function AccountForm({
               ))}
             </Select>
           </Field>
-          <Field label="Health">
+          <Field label="Health"
+            help="A traffic light for how the relationship is going. Amber and red are worth a conversation well before renewal.">
             <Select name="customerHealth" defaultValue={defaults?.customerHealth ?? ""}>
               <option value="">Not set</option>
               {HEALTH.map((h) => (
@@ -172,7 +182,8 @@ export function AccountForm({
               ))}
             </Select>
           </Field>
-          <Field label="Credit limit">
+          <Field label="Credit limit"
+            help="The most you are willing to have outstanding with them at any one time.">
             <Input
               name="creditLimit"
               type="number"
@@ -181,7 +192,8 @@ export function AccountForm({
               defaultValue={defaults?.creditLimit ?? ""}
             />
           </Field>
-          <Field label="Payment terms (days)">
+          <Field label="Payment terms (days)"
+            help="How long after invoicing they are allowed to pay. 30 is the usual default.">
             <Input
               name="paymentTermsDays"
               type="number"
@@ -198,22 +210,28 @@ export function AccountForm({
           <CardTitle>Billing address</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field label="Address line 1">
+          <Field label="Address line 1"
+            help="Street address. This is what prints on their invoices, so use the billing address rather than a site office.">
             <Input name="line1" defaultValue={address.line1 ?? ""} />
           </Field>
-          <Field label="Address line 2">
+          <Field label="Address line 2"
+            help="Suite, floor or building name, if there is one.">
             <Input name="line2" defaultValue={address.line2 ?? ""} />
           </Field>
-          <Field label="City">
+          <Field label="City"
+            help="City for the billing address above.">
             <Input name="city" defaultValue={address.city ?? ""} />
           </Field>
-          <Field label="Province / state">
+          <Field label="Province / state"
+            help="Province or state. Sindh, Punjab and so on for Pakistani customers.">
             <Input name="state" defaultValue={address.state ?? ""} />
           </Field>
-          <Field label="Postal code">
+          <Field label="Postal code"
+            help="Postal or ZIP code for the billing address.">
             <Input name="postalCode" defaultValue={address.postalCode ?? ""} />
           </Field>
-          <Field label="Country">
+          <Field label="Country"
+            help="Country for the billing address. Affects nothing automatically, but appears on documents.">
             <Input name="country" defaultValue={address.country ?? "Pakistan"} />
           </Field>
         </CardContent>

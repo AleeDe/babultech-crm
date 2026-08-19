@@ -184,7 +184,8 @@ export function QuoteForm({
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="lg:col-span-2">
-            <Field label="Opportunity" required error={fieldErrors.opportunityId?.[0]}>
+            <Field label="Opportunity" required error={fieldErrors.opportunityId?.[0]}
+            help="The deal this quote is for. It carries over the customer and contact.">
               <Select
                 name="opportunityId"
                 required
@@ -205,7 +206,8 @@ export function QuoteForm({
               </Select>
             </Field>
           </div>
-          <Field label="Contact" hint={opportunityId ? undefined : "Pick a deal first."}>
+          <Field label="Contact" hint={opportunityId ? undefined : "Pick a deal first."}
+            help="Who receives the quotation when you send it.">
             <Select name="contactId" defaultValue={defaults?.contactId ?? ""} disabled={!opportunityId}>
               <option value="">None</option>
               {contactsForAccount.map((c) => (
@@ -213,14 +215,16 @@ export function QuoteForm({
               ))}
             </Select>
           </Field>
-          <Field label="Currency" required>
+          <Field label="Currency" required
+            help="The currency you are quoting in.">
             <Select name="currencyCode" required value={currency} onChange={(e) => setCurrency(e.target.value)}>
               {options.currencies.map((c) => (
                 <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Quote date" required>
+          <Field label="Quote date" required
+            help="The date on the quotation.">
             <Input
               name="quoteDate"
               type="date"
@@ -228,7 +232,8 @@ export function QuoteForm({
               defaultValue={dateInput(defaults?.quoteDate ?? null) || inDays(0)}
             />
           </Field>
-          <Field label="Valid until" required error={fieldErrors.expiryDate?.[0]}>
+          <Field label="Valid until" required error={fieldErrors.expiryDate?.[0]}
+            help="How long the prices hold. After this the quote reads as expired, which is what stops old pricing being accepted months later.">
             <Input
               name="expiryDate"
               type="date"
@@ -237,7 +242,8 @@ export function QuoteForm({
             />
           </Field>
           <div className="lg:col-span-2">
-            <Field label="Payment terms">
+            <Field label="Payment terms"
+            help="The terms the customer is being offered, shown on the document.">
               <Input
                 name="paymentTerms"
                 defaultValue={defaults?.paymentTerms ?? ""}
@@ -278,10 +284,12 @@ export function QuoteForm({
           <CardTitle>Terms and notes</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Field label="Terms and conditions">
+          <Field label="Terms and conditions"
+            help="The conditions printed on the quotation. Set a default in Settings so this does not get retyped.">
             <Textarea name="termsAndConditions" rows={4} defaultValue={defaults?.termsAndConditions ?? ""} />
           </Field>
-          <Field label="Internal notes" hint="Not printed on the customer's copy.">
+          <Field label="Internal notes" hint="Not printed on the customer's copy."
+            help="Notes for your own side only. These are never shown to the customer.">
             <Textarea name="notes" rows={3} defaultValue={defaults?.notes ?? ""} />
           </Field>
         </CardContent>

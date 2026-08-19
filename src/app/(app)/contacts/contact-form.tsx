@@ -107,10 +107,12 @@ export function ContactForm({
           <CardTitle>Person</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field label="First name" required error={fieldErrors.firstName?.[0]}>
+          <Field label="First name" required error={fieldErrors.firstName?.[0]}
+            help="Their given name.">
             <Input name="firstName" required defaultValue={defaults?.firstName} />
           </Field>
-          <Field label="Last name" required error={fieldErrors.lastName?.[0]}>
+          <Field label="Last name" required error={fieldErrors.lastName?.[0]}
+            help="Their family name.">
             <Input name="lastName" required defaultValue={defaults?.lastName} />
           </Field>
 
@@ -118,6 +120,7 @@ export function ContactForm({
             <Field
               label="Company"
               hint="Leave blank for an independent person — a contact does not need an account."
+            help="The account they work for. A contact always belongs to one."
             >
               <Select name="accountId" defaultValue={defaults?.accountId ?? ""}>
                 <option value="">Independent — no company</option>
@@ -128,13 +131,16 @@ export function ContactForm({
             </Field>
           )}
 
-          <Field label="Job title">
+          <Field label="Job title"
+            help="Their role, which is your best guide to how much say they have.">
             <Input name="jobTitle" defaultValue={defaults?.jobTitle ?? ""} />
           </Field>
-          <Field label="Department">
+          <Field label="Department"
+            help="Which part of the business they sit in.">
             <Input name="department" defaultValue={defaults?.department ?? ""} />
           </Field>
-          <Field label="Buying role" hint="Decision maker, influencer, technical evaluator…">
+          <Field label="Buying role" hint="Decision maker, influencer, technical evaluator…"
+            help="Their part in the purchase — decision maker, influencer, the person who signs. Worth being honest about.">
             <Input name="contactRole" defaultValue={defaults?.contactRole ?? ""} />
           </Field>
         </CardContent>
@@ -145,19 +151,24 @@ export function ContactForm({
           <CardTitle>Reaching them</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field label="Email" error={fieldErrors.email?.[0]}>
+          <Field label="Email" error={fieldErrors.email?.[0]}
+            help="Their work email. Quotations and invoices go here.">
             <Input name="email" type="email" defaultValue={defaults?.email ?? ""} />
           </Field>
-          <Field label="Phone">
+          <Field label="Phone"
+            help="Their desk or landline number.">
             <Input name="phone" defaultValue={defaults?.phone ?? ""} />
           </Field>
-          <Field label="Mobile">
+          <Field label="Mobile"
+            help="Their direct mobile.">
             <Input name="mobile" defaultValue={defaults?.mobile ?? ""} placeholder="+92 300 1234567" />
           </Field>
-          <Field label="WhatsApp">
+          <Field label="WhatsApp"
+            help="Only if it differs from the mobile above.">
             <Input name="whatsapp" defaultValue={defaults?.whatsapp ?? ""} />
           </Field>
-          <Field label="Preferred channel">
+          <Field label="Preferred channel"
+            help="How they would rather be contacted. Following it gets faster replies.">
             <Select name="preferredChannel" defaultValue={defaults?.preferredChannel ?? ""}>
               <option value="">Not stated</option>
               {CHANNELS.map((c) => (

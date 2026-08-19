@@ -195,7 +195,8 @@ export function PartnerPanel({
 
         {adding && (
           <form action={onAdd} className="grid gap-4 rounded-md border bg-muted/30 p-4 sm:grid-cols-2">
-            <Field label="Partner" required>
+            <Field label="Partner" required
+            help="The partner involved in this deal.">
               <Select name="partnerId" required>
                 <option value="">Select a partner…</option>
                 {selectable.map((p) => (
@@ -205,7 +206,8 @@ export function PartnerPanel({
                 ))}
               </Select>
             </Field>
-            <Field label="Role" required>
+            <Field label="Role" required
+            help="What they are doing here — who brought it in, who is delivering it, who resells it.">
               <Select name="role" required defaultValue="SOURCED">
                 {["SOURCED", "INFLUENCED", "RESOLD", "DELIVERED"].map((r) => (
                   <option key={r} value={r}>{humanize(r)}</option>
@@ -216,6 +218,7 @@ export function PartnerPanel({
               label="Revenue share %"
               required
               hint={`${formatPercent(remainingShare, 0)} unallocated on this deal.`}
+            help="The share of this deal's value that is theirs."
             >
               <Input
                 name="revenueSharePercent"
@@ -227,10 +230,12 @@ export function PartnerPanel({
                 required
               />
             </Field>
-            <Field label="Commission % override" hint="Leave blank to use the partner's plan or default rate.">
+            <Field label="Commission % override" hint="Leave blank to use the partner's plan or default rate."
+            help="Use only when this deal pays a different rate from the partner's usual plan.">
               <Input name="commissionPercentOverride" type="number" step="0.01" min="0" max="100" />
             </Field>
-            <Field label="Deal registration expires" hint="After this date the claim lapses and no commission accrues.">
+            <Field label="Deal registration expires" hint="After this date the claim lapses and no commission accrues."
+            help="How long this partner keeps exclusive claim to the deal. After this it is open again.">
               <Input name="registrationExpiresAt" type="date" />
             </Field>
             <div className="flex items-end gap-2">
@@ -299,7 +304,8 @@ export function StageControl({
         {success && <Alert tone="success">{success}</Alert>}
 
         <form action={onChange} className="space-y-3">
-          <Field label="Stage">
+          <Field label="Stage"
+            help="Where the deal stands from the partner's point of view.">
             <Select name="stage" value={stage} onChange={(e) => setStage(e.target.value)}>
               {[
                 "DISCOVERY", "QUALIFICATION", "REQUIREMENTS", "SOLUTION_PROPOSED",
@@ -313,10 +319,12 @@ export function StageControl({
 
           {stage === "CLOSED_LOST" && (
             <>
-              <Field label="Loss reason" required hint="Required before a deal can be marked lost.">
+              <Field label="Loss reason" required hint="Required before a deal can be marked lost."
+            help="Why it was lost. The single most useful field in the system when you read them all together.">
                 <Input name="lossReason" required placeholder="Price, timing, went with a competitor…" />
               </Field>
-              <Field label="Competitor">
+              <Field label="Competitor"
+            help="Who else is bidding, if you know.">
                 <Input name="competitorName" />
               </Field>
             </>

@@ -4,6 +4,7 @@ import { Slot } from "@radix-ui/react-slot";
 import { Inbox, Info, AlertTriangle, AlertCircle, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { FieldHelp } from "@/components/field-help";
 import { priorityClass, type ColumnPriority } from "@/components/responsive-table";
 
 // ---------------------------------------------------------------------------
@@ -194,21 +195,31 @@ export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLab
 export function Field({
   label,
   hint,
+  help,
   error,
   required,
   children,
 }: {
   label: string;
   hint?: string;
+  /**
+   * Longer explanation, shown on hover/focus behind a marker beside the label.
+   *
+   * Use `hint` for something short that should always be visible, and `help`
+   * for the sentence that answers "what am I supposed to put here?" — keeping
+   * it out of the way stops every form reading like a manual.
+   */
+  help?: string;
   error?: string;
   required?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div className="space-y-1.5">
-      <Label>
+      <Label className="inline-flex items-center">
         {label}
         {required && <span className="ml-0.5 text-destructive">*</span>}
+        {help && <FieldHelp text={help} />}
       </Label>
       {children}
       {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
@@ -317,12 +328,15 @@ export function StatTile({
   sublabel,
   tone = "neutral",
   href,
+  icon,
 }: {
   label: string;
   value: string;
   sublabel?: string;
   tone?: "neutral" | "success" | "warning" | "danger" | "info";
   href?: string;
+  /** Decorative only — the label already says what the tile is. */
+  icon?: React.ReactNode;
 }) {
   const toneClass = {
     neutral: "text-foreground",
@@ -350,7 +364,10 @@ export function StatTile({
       )}
     >
       <span className={cn("absolute inset-y-0 left-0 w-1", accentClass)} aria-hidden />
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="flex items-center gap-1.5 text-muted-foreground">
+        {icon && <span aria-hidden className={toneClass}>{icon}</span>}
+        <p className="text-xs font-medium uppercase tracking-wide">{label}</p>
+      </div>
       <p className={cn("mt-1.5 text-2xl font-semibold tabular tracking-tight", toneClass)}>
         {value}
       </p>

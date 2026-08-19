@@ -178,7 +178,8 @@ export function InvoiceForm({
           <CardTitle>Header</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Customer" required error={fieldErrors.accountId?.[0]}>
+          <Field label="Customer" required error={fieldErrors.accountId?.[0]}
+            help="The account being billed.">
             <Select
               name="accountId"
               required
@@ -192,7 +193,8 @@ export function InvoiceForm({
               ))}
             </Select>
           </Field>
-          <Field label="Bill to" hint={accountId ? undefined : "Pick a customer first."}>
+          <Field label="Bill to" hint={accountId ? undefined : "Pick a customer first."}
+            help="The contact who receives the invoice. Usually accounts payable rather than the person you sold to.">
             <Select name="contactId" defaultValue={defaults?.contactId ?? ""} disabled={!accountId}>
               <option value="">None</option>
               {accountContacts.map((c) => (
@@ -200,20 +202,23 @@ export function InvoiceForm({
               ))}
             </Select>
           </Field>
-          <Field label="Currency" required>
+          <Field label="Currency" required
+            help="The currency being billed in. It must match the customer's expectation or the payment will not reconcile.">
             <Select name="currencyCode" required value={currency} onChange={(e) => setCurrency(e.target.value)}>
               {options.currencies.map((c) => (
                 <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Payment terms (days)">
+          <Field label="Payment terms (days)"
+            help="How many days the customer has to pay. Sets the due date above.">
             <Input name="paymentTermsDays" type="number" min="0" defaultValue={defaults?.paymentTermsDays ?? 30} />
           </Field>
 
           <Field
             label="Project"
             hint="Links the invoice to delivery — and is how partner commission finds the deal."
+            help="The project this invoice covers, if it is project work. Lets you see billed against budget."
           >
             <Select
               name="projectId"
@@ -227,7 +232,8 @@ export function InvoiceForm({
               ))}
             </Select>
           </Field>
-          <Field label="Contract">
+          <Field label="Contract"
+            help="The contract being invoiced under, for recurring or milestone billing.">
             <Select name="contractId" defaultValue={defaults?.contractId ?? ""} disabled={!accountId}>
               <option value="">None</option>
               {accountContracts.map((c) => (
@@ -238,6 +244,7 @@ export function InvoiceForm({
           <Field
             label="Milestone"
             hint={projectId ? "Stamped as invoiced on send, so it cannot be billed twice." : "Pick a project first."}
+            help="The specific milestone being claimed, when billing against a plan rather than a period."
           >
             <Select name="milestoneId" defaultValue={defaults?.milestoneId ?? ""} disabled={!projectId}>
               <option value="">None</option>
@@ -248,7 +255,8 @@ export function InvoiceForm({
           </Field>
           <div />
 
-          <Field label="Invoice date" required>
+          <Field label="Invoice date" required
+            help="The date the invoice is issued. Payment terms count from here.">
             <Input
               name="invoiceDate"
               type="date"
@@ -256,7 +264,8 @@ export function InvoiceForm({
               defaultValue={dateInput(defaults?.invoiceDate ?? null) || inDays(0)}
             />
           </Field>
-          <Field label="Due date" required error={fieldErrors.dueDate?.[0]}>
+          <Field label="Due date" required error={fieldErrors.dueDate?.[0]}
+            help="When payment is expected. Calculated from the terms below, but you can override it.">
             <Input
               name="dueDate"
               type="date"

@@ -132,22 +132,28 @@ export function LeadForm({
           <Field label="Last name" required error={fieldErrors.lastName?.[0]}>
             <Input name="lastName" required defaultValue={defaults?.lastName} />
           </Field>
-          <Field label="Company" hint="Becomes the account name on conversion.">
+          <Field label="Company" hint="Becomes the account name on conversion."
+            help="The organisation they work for. On conversion this becomes the account name, so use the registered business name rather than a shorthand.">
             <Input name="companyName" defaultValue={defaults?.companyName ?? ""} />
           </Field>
-          <Field label="Job title">
+          <Field label="Job title"
+            help="Their role. Useful for judging whether you are talking to someone who can actually sign.">
             <Input name="jobTitle" defaultValue={defaults?.jobTitle ?? ""} />
           </Field>
-          <Field label="Email" error={fieldErrors.email?.[0]}>
+          <Field label="Email" error={fieldErrors.email?.[0]}
+            help="Their work email. Used for follow-ups and carried across when the lead converts.">
             <Input name="email" type="email" defaultValue={defaults?.email ?? ""} />
           </Field>
-          <Field label="Phone">
+          <Field label="Phone"
+            help="A direct line. Include the country code if they are outside Pakistan.">
             <Input name="phone" defaultValue={defaults?.phone ?? ""} />
           </Field>
-          <Field label="WhatsApp">
+          <Field label="WhatsApp"
+            help="Only if it differs from the phone number above. Many customers reply here faster than to email.">
             <Input name="whatsapp" defaultValue={defaults?.whatsapp ?? ""} />
           </Field>
-          <Field label="Industry">
+          <Field label="Industry"
+            help="The sector they operate in. Used for reporting on where your leads come from.">
             <Input name="industry" defaultValue={defaults?.industry ?? ""} />
           </Field>
         </CardContent>
@@ -158,7 +164,8 @@ export function LeadForm({
           <CardTitle>Where it came from</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Lead source">
+          <Field label="Lead source"
+            help="How they first reached you — a referral, the website, an event. This is what tells you which channels are worth the spend.">
             <Select name="leadSource" defaultValue={defaults?.leadSource ?? ""}>
               <option value="">Not stated</option>
               {SOURCES.map((s) => (
@@ -166,7 +173,8 @@ export function LeadForm({
               ))}
             </Select>
           </Field>
-          <Field label="Campaign">
+          <Field label="Campaign"
+            help="The marketing push that produced this lead, if there was one. Links the cost of the campaign to what it returned.">
             <Select name="campaignId" defaultValue={defaults?.campaignId ?? ""}>
               <option value="">None</option>
               {options.campaigns.map((c) => (
@@ -195,7 +203,8 @@ export function LeadForm({
           <CardTitle>Qualification</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Owner" required error={fieldErrors.ownerUserId?.[0]}>
+          <Field label="Owner" required error={fieldErrors.ownerUserId?.[0]}
+            help="The person responsible for chasing this lead. They see it in their own list, and nobody else will act on it.">
             <Select name="ownerUserId" required defaultValue={defaults?.ownerUserId ?? currentUserId}>
               {options.users.map((u) => (
                 <option key={u.id} value={u.id}>{u.fullName}</option>
@@ -204,7 +213,8 @@ export function LeadForm({
           </Field>
 
           {editing && (
-            <Field label="Status" required>
+            <Field label="Status" required
+            help="How far along the conversation is. Move it to Qualified once you believe there is a real deal here.">
               <Select
                 name="status"
                 required
@@ -218,7 +228,8 @@ export function LeadForm({
             </Field>
           )}
 
-          <Field label="Rating">
+          <Field label="Rating"
+            help="Your own judgement of how promising this is. Hot, Warm and Cold are a rough sort, not a formula.">
             <Select name="rating" defaultValue={defaults?.rating ?? ""}>
               <option value="">Not rated</option>
               {RATINGS.map((r) => (
@@ -226,7 +237,8 @@ export function LeadForm({
               ))}
             </Select>
           </Field>
-          <Field label="Estimated value">
+          <Field label="Estimated value"
+            help="Roughly what the deal is worth if it lands. A guess is fine — it is for sizing the pipeline, not forecasting.">
             <Input
               name="estimatedValue"
               type="number"
@@ -235,7 +247,8 @@ export function LeadForm({
               defaultValue={defaults?.estimatedValue ?? ""}
             />
           </Field>
-          <Field label="Next follow-up">
+          <Field label="Next follow-up"
+            help="When you intend to make contact again. It appears on your work list on that date so the lead does not go quiet.">
             <Input
               name="nextFollowUpAt"
               type="datetime-local"

@@ -27,21 +27,25 @@ export default async function EditProductPage({
       <div className="max-w-2xl">
         <RecordForm action={save} redirectTo={`/products/${id}`} submitLabel="Save changes">
           <div className="grid gap-5 sm:grid-cols-2">
-            <FormField label="Code" name="productCode" required>
+            <FormField label="Code" name="productCode" required
+            help="Your internal SKU or reference. Must be unique, and it is what people search by.">
               <Input name="productCode" required defaultValue={product.productCode} />
             </FormField>
 
-            <FormField label="Category" name="category">
+            <FormField label="Category" name="category"
+            help="How it groups in the catalogue and in revenue reporting.">
               <Input name="category" defaultValue={product.category ?? ""} />
             </FormField>
           </div>
 
-          <FormField label="Name" name="name" required>
+          <FormField label="Name" name="name" required
+            help="What the product or service is called on a quotation.">
             <Input name="name" required defaultValue={product.name} />
           </FormField>
 
           <div className="grid gap-5 sm:grid-cols-2">
-            <FormField label="Type" name="productType" required>
+            <FormField label="Type" name="productType" required
+            help="Whether this is a physical product, a service, a licence or a subscription.">
               <Select name="productType" required defaultValue={product.productType}>
                 <option value="PRODUCT">Product</option>
                 <option value="SERVICE">Service</option>
@@ -49,7 +53,8 @@ export default async function EditProductPage({
               </Select>
             </FormField>
 
-            <FormField label="Billing" name="billingType" required>
+            <FormField label="Billing" name="billingType" required
+            help="Whether it is charged once or recurs.">
               <Select name="billingType" required defaultValue={product.billingType}>
                 <option value="FIXED">Fixed</option>
                 <option value="HOURLY">Hourly</option>
@@ -59,7 +64,8 @@ export default async function EditProductPage({
               </Select>
             </FormField>
 
-            <FormField label="Standard price" name="standardPrice">
+            <FormField label="Standard price" name="standardPrice"
+            help="The normal selling price before any discount. Quote lines start from this.">
               <Input
                 name="standardPrice"
                 type="number"
@@ -69,7 +75,8 @@ export default async function EditProductPage({
               />
             </FormField>
 
-            <FormField label="Standard cost" name="standardCost" hint="What it costs you. Used for margin.">
+            <FormField label="Standard cost" name="standardCost" hint="What it costs you. Used for margin."
+            help="What it costs you. Used to work out margin, and never shown to a customer.">
               <Input
                 name="standardCost"
                 type="number"
@@ -79,11 +86,13 @@ export default async function EditProductPage({
               />
             </FormField>
 
-            <FormField label="Unit" name="unitOfMeasure">
+            <FormField label="Unit" name="unitOfMeasure"
+            help="What you sell it by — each, per hour, per user, per month.">
               <Input name="unitOfMeasure" defaultValue={product.unitOfMeasure ?? ""} />
             </FormField>
 
-            <FormField label="Default tax rate" name="defaultTaxRateId">
+            <FormField label="Default tax rate" name="defaultTaxRateId"
+            help="The tax applied by default on quotes and invoices. Can still be changed per line.">
               <Select name="defaultTaxRateId" defaultValue={product.defaultTaxRateId ?? ""}>
                 <option value="">None</option>
                 {taxRates.map((t) => (
@@ -94,7 +103,8 @@ export default async function EditProductPage({
               </Select>
             </FormField>
 
-            <FormField label="Commission %" name="commissionPercent" hint="What a partner earns on it.">
+            <FormField label="Commission %" name="commissionPercent" hint="What a partner earns on it."
+            help="The commission rate earned on this product, when it differs from the plan's default.">
               <Input
                 name="commissionPercent"
                 type="number"
@@ -106,7 +116,8 @@ export default async function EditProductPage({
             </FormField>
           </div>
 
-          <FormField label="Description" name="description">
+          <FormField label="Description" name="description"
+            help="What it actually is. This can appear on the quotation, so write it for the customer.">
             <Textarea name="description" rows={3} defaultValue={product.description ?? ""} />
           </FormField>
 

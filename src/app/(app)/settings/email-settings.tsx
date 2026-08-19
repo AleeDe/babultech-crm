@@ -168,16 +168,20 @@ export function EmailSettingsPanel({ values }: { values: EmailSettingsValues }) 
           <div>
             <h3 className="mb-3 text-sm font-semibold">Identity</h3>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Company name" required>
+              <Field label="Company name" required
+            help="Your business name as it appears at the top of every email sent to a customer.">
                 <Input name="companyName" defaultValue={values.companyName} required />
               </Field>
-              <Field label="Website">
+              <Field label="Website"
+            help="Your site. Shown in the email footer.">
                 <Input name="websiteUrl" defaultValue={values.websiteUrl ?? ""} placeholder="https://www.babultech.com" />
               </Field>
-              <Field label="Support email">
+              <Field label="Support email"
+            help="The address customers should reply to for help. Appears in the footer of every email.">
                 <Input name="supportEmail" type="email" defaultValue={values.supportEmail ?? ""} />
               </Field>
-              <Field label="Support phone">
+              <Field label="Support phone"
+            help="The number shown in the email footer.">
                 <Input name="supportPhone" defaultValue={values.supportPhone ?? ""} />
               </Field>
             </div>
@@ -217,7 +221,8 @@ export function EmailSettingsPanel({ values }: { values: EmailSettingsValues }) 
                 </p>
               </div>
 
-              <Field label="Or paste a URL">
+              <Field label="Or paste a URL"
+            help="Link to a logo already hosted somewhere, instead of uploading one. It must be a PNG or JPEG — email clients block SVG.">
                 <Input name="logoUrl" defaultValue={values.logoUrl ?? ""} placeholder="https://…/logo.png" />
               </Field>
 
@@ -232,7 +237,8 @@ export function EmailSettingsPanel({ values }: { values: EmailSettingsValues }) 
             </div>
 
             <div className="mt-4">
-              <Field label="Address line">
+              <Field label="Address line"
+            help="Your business address, shown in the footer.">
                 <Input name="addressLine" defaultValue={values.addressLine ?? ""} placeholder="Office 4, Arfa Tower, Lahore" />
               </Field>
             </div>
@@ -270,19 +276,24 @@ export function EmailSettingsPanel({ values }: { values: EmailSettingsValues }) 
             </div>
 
             <div className="space-y-4">
-              <Field label="Quotation subject">
+              <Field label="Quotation subject"
+            help="The default subject line for quotation emails. {{documentNumber}} and {{companyName}} are filled in automatically.">
                 <Input name="quotationSubject" defaultValue={values.quotationSubject} required />
               </Field>
-              <Field label="Quotation message">
+              <Field label="Quotation message"
+            help="The default body of a quotation email. Whoever sends it can still edit before sending.">
                 <Textarea name="quotationBody" rows={5} defaultValue={values.quotationBody} required />
               </Field>
-              <Field label="Invoice subject">
+              <Field label="Invoice subject"
+            help="The default subject line for invoice emails, with the same placeholders available.">
                 <Input name="invoiceSubject" defaultValue={values.invoiceSubject} required />
               </Field>
-              <Field label="Invoice message">
+              <Field label="Invoice message"
+            help="The default body of an invoice email.">
                 <Textarea name="invoiceBody" rows={5} defaultValue={values.invoiceBody} required />
               </Field>
-              <Field label="Footer">
+              <Field label="Footer"
+            help="The small print at the bottom of every outgoing email — confidentiality wording, and anything else you are required to include.">
                 <Textarea name="emailFooter" rows={2} defaultValue={values.emailFooter} />
               </Field>
             </div>

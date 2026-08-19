@@ -116,7 +116,8 @@ export function BillForm({ options }: { options: BillFormOptions }) {
           {error && <Alert tone="danger">{error}</Alert>}
 
           <div className="grid gap-5 sm:grid-cols-2">
-            <Field label="Supplier" required>
+            <Field label="Supplier" required
+            help="Who is billing you.">
               <Select name="vendorAccountId" required defaultValue="">
                 <option value="" disabled>
                   Choose a supplier…
@@ -129,19 +130,23 @@ export function BillForm({ options }: { options: BillFormOptions }) {
               </Select>
             </Field>
 
-            <Field label="Their invoice number">
+            <Field label="Their invoice number"
+            help="The reference the supplier put on their own invoice. Needed to match payments to their records.">
               <Input name="vendorInvoiceNumber" placeholder="As printed on their invoice" />
             </Field>
 
-            <Field label="Bill date" required>
+            <Field label="Bill date" required
+            help="The date on the supplier's invoice.">
               <Input name="billDate" type="date" required defaultValue={today} />
             </Field>
 
-            <Field label="Due date" required>
+            <Field label="Due date" required
+            help="When you have to pay by. Drives the payables list and what shows as overdue.">
               <Input name="dueDate" type="date" required defaultValue={inThirtyDays} />
             </Field>
 
-            <Field label="Currency">
+            <Field label="Currency"
+            help="The currency the supplier billed in.">
               <Select name="currencyCode" defaultValue="PKR">
                 {options.currencies.map((c) => (
                   <option key={c.code} value={c.code}>
@@ -151,7 +156,8 @@ export function BillForm({ options }: { options: BillFormOptions }) {
               </Select>
             </Field>
 
-            <Field label="Project">
+            <Field label="Project"
+            help="The project the cost belongs to, if it was incurred for one.">
               <Select name="projectId" defaultValue="">
                 <option value="">None</option>
                 {options.projects.map((p) => (
@@ -248,7 +254,8 @@ export function BillForm({ options }: { options: BillFormOptions }) {
             </div>
           </div>
 
-          <Field label="Notes">
+          <Field label="Notes"
+            help="Anything worth knowing when this comes up for payment.">
             <Textarea name="notes" rows={2} placeholder="Anything worth recording about this bill." />
           </Field>
 

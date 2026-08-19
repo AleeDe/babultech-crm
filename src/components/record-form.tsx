@@ -90,19 +90,22 @@ export function FormField({
   name,
   required,
   hint,
+  help,
   children,
 }: {
   label: string;
   name: string;
   required?: boolean;
   hint?: string;
+  /** Hover/focus explanation beside the label. See Field. */
+  help?: string;
   children: ReactNode;
 }) {
   const message = useContext(FieldErrors)[name]?.[0];
 
   return (
     <div>
-      <Field label={label} required={required}>
+      <Field label={label} required={required} help={help}>
         {children}
       </Field>
       {message ? (

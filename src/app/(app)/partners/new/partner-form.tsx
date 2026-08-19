@@ -165,7 +165,8 @@ export function PartnerForm({ options }: { options: Options }) {
 
           {kind === "COMPANY" ? (
             linkExisting ? (
-              <Field label="Existing account" required hint="Its type will be switched to Partner.">
+              <Field label="Existing account" required hint="Its type will be switched to Partner."
+            help="Pick this if they are already in the system as an account, so you do not end up with two records for one company.">
                 <Select name="accountId" required>
                   <option value="">Select an account…</option>
                   {options.accounts.map((a) => (
@@ -177,25 +178,31 @@ export function PartnerForm({ options }: { options: Options }) {
               </Field>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Company name" required error={fieldErrors.companyName?.[0]}>
+                <Field label="Company name" required error={fieldErrors.companyName?.[0]}
+            help="The partner organisation's registered name.">
                   <Input name="companyName" required placeholder="Acme Distribution (Pvt) Ltd" />
                 </Field>
-                <Field label="Industry">
+                <Field label="Industry"
+            help="The sector they specialise in.">
                   <Input name="industry" placeholder="IT Services" />
                 </Field>
-                <Field label="Primary contact first name" hint="Optional — the person you deal with there.">
+                <Field label="Primary contact first name" hint="Optional — the person you deal with there."
+            help="Given name of your main point of contact there.">
                   <Input name="primaryContactFirstName" />
                 </Field>
-                <Field label="Primary contact last name">
+                <Field label="Primary contact last name"
+            help="Family name of your main point of contact.">
                   <Input name="primaryContactLastName" />
                 </Field>
-                <Field label="Primary contact email">
+                <Field label="Primary contact email"
+            help="Their email. This is also the address they use to sign in to the partner portal.">
                   <Input name="primaryContactEmail" type="email" />
                 </Field>
               </div>
             )
           ) : linkExisting ? (
-            <Field label="Existing contact" required>
+            <Field label="Existing contact" required
+            help="Pick this if their main contact is already in the system.">
               <Select name="contactId" required>
                 <option value="">Select a contact…</option>
                 {options.contacts.map((c) => (
@@ -208,16 +215,20 @@ export function PartnerForm({ options }: { options: Options }) {
             </Field>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="First name" required error={fieldErrors.firstName?.[0]}>
+              <Field label="First name" required error={fieldErrors.firstName?.[0]}
+            help="Given name of the person who signs in to the partner portal.">
                 <Input name="firstName" required />
               </Field>
-              <Field label="Last name" required error={fieldErrors.lastName?.[0]}>
+              <Field label="Last name" required error={fieldErrors.lastName?.[0]}
+            help="Family name of the portal user.">
                 <Input name="lastName" required />
               </Field>
-              <Field label="Mobile">
+              <Field label="Mobile"
+            help="Their direct mobile.">
                 <Input name="mobile" placeholder="+92 300 1234567" />
               </Field>
-              <Field label="WhatsApp">
+              <Field label="WhatsApp"
+            help="Only if it differs from the mobile above.">
                 <Input name="whatsapp" />
               </Field>
             </div>
@@ -230,28 +241,32 @@ export function PartnerForm({ options }: { options: Options }) {
           <CardTitle>Relationship</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Partner type" required>
+          <Field label="Partner type" required
+            help="What kind of partner they are — reseller, referrer, implementation partner. Decides how commission is treated.">
             <Select name="partnerType" required defaultValue="REFERRAL">
               {["REFERRAL", "RESELLER", "IMPLEMENTATION", "TECHNOLOGY", "DISTRIBUTOR"].map((t) => (
                 <option key={t} value={t}>{humanize(t)}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Tier">
+          <Field label="Tier"
+            help="Their level in your partner programme. Often drives the commission rate.">
             <Select name="tier" value={tierValue} onChange={(e) => setTierValue(e.target.value)}>
               {["REGISTERED", "SILVER", "GOLD", "PLATINUM"].map((t) => (
                 <option key={t} value={t}>{humanize(t)}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Status" required>
+          <Field label="Status" required
+            help="Whether the partnership is active. Inactive partners keep their history but stop appearing in pickers.">
             <Select name="status" defaultValue="PROSPECTIVE">
               {["PROSPECTIVE", "ACTIVE", "INACTIVE", "TERMINATED"].map((s) => (
                 <option key={s} value={s}>{humanize(s)}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Partner manager" hint="Who owns this relationship internally.">
+          <Field label="Partner manager" hint="Who owns this relationship internally."
+            help="Whoever owns this relationship on your side.">
             <Select name="partnerManagerId">
               <option value="">Unassigned</option>
               {options.users.map((u) => (
@@ -259,22 +274,28 @@ export function PartnerForm({ options }: { options: Options }) {
               ))}
             </Select>
           </Field>
-          <Field label="Territory">
+          <Field label="Territory"
+            help="The region they are allowed to sell in. Prevents two partners chasing the same customer.">
             <Input name="territory" placeholder="Punjab / Middle East" />
           </Field>
-          <Field label="Partnership start">
+          <Field label="Partnership start"
+            help="When the agreement began.">
             <Input name="startDate" type="date" />
           </Field>
-          <Field label="Agreement expiry" hint="Flagged on the list 60 days out.">
+          <Field label="Agreement expiry" hint="Flagged on the list 60 days out."
+            help="When it needs renewing.">
             <Input name="agreementExpiryDate" type="date" />
           </Field>
-          <Field label="Email">
+          <Field label="Email"
+            help="The email this person signs in with.">
             <Input name="email" type="email" />
           </Field>
-          <Field label="Phone">
+          <Field label="Phone"
+            help="A contact number for them.">
             <Input name="phone" />
           </Field>
-          <Field label="Website">
+          <Field label="Website"
+            help="Their public site.">
             <Input name="website" placeholder="https://" />
           </Field>
         </CardContent>
@@ -288,6 +309,7 @@ export function PartnerForm({ options }: { options: Options }) {
           <Field
             label="Commission plan"
             hint="Tiered or flat rules. Takes precedence over the default rate below."
+            help="The plan that decides how much they earn. Set the plans up first under Commissions."
           >
             <Select name="commissionPlanId">
               <option value="">No plan — use the default rate</option>
@@ -298,35 +320,43 @@ export function PartnerForm({ options }: { options: Options }) {
               ))}
             </Select>
           </Field>
-          <Field label="Default commission %" hint="Fallback when no plan applies.">
+          <Field label="Default commission %" hint="Fallback when no plan applies."
+            help="The rate applied when no plan covers a particular deal.">
             <Input name="defaultCommissionPercent" type="number" step="0.01" min="0" max="100" placeholder="10" />
           </Field>
-          <Field label="Payout currency" required>
+          <Field label="Payout currency" required
+            help="The currency they are paid in, which is not always the currency of the deal.">
             <Select name="payoutCurrencyCode" defaultValue="PKR">
               {options.currencies.map((c) => (
                 <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Tax number / NTN">
+          <Field label="Tax number / NTN"
+            help="Their National Tax Number. Needed before you can pay them.">
             <Input name="taxNumber" />
           </Field>
-          <Field label="Withholding tax %" hint="Deducted automatically at payout.">
+          <Field label="Withholding tax %" hint="Deducted automatically at payout."
+            help="Tax deducted at source before paying them. Set it here and payouts calculate net automatically.">
             <Input name="withholdingTaxPercent" type="number" step="0.01" min="0" max="100" placeholder="10" />
           </Field>
           <Field
             label="Deal protection (days)"
             hint={`Blank uses the tier default — ${TIER_PROTECTION_DAYS[tierValue] ?? DEAL_REGISTRATION_PROTECTION_DAYS} days for ${humanize(tierValue)}.`}
+            help="How long a partner keeps exclusive claim to a deal they registered. Stops a second partner or your own team registering the same customer behind them."
           >
             <Input name="registrationProtectionDays" type="number" min="1" max="365" />
           </Field>
-          <Field label="Bank name">
+          <Field label="Bank name"
+            help="The bank their payouts go to.">
             <Input name="bankName" />
           </Field>
-          <Field label="Account title">
+          <Field label="Account title"
+            help="The account holder's name exactly as the bank has it. A mismatch is the usual reason a transfer bounces.">
             <Input name="accountTitle" />
           </Field>
-          <Field label="Account number / IBAN">
+          <Field label="Account number / IBAN"
+            help="The account number or IBAN for payouts.">
             <Input name="iban" />
           </Field>
         </CardContent>
