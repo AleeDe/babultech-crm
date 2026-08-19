@@ -8,6 +8,7 @@ import { listPartners } from "@/server/partners";
 import { listCommissions } from "@/server/commissions";
 import { listPayments } from "@/server/billing";
 import { listExpenses, listVendorBills } from "@/server/payables";
+import { LIST_LIMIT } from "@/lib/db";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
 
@@ -278,12 +279,18 @@ const EXPORTS: Record<string, ExportDefinition> = {
   expenses: {
     needs: PERMISSIONS.INVOICE_READ,
     filename: "expenses",
-    load: (p) =>
-      listExpenses({
-        search: p.get("search") ?? undefined,
-        approvalStatus: p.get("approvalStatus") ?? undefined,
-        paymentStatus: p.get("paymentStatus") ?? undefined,
-      }),
+    // An export is the whole filtered set, not the page being looked at, so it
+    // asks for one page big enough to hold everything.
+    load: async (p) =>
+      (
+        await listExpenses({
+          search: p.get("search") ?? undefined,
+          approvalStatus: p.get("approvalStatus") ?? undefined,
+          paymentStatus: p.get("paymentStatus") ?? undefined,
+          page: 1,
+          pageSize: LIST_LIMIT,
+        })
+      ).rows,
     columns: [
       { header: "Number", value: (r) => r.expenseNumber },
       { header: "Date", value: (r) => r.expenseDate },

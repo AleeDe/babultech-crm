@@ -6,9 +6,10 @@ import Decimal from "decimal.js";
 import { randomUUID } from "node:crypto";
 import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
-import { createRecord, updateRecord, applySearch, LIST_LIMIT } from "@/lib/db";
+import { createRecord, updateRecord, applySearch, LIST_LIMIT, EXPENSE_PAGE_SIZE } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
+import { notifyExpenseSubmitted, notifyExpenseDecided } from "./expense-notifications";
 import type { ActionResult } from "./partners";
 
 /**
@@ -45,7 +46,80 @@ const expenseSchema = z.object({
   reimbursable: z.coerce.boolean().default(true),
 });
 
+/**
+ * One page of expenses, plus the total so the pager knows how many there are.
+ *
+ * `count: "exact"` makes PostgREST report the size of the whole filtered set
+ * rather than the slice, which is what "Showing 1-25 of 41" needs. It costs a
+ * second count query server-side; at this table's size that is far cheaper than
+ * shipping every row to the browser the way the old unpaginated list did.
+ */
 export async function listExpenses(filters?: {
+  search?: string;
+  approvalStatus?: string;
+  paymentStatus?: string;
+  projectId?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  await requirePermission(PERMISSIONS.INVOICE_READ);
+
+  const db = await supabaseServer();
+
+  const pageSize = Math.min(filters?.pageSize ?? EXPENSE_PAGE_SIZE, LIST_LIMIT);
+  // A page below 1 (or a non-number from the query string) reads as the first.
+  const page = Math.max(1, Math.floor(filters?.page ?? 1) || 1);
+  const from = (page - 1) * pageSize;
+
+  let query = db
+    .from("expense")
+    .select(
+      `*,
+       category:expense_category ( id, name, glCode, requiresReceipt ),
+       employee:app_user!expense_employeeUserId_fkey ( id, fullName ),
+       vendor:account ( id, name ),
+       project ( id, name, projectNumber )`,
+      { count: "exact" },
+    )
+    .is("deletedAt", null)
+    .order("expenseDate", { ascending: false })
+    // expenseDate alone is not unique — several rows share a date — so without a
+    // tiebreaker the same row can appear on two pages and another on none.
+    .order("expenseNumber", { ascending: false });
+
+  if (filters?.approvalStatus) query = query.eq("approvalStatus", filters.approvalStatus);
+  if (filters?.paymentStatus) query = query.eq("paymentStatus", filters.paymentStatus);
+  if (filters?.projectId) query = query.eq("projectId", filters.projectId);
+  query = applySearch(query, filters?.search, ["expenseNumber", "description"]);
+
+  const { data, error, count } = await query.range(from, from + pageSize - 1);
+  if (error) throw new Error(`Could not load expenses: ${error.message}`);
+
+  const total = count ?? 0;
+
+  return {
+    rows: (data ?? []).map((e) => ({
+      ...e,
+      category: one(e.category as never),
+      employee: one(e.employee as never),
+      vendor: one(e.vendor as never),
+      project: one(e.project as never),
+    })),
+    total,
+    page,
+    pageSize,
+    pageCount: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+/**
+ * Totals across the whole filtered set, not just the visible page.
+ *
+ * Paging broke the old tiles, which summed the rows in hand: with 25 of 41 rows
+ * loaded they would have quietly reported a smaller number than the list says
+ * it holds. These are computed in the database over every matching row.
+ */
+export async function getExpenseTotals(filters?: {
   search?: string;
   approvalStatus?: string;
   paymentStatus?: string;
@@ -57,15 +131,8 @@ export async function listExpenses(filters?: {
 
   let query = db
     .from("expense")
-    .select(
-      `*,
-       category:expense_category ( id, name, glCode, requiresReceipt ),
-       employee:app_user!expense_employeeUserId_fkey ( id, fullName ),
-       vendor:account ( id, name ),
-       project ( id, name, projectNumber )`,
-    )
-    .is("deletedAt", null)
-    .order("expenseDate", { ascending: false });
+    .select("amount, billableToCustomer, approvalStatus, paymentStatus")
+    .is("deletedAt", null);
 
   if (filters?.approvalStatus) query = query.eq("approvalStatus", filters.approvalStatus);
   if (filters?.paymentStatus) query = query.eq("paymentStatus", filters.paymentStatus);
@@ -73,15 +140,18 @@ export async function listExpenses(filters?: {
   query = applySearch(query, filters?.search, ["expenseNumber", "description"]);
 
   const { data, error } = await query.limit(LIST_LIMIT);
-  if (error) throw new Error(`Could not load expenses: ${error.message}`);
+  if (error) throw new Error(`Could not total the expenses: ${error.message}`);
 
-  return (data ?? []).map((e) => ({
-    ...e,
-    category: one(e.category as never),
-    employee: one(e.employee as never),
-    vendor: one(e.vendor as never),
-    project: one(e.project as never),
-  }));
+  const rows = data ?? [];
+  const sum = (subset: typeof rows) => subset.reduce((t, e) => t + Number(e.amount ?? 0), 0);
+  const billable = rows.filter((e) => e.billableToCustomer);
+
+  return {
+    count: rows.length,
+    total: sum(rows),
+    billableTotal: sum(billable),
+    billableCount: billable.length,
+  };
 }
 
 export async function createExpense(
@@ -190,6 +260,30 @@ const EXPENSE_TRANSITIONS: Record<string, string[]> = {
   APPROVED: [],
 };
 
+/**
+ * Fires the right notification for a transition, swallowing any failure.
+ *
+ * SUBMITTED tells the approvers something is waiting; APPROVED and REJECTED
+ * tell the claimant the answer. Never throws: the status change has already
+ * been committed and must stand whether or not the mail leaves.
+ */
+async function notify(
+  next: "SUBMITTED" | "APPROVED" | "REJECTED",
+  ids: string[],
+  actorName: string,
+): Promise<void> {
+  if (!ids.length) return;
+  try {
+    const result =
+      next === "SUBMITTED"
+        ? await notifyExpenseSubmitted(ids)
+        : await notifyExpenseDecided(ids, next, actorName);
+    if (!result.ok) console.error(`Expense notification not sent: ${result.error}`);
+  } catch (err) {
+    console.error("Expense notification threw:", err);
+  }
+}
+
 export async function setExpenseApproval(
   id: string,
   next: "SUBMITTED" | "APPROVED" | "REJECTED",
@@ -224,12 +318,214 @@ export async function setExpenseApproval(
 
   try {
     await updateRecord("expense", id, { approvalStatus: next }, "Expense", _auth.user.id);
+
+    // Best effort: the decision is written, and a mail failure must not undo it.
+    await notify(next, [id], _auth.user.fullName);
+
     revalidatePath("/expenses");
     revalidatePath(`/expenses/${id}`);
     return { ok: true, data: { id } };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Could not update the expense." };
   }
+}
+
+/**
+ * Moves several expenses at once.
+ *
+ * Every row is re-checked individually against the same rules as the single
+ * action — the transition table, and the bar on approving your own claim. A row
+ * that fails is reported and skipped rather than failing the whole batch, so
+ * selecting "everything submitted" and approving does the right thing even when
+ * some of the selection is the approver's own.
+ *
+ * Not a transaction: each expense is independent, and a partial success is a
+ * meaningful outcome here rather than a corrupt one.
+ */
+export async function setExpenseApprovalBulk(
+  ids: string[],
+  next: "SUBMITTED" | "APPROVED" | "REJECTED",
+): Promise<ActionResult<{ updated: number; skipped: { id: string; reason: string }[] }>> {
+  const _auth = await authorize(
+    next === "SUBMITTED" ? PERMISSIONS.INVOICE_WRITE : PERMISSIONS.INVOICE_APPROVE,
+  );
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  if (!ids.length) return { ok: false, error: "Nothing selected." };
+
+  const db = await supabaseServer();
+  const { data: expenses } = await db
+    .from("expense")
+    .select("id, expenseNumber, approvalStatus, employeeUserId")
+    .in("id", ids);
+
+  const skipped: { id: string; reason: string }[] = [];
+  const moved: string[] = [];
+  let updated = 0;
+
+  for (const expense of expenses ?? []) {
+    const label = expense.expenseNumber ?? expense.id;
+
+    if (!(EXPENSE_TRANSITIONS[expense.approvalStatus] ?? []).includes(next)) {
+      skipped.push({
+        id: label,
+        reason: `already ${expense.approvalStatus.toLowerCase()}`,
+      });
+      continue;
+    }
+
+    if (next === "APPROVED" && expense.employeeUserId === _auth.user.id) {
+      skipped.push({ id: label, reason: "your own claim" });
+      continue;
+    }
+
+    try {
+      await updateRecord("expense", expense.id, { approvalStatus: next }, "Expense", _auth.user.id);
+      moved.push(expense.id);
+      updated += 1;
+    } catch (err) {
+      skipped.push({ id: label, reason: err instanceof Error ? err.message : "write failed" });
+    }
+  }
+
+  // One mail for the whole batch rather than one per row.
+  await notify(next, moved, _auth.user.fullName);
+
+  revalidatePath("/expenses");
+  return { ok: true, data: { updated, skipped } };
+}
+
+/** Settles several approved expenses at once. Same skip-and-report shape. */
+export async function markExpensePaidBulk(
+  ids: string[],
+): Promise<ActionResult<{ updated: number; skipped: { id: string; reason: string }[] }>> {
+  const _auth = await authorize(PERMISSIONS.PAYMENT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  if (!ids.length) return { ok: false, error: "Nothing selected." };
+
+  const db = await supabaseServer();
+  const { data: expenses } = await db
+    .from("expense")
+    .select("id, expenseNumber, approvalStatus, paymentStatus, reimbursable")
+    .in("id", ids);
+
+  const skipped: { id: string; reason: string }[] = [];
+  let updated = 0;
+
+  for (const expense of expenses ?? []) {
+    const label = expense.expenseNumber ?? expense.id;
+
+    if (expense.approvalStatus !== "APPROVED") {
+      skipped.push({ id: label, reason: "not approved" });
+      continue;
+    }
+    if (expense.paymentStatus !== "UNPAID") {
+      skipped.push({ id: label, reason: "already settled" });
+      continue;
+    }
+
+    try {
+      await updateRecord(
+        "expense",
+        expense.id,
+        { paymentStatus: expense.reimbursable ? "REIMBURSED" : "PAID" },
+        "Expense",
+        _auth.user.id,
+      );
+      updated += 1;
+    } catch (err) {
+      skipped.push({ id: label, reason: err instanceof Error ? err.message : "write failed" });
+    }
+  }
+
+  revalidatePath("/expenses");
+  return { ok: true, data: { updated, skipped } };
+}
+
+/**
+ * Records many expenses in one go, for pasting a spreadsheet in.
+ *
+ * Rows are validated up front and nothing is written unless every row passes:
+ * a half-imported sheet is worse than a rejected one, because working out which
+ * half landed means reading them all back. Errors carry the row number so the
+ * paste can be corrected in place.
+ */
+export async function createExpensesBulk(
+  rows: z.infer<typeof expenseSchema>[],
+): Promise<ActionResult<{ created: number }>> {
+  const _auth = await authorize(PERMISSIONS.INVOICE_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  if (!rows.length) return { ok: false, error: "No rows to import." };
+  if (rows.length > 500) {
+    return { ok: false, error: "Import at most 500 rows at a time." };
+  }
+
+  const validated: z.infer<typeof expenseSchema>[] = [];
+  const rowErrors: string[] = [];
+
+  rows.forEach((row, i) => {
+    const parsed = expenseSchema.safeParse(row);
+    if (!parsed.success) {
+      const first = Object.entries(parsed.error.flatten().fieldErrors)[0];
+      rowErrors.push(`Row ${i + 1}: ${first ? `${first[0]} — ${first[1]?.[0]}` : "invalid"}`);
+      return;
+    }
+    const d = parsed.data;
+
+    if (!d.employeeUserId && !d.vendorAccountId) {
+      rowErrors.push(`Row ${i + 1}: needs an employee to reimburse or a vendor.`);
+      return;
+    }
+    if (d.billableToCustomer && !d.projectId) {
+      rowErrors.push(`Row ${i + 1}: a billable expense needs a project.`);
+      return;
+    }
+    validated.push(d);
+  });
+
+  if (rowErrors.length) {
+    return { ok: false, error: rowErrors.slice(0, 10).join("\n") };
+  }
+
+  let created = 0;
+  try {
+    // Sequential, because expenseNumber comes from a sequence that has to hand
+    // out one number at a time.
+    for (const d of validated) {
+      await createRecord(
+        "expense",
+        {
+          categoryId: d.categoryId,
+          expenseDate: d.expenseDate,
+          amount: d.amount,
+          taxAmount: d.taxAmount ?? null,
+          currencyCode: d.currencyCode,
+          description: d.description || null,
+          employeeUserId: d.employeeUserId || null,
+          vendorAccountId: d.vendorAccountId || null,
+          projectId: d.projectId || null,
+          billableToCustomer: d.billableToCustomer,
+          reimbursable: d.reimbursable,
+          approvalStatus: "DRAFT",
+          paymentStatus: "UNPAID",
+        },
+        { field: "expenseNumber", sequence: SEQUENCES.EXPENSE },
+      );
+      created += 1;
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        `${created} of ${validated.length} rows were recorded before this failed: ` +
+        (err instanceof Error ? err.message : "unknown error"),
+    };
+  }
+
+  revalidatePath("/expenses");
+  return { ok: true, data: { created } };
 }
 
 export async function markExpensePaid(id: string): Promise<ActionResult<{ id: string }>> {

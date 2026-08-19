@@ -9,6 +9,10 @@ import { supabaseServer } from "./supabase";
  */
 export const LIST_LIMIT = 500;
 
+/** Rows per page on the expense list. Lives here because a "use server" module
+ *  may only export async functions. */
+export const EXPENSE_PAGE_SIZE = 25;
+
 /**
  * Case-insensitive "contains" across several columns.
  *
