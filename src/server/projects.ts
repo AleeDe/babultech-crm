@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import Decimal from "decimal.js";
 import { toDecimal, one } from "@/lib/decimal";
-import { supabaseServer } from "@/lib/supabase";
+import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { createRecord, updateRecord, LIST_LIMIT } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
@@ -1116,7 +1116,11 @@ export async function addProjectMember(
       return { ok: false, error: "That person is already on this project." };
     }
 
-    const { data: person } = await db
+    // Service role: these two columns are revoked from the authenticated role
+    // (20260902000000_hide_rate_columns.sql), and adding someone to a project
+    // legitimately needs their standing rates to seed the membership. The
+    // caller has already passed project:write to reach this line.
+    const { data: person } = await supabaseAdmin()
       .from("app_user")
       .select("costRate, defaultBillingRate")
       .eq("id", data.userId)
@@ -1329,8 +1333,10 @@ export async function getProjectFormOptions() {
   const [accountsRes, usersRes, opportunitiesRes, contractsRes, currenciesRes] =
     await Promise.all([
       db.from("account").select("id, name").is("deletedAt", null).order("name"),
-      db
+      supabaseAdmin()
         .from("app_user")
+        // Rates come back for the team picker, which shows what a person costs
+        // before they are booked — so this one reads through the service role.
         .select("id, fullName, jobTitle, costRate, defaultBillingRate")
         .eq("status", "ACTIVE")
         .is("deletedAt", null)

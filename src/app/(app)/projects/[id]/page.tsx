@@ -5,7 +5,7 @@ import { listDocuments } from "@/server/documents";
 import { NotesPanel } from "@/components/notes-panel";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { getProject, getProjectBurn, getProjectWorkLog } from "@/server/projects";
-import { supabaseServer } from "@/lib/supabase";
+import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { getAuditTrail } from "@/lib/audit";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
@@ -52,7 +52,11 @@ export default async function ProjectWorkspacePage({
       // four reference tables pulled on every view of a page that never shows
       // them. At ~400ms a query that is most of a second spent on nothing.
       (async () => {
-        const db = await supabaseServer();
+        // Service role, because costRate and defaultBillingRate are revoked
+        // from the authenticated role. The page has already checked
+        // project:read, and the team panel shows what a person costs before
+        // they are booked onto the project.
+        const db = supabaseAdmin();
         const { data } = await db
           .from("app_user")
           .select("id, fullName, jobTitle, costRate, defaultBillingRate")

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import Decimal from "decimal.js";
 import { toDecimal, one } from "@/lib/decimal";
-import { supabaseServer } from "@/lib/supabase";
+import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { createRecord, updateRecord } from "@/lib/db";
 import { PERMISSIONS, authorize, requirePermission, requireUser } from "@/lib/authz";
 import { hoursBetween, normaliseClock } from "@/lib/work-hours";
@@ -177,7 +177,14 @@ export async function logTime(
       });
     } else {
       // Support-case time: no project membership, so fall back to standing rates.
-      const { data: person } = await db
+      //
+      // Read through the service role rather than the caller's client. These
+      // two columns are salary data and are revoked from the authenticated role
+      // (see 20260902000000_hide_rate_columns.sql), so a user client asking for
+      // them now errors. Using the admin client here is not a widening: the
+      // query is pinned to the caller's own id, so it returns their rates and
+      // nobody else's.
+      const { data: person } = await supabaseAdmin()
         .from("app_user")
         .select("costRate, defaultBillingRate")
         .eq("id", user.id)
@@ -686,7 +693,11 @@ export async function getPendingApprovals() {
  * two is the number a delivery manager actually needs.
  */
 export async function getUtilisation(weeks = 4) {
-  await requirePermission(PERMISSIONS.PROJECT_READ);
+  // time:approve, not project:read. This report lists every colleague's cost
+  // rate and utilisation, which is a staffing and margin view for whoever books
+  // the work — and the page that renders it already required time:approve, so
+  // the weaker check here was a way around its own screen's gate.
+  await requirePermission(PERMISSIONS.TIME_APPROVE);
 
   const to = new Date();
   to.setHours(23, 59, 59, 999);
@@ -699,7 +710,11 @@ export async function getUtilisation(weeks = 4) {
   const db = await supabaseServer();
 
   const [usersRes, membershipsRes, logsRes] = await Promise.all([
-    db
+    // Service role, because costRate and defaultBillingRate are revoked from
+    // the authenticated role. The permission check above is what limits who
+    // reaches this line — the client choice only decides whether the columns
+    // come back at all.
+    supabaseAdmin()
       .from("app_user")
       .select(
         `id, fullName, jobTitle, costRate, defaultBillingRate,
