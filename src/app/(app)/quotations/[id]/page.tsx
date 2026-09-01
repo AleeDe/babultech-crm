@@ -224,6 +224,8 @@ export default async function QuotationDetailPage({
             quoteId={quote.id}
             status={quote.status}
             expiryDate={new Date(quote.expiryDate as string).toISOString()}
+            opportunityId={quote.opportunity?.id ?? null}
+            opportunityStage={quote.opportunity?.stage ?? null}
           />
 
           <Card>

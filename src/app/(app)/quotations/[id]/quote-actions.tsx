@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { sendQuotation, decideQuotation, reviseQuotation } from "@/server/quotations";
 import { Button, Card, CardContent, CardHeader, CardTitle, Alert } from "@/components/ui";
@@ -16,10 +17,15 @@ export function QuoteActions({
   quoteId,
   status,
   expiryDate,
+  opportunityId,
+  opportunityStage,
 }: {
   quoteId: string;
   status: string;
   expiryDate: string;
+  /** The deal this quote belongs to, so a rejection can point at it. */
+  opportunityId: string | null;
+  opportunityStage: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -99,6 +105,47 @@ export function QuoteActions({
           <p className="text-sm text-emerald-600 dark:text-emerald-400">
             Accepted — this is the binding version and the deal can now be won.
           </p>
+        )}
+
+        {/* Rejection has three meanings and the software cannot tell them
+            apart: the price was wrong, the scope was wrong, or they are not
+            buying. Accepting a quote moves the deal on by itself; rejecting one
+            does nothing, which is correct but leaves the deal sitting in Quote
+            Submitted with no prompt. That is how a pipeline fills with deals
+            that died months ago and still look live.
+
+            So the two routes are named rather than left implied. Neither is
+            performed automatically — which one applies is a judgement about the
+            customer, not a fact the system holds. */}
+        {status === "REJECTED" && (
+          <div className="space-y-3 rounded-md border border-dashed p-3">
+            <p className="text-sm">
+              Rejected. Decide which of these it is, or the deal stays in the
+              pipeline looking live.
+            </p>
+            <ul className="space-y-1.5 text-sm text-muted-foreground">
+              <li>
+                <span className="font-medium text-foreground">Re-quoting?</span>{" "}
+                Create a revision below — it supersedes this version and keeps
+                the history of what was offered.
+              </li>
+              <li>
+                <span className="font-medium text-foreground">Not buying?</span>{" "}
+                Close the deal as lost. A loss reason is required, and that field
+                is how you find out whether you are losing on price or on
+                features.
+              </li>
+            </ul>
+            {opportunityId &&
+              opportunityStage !== "CLOSED_LOST" &&
+              opportunityStage !== "CLOSED_WON" && (
+                <Button asChild variant="outline" size="sm" className="w-full">
+                  <Link href={`/opportunities/${opportunityId}`}>
+                    Open the deal to close it out
+                  </Link>
+                </Button>
+              )}
+          </div>
         )}
 
         {status !== "ACCEPTED" && (
