@@ -4,19 +4,29 @@ import {
 } from "lucide-react";
 import { toDecimal } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
-import { requireUser } from "@/lib/authz";
+import { requireUser, can, scopeFilter, PERMISSIONS } from "@/lib/authz";
+import { applyScope } from "@/lib/db";
 import { getPipelineByStage } from "@/server/opportunities";
 import { getCommissionTotals } from "@/server/commissions";
-import { getModuleSummary, getAttentionItems } from "@/server/dashboard";
+import {
+  getModuleSummary, getAttentionItems, getDeliveryAnalytics,
+  getSalesAnalytics, getFinanceAnalytics, getServiceAnalytics, getPartnerAnalytics,
+} from "@/server/dashboard";
 import { getPayablesSummary } from "@/server/payables";
 import { getPendingApprovals } from "@/server/approvals";
-import { getPulse, getRecentChanges } from "@/server/pulse";
+import { getPulse, getRecentChanges, getVisibleAuditTypes } from "@/server/pulse";
 import { ModuleSummary } from "./module-summary";
 import { PulseTile } from "./pulse-tile";
 import { LiveIndicator, LiveClock, PulseDot } from "@/components/live-indicator";
 import { ActivityStream } from "@/components/activity-stream";
+import { DashboardViews, type ViewKey } from "./dashboard-views";
+import { SalesView } from "./views/sales-view";
+import { FinanceView } from "./views/finance-view";
+import { DeliveryView } from "./views/delivery-view";
+import { ServiceView } from "./views/service-view";
+import { PartnersView } from "./views/partners-view";
 import {
-  Card, CardHeader, CardTitle, CardContent, PageHeader, StatTile,
+  Card, CardHeader, CardTitle, CardContent, PageHeader,
   Badge, statusTone, Table, THead, TBody, TR, TH, TD, EmptyState,
 } from "@/components/ui";
 import { formatCompactMoney, formatMoney, formatDate, humanize } from "@/lib/utils";
@@ -27,15 +37,51 @@ import { formatCompactMoney, formatMoney, formatDate, humanize } from "@/lib/uti
  */
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  // Which module view to show. Kept in the URL so a link to the sales dashboard
+  // is a link to the sales dashboard — shareable, reloadable, and survivable
+  // through the back button.
+  searchParams: Promise<{ view?: string }>;
+}) {
   const user = await requireUser();
+
+  // What this reader is allowed to be shown, decided once and applied to both
+  // the data fetching and the layout below.
+  //
+  // These mirror the flags getModuleSummary computes for its own cards. The
+  // module cards were already gated on those; the headline tiles, the pipeline
+  // chart and the partner table were not, so a consultant opened the dashboard
+  // to the company's cash position in 48-point type and found the polite
+  // hiding three screens further down.
+  const seeSales = can(user, PERMISSIONS.OPPORTUNITY_READ);
+  const seeFinance = can(user, PERMISSIONS.INVOICE_READ);
+  const seePartners = can(user, PERMISSIONS.PARTNER_READ);
+  const seeCases = can(user, PERMISSIONS.CASE_READ);
+  const seeProjects = can(user, PERMISSIONS.PROJECT_READ);
+
+  // Counts below are scoped the way every list screen is scoped. Without this
+  // an OWN-scope consultant read a company-wide total: the rows stayed hidden,
+  // but the number on the tile still announced how many there were.
+  //
+  // Invoices take no scope filter because the table has no owning user — a
+  // receivable belongs to the company, not to a rep. invoice:read is the whole
+  // of its access control, which is why the finance figures are gated on
+  // seeFinance rather than narrowed by row.
+  const caseScope = await scopeFilter(user, "ownerUserId");
+  const projectScope = await scopeFilter(user, "projectManagerId");
 
   const [
     pipeline, commissions, openCases, activeProjects, overdueInvoices, topPartners, myActivities,
-    summary, attentionData, payables, approvals, pulse, recentChanges,
+    summary, attentionData, payables, approvals, pulse, recentChanges, auditTypes,
+    salesAnalytics, financeAnalytics, serviceAnalytics, partnerAnalytics, deliveryAnalytics,
   ] =
     await Promise.all([
-      getPipelineByStage(),
+      // Each of these throws for a role without the matching permission, so the
+      // gate has to be here as well as in the layout — an ungated call would
+      // take the whole page down rather than omit one card.
+      seeSales ? getPipelineByStage() : [],
       // Commissions are partner-facing and this throws for anyone without
       // commission:read, which took the whole dashboard down for Project
       // Managers and Consultants. Empty buckets render as a ledger of zeros,
@@ -51,21 +97,27 @@ export default async function DashboardPage() {
         };
       }),
       (async () => {
+        if (!seeCases) return 0;
         const db = await supabaseServer();
-        const { count } = await db
+        let query = db
           .from("support_case")
           .select("id", { count: "exact", head: true })
           .is("deletedAt", null)
           .not("status", "in", '("CLOSED","CANCELLED","RESOLVED")');
+        query = applyScope(query, caseScope);
+        const { count } = await query;
         return count ?? 0;
       })(),
       (async () => {
+        if (!seeProjects) return 0;
         const db = await supabaseServer();
-        const { count } = await db
+        let query = db
           .from("project")
           .select("id", { count: "exact", head: true })
           .is("deletedAt", null)
           .eq("status", "ACTIVE");
+        query = applyScope(query, projectScope);
+        const { count } = await query;
         return count ?? 0;
       })(),
       // PostgREST has no aggregate, so the overdue rows are fetched and summed.
@@ -73,6 +125,9 @@ export default async function DashboardPage() {
       // column is — comparing in JS against an ISO string would be the trap
       // this migration keeps hitting.
       (async () => {
+        if (!seeFinance) {
+          return { _count: 0, _sum: { outstandingAmount: toDecimal(0) } };
+        }
         const db = await supabaseServer();
         const { data } = await db
           .from("invoice")
@@ -92,6 +147,7 @@ export default async function DashboardPage() {
         };
       })(),
       (async () => {
+        if (!seePartners) return [];
         const db = await supabaseServer();
         const { data } = await db
           .from("partner")
@@ -155,6 +211,28 @@ export default async function DashboardPage() {
       })),
       getPulse(30),
       getRecentChanges(25),
+      getVisibleAuditTypes(),
+      // The biggest open deals, for the sales view's ranked list. Scoped by the
+      // caller's own client, so a rep sees their own deals ranked and a manager
+      // sees the team's — the ranking answers "what should I chase", which is a
+      // different question for each of them.
+      // The four module analytics. Each returns empty for a reader without the
+      // matching permission rather than throwing, so one missing permission
+      // cannot take the whole dashboard down.
+      seeSales ? getSalesAnalytics() : Promise.resolve(null),
+      seeFinance ? getFinanceAnalytics() : Promise.resolve(null),
+      seeCases ? getServiceAnalytics() : Promise.resolve(null),
+      seePartners ? getPartnerAnalytics() : Promise.resolve(null),
+      seeProjects
+        ? getDeliveryAnalytics()
+        : Promise.resolve({
+            rows: [],
+            totals: {
+              hours: 0, billableHours: 0, revenue: 0, cost: 0, margin: 0,
+              marginPercent: null, billablePercent: 0, unbilledValue: 0, unapprovedHours: 0,
+            },
+            upcomingMilestones: [],
+          }),
     ]);
 
   const openStages = pipeline.filter(
@@ -243,6 +321,140 @@ export default async function DashboardPage() {
     0,
   );
 
+  /**
+   * The headline row, built from what this reader may see rather than fixed at
+   * four.
+   *
+   * A role gets the tiles for its own work: sales sees pipeline and wins,
+   * finance sees cash in and cash overdue, delivery sees its projects and its
+   * cases. Someone who clears none of them — a brand new account, or a role
+   * scoped entirely to its own tasks — gets the two personal tiles at the end,
+   * so the row is never empty.
+   *
+   * Zeros are not a safe fallback here. "Collected this month: PKR 0" reads as
+   * a fact about the company, not as an absence of permission, and a consultant
+   * who reported that upward would be repeating something untrue.
+   */
+  const tiles: React.ComponentProps<typeof PulseTile>[] = [];
+
+  if (seeSales) {
+    tiles.push({
+      label: "Open pipeline",
+      raw: Number(openPipelineTotal),
+      sublabel: `${liveDeals} live deals`,
+      series: pulse.dealsCreated.values,
+      delta: pulse.deltas.dealsCreated,
+      href: "/opportunities",
+      icon: "Target",
+      tone: "primary",
+    });
+    tiles.push({
+      label: "Won this month",
+      raw: Number(summary.sales.wonValueThisMonth),
+      sublabel: `${summary.sales.wonThisMonth} deals closed`,
+      series: pulse.wonValue.values,
+      delta: pulse.deltas.wonValue,
+      href: "/opportunities?stage=CLOSED_WON",
+      icon: "TrendingUp",
+      tone: "success",
+    });
+  }
+
+  if (seeFinance) {
+    tiles.push({
+      label: "Collected this month",
+      raw: Number(summary.finance.collectedThisMonth),
+      sublabel: `${formatCompactMoney(summary.finance.outstanding)} still outstanding`,
+      series: pulse.collected.values,
+      delta: pulse.deltas.collected,
+      href: "/payments",
+      icon: "Banknote",
+      tone: "success",
+    });
+    tiles.push({
+      label: "Overdue receivables",
+      raw: Number(overdueInvoices._sum.outstandingAmount ?? 0),
+      sublabel: `${overdueInvoices._count} invoices past due`,
+      // Cash collected, inverted in meaning rather than in data: money
+      // arriving is what clears this figure, so the same series is the
+      // honest trend for it. A sparkline of unrelated numbers under a
+      // headline is worse than no sparkline.
+      series: pulse.collected.values,
+      delta: pulse.deltas.collected,
+      href: "/invoices",
+      icon: "Receipt",
+      tone: overdueInvoices._count > 0 ? "danger" : "muted",
+    });
+  }
+
+  if (seeProjects) {
+    tiles.push({
+      label: "Active projects",
+      raw: activeProjects,
+      format: "count",
+      sublabel: `${summary.delivery.atRiskProjects} at risk`,
+      delta: null,
+      href: "/projects",
+      icon: "FolderKanban",
+      tone: summary.delivery.atRiskProjects > 0 ? "danger" : "primary",
+    });
+  }
+
+  if (seeCases) {
+    tiles.push({
+      label: "Open support cases",
+      raw: openCases,
+      format: "count",
+      sublabel: `${summary.service.criticalCases} critical`,
+      delta: null,
+      href: "/cases",
+      icon: "LifeBuoy",
+      tone: summary.service.criticalCases > 0 ? "danger" : "primary",
+    });
+  }
+
+  // Personal tiles, so a narrowly scoped role still opens onto something that
+  // is about their day rather than an empty strip.
+  if (tiles.length < 4) {
+    tiles.push({
+      label: "My open activities",
+      raw: myActivities.length,
+      format: "count",
+      sublabel: "scheduled for you",
+      delta: null,
+      href: "/my-work",
+      icon: "CalendarCheck",
+      tone: "muted",
+    });
+  }
+
+  /**
+   * Which view to render.
+   *
+   * Only views this reader may see are offered, using the same permission flags
+   * the summary cards already compute — so a consultant is never shown a Finance
+   * tab that would refuse them, and there is no second list of who sees what to
+   * keep in step.
+   *
+   * An unknown value in the URL falls back to the overview rather than rendering
+   * nothing: the parameter is user-editable, and a typo in a shared link should
+   * not produce a blank screen.
+   */
+  const params = await searchParams;
+
+  const views: { key: ViewKey; label: string }[] = [
+    { key: "overview", label: "Overview" },
+    ...(summary.visible.sales ? [{ key: "sales" as const, label: "Sales" }] : []),
+    ...(summary.visible.finance ? [{ key: "finance" as const, label: "Finance" }] : []),
+    ...(summary.visible.delivery ? [{ key: "delivery" as const, label: "Delivery" }] : []),
+    ...(summary.visible.service ? [{ key: "service" as const, label: "Support" }] : []),
+    ...(summary.visible.partners ? [{ key: "partners" as const, label: "Partners" }] : []),
+  ];
+
+  const view: ViewKey = views.some((v) => v.key === params.view)
+    ? (params.view as ViewKey)
+    : "overview";
+
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -256,51 +468,45 @@ export default async function DashboardPage() {
         </div>
       </div>
 
+      {/* Only rendered when there is somewhere to switch to. A single tab is
+          not a choice, and a tab strip that never changes anything is noise. */}
+      {views.length > 1 && (
+        <div className="mb-6">
+          <DashboardViews views={views} active={view} />
+        </div>
+      )}
+
+      {view === "sales" && salesAnalytics ? (
+        <SalesView
+          summary={summary}
+          pulse={pulse}
+          pipeline={pipeline}
+          attention={{ staleDeals: attentionData.staleDeals }}
+          analytics={salesAnalytics}
+        />
+      ) : view === "finance" && financeAnalytics ? (
+        <FinanceView
+          summary={summary}
+          pulse={pulse}
+          payables={payables}
+          analytics={financeAnalytics}
+        />
+      ) : view === "delivery" ? (
+        <DeliveryView
+          summary={summary}
+          attention={{ breachedCases: attentionData.breachedCases }}
+          analytics={deliveryAnalytics}
+        />
+      ) : view === "service" && serviceAnalytics ? (
+        <ServiceView summary={summary} pulse={pulse} analytics={serviceAnalytics} />
+      ) : view === "partners" && partnerAnalytics ? (
+        <PartnersView analytics={partnerAnalytics} />
+      ) : (
+      <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <PulseTile
-          label="Open pipeline"
-          raw={Number(openPipelineTotal)}
-          sublabel={`${liveDeals} live deals`}
-          series={pulse.dealsCreated.values}
-          delta={pulse.deltas.dealsCreated}
-          href="/opportunities"
-          icon="Target"
-          tone="primary"
-        />
-        <PulseTile
-          label="Won this month"
-          raw={Number(summary.sales.wonValueThisMonth)}
-          sublabel={`${summary.sales.wonThisMonth} deals closed`}
-          series={pulse.wonValue.values}
-          delta={pulse.deltas.wonValue}
-          href="/opportunities?stage=CLOSED_WON"
-          icon="TrendingUp"
-          tone="success"
-        />
-        <PulseTile
-          label="Collected this month"
-          raw={Number(summary.finance.collectedThisMonth)}
-          sublabel={`${formatCompactMoney(summary.finance.outstanding)} still outstanding`}
-          series={pulse.collected.values}
-          delta={pulse.deltas.collected}
-          href="/payments"
-          icon="Banknote"
-          tone="success"
-        />
-        <PulseTile
-          label="Overdue receivables"
-          raw={Number(overdueInvoices._sum.outstandingAmount ?? 0)}
-          sublabel={`${overdueInvoices._count} invoices past due`}
-          // Cash collected, inverted in meaning rather than in data: money
-          // arriving is what clears this figure, so the same series is the
-          // honest trend for it. A sparkline of unrelated numbers under a
-          // headline is worse than no sparkline.
-          series={pulse.collected.values}
-          delta={pulse.deltas.collected}
-          href="/invoices"
-          icon="Receipt"
-          tone={overdueInvoices._count > 0 ? "danger" : "muted"}
-        />
+        {tiles.map((tile) => (
+          <PulseTile key={tile.label} {...tile} />
+        ))}
       </div>
 
       {attention.length > 0 && (
@@ -421,6 +627,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        {seeSales && (
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center gap-2">
             <CardTitle>Pipeline by stage</CardTitle>
@@ -464,6 +671,8 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
+        )}
+
         {/* Omitted rather than zeroed for a reader without commission access:
             a ledger of confident zeros reads as "no commission is owed", which
             is a different and possibly wrong statement. */}
@@ -497,16 +706,28 @@ export default async function DashboardPage() {
         )}
       </div>
 
-      <h2 className="mb-3 mt-8 flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-        <PulseDot />
-        Change stream
-        <span className="font-sans normal-case tracking-normal opacity-70">
-          — every edit anyone makes, as it lands
-        </span>
-      </h2>
-      <ActivityStream initial={recentChanges} />
+      {/* Hidden outright for a reader who can see no module's history, rather
+          than shown as an empty terminal — a blank log reads as "nothing is
+          happening", which is a claim about the company and not about the
+          reader's permissions. */}
+      {auditTypes.length > 0 && (
+        <>
+          <h2 className="mb-3 mt-8 flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+            <PulseDot />
+            Change stream
+            <span className="font-sans normal-case tracking-normal opacity-70">
+              {/* Not "every edit anyone makes" any more: the stream is scoped to
+                  the modules this reader can open, so promising the whole
+                  company's activity would be a lie to most of them. */}
+              — edits across the modules you work in, as they land
+            </span>
+          </h2>
+          <ActivityStream initial={recentChanges} visibleTypes={auditTypes} />
+        </>
+      )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        {seePartners && (
         <Card>
           <CardHeader>
             <CardTitle>Top partners by commission earned</CardTitle>
@@ -552,13 +773,13 @@ export default async function DashboardPage() {
             )}
           </CardContent>
         </Card>
+        )}
 
+        {/* Open cases and active projects were a pair of tiles here as well as
+            headline figures above. They are now in the headline row, where they
+            are scoped and gated; repeating them under a different label was
+            only ever noise. */}
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <StatTile label="Open support cases" value={String(openCases)} href="/cases" tone={openCases > 0 ? "info" : "neutral"} />
-            <StatTile label="Active projects" value={String(activeProjects)} href="/projects" />
-          </div>
-
           <Card>
             <CardHeader>
               <CardTitle>My open activities</CardTitle>
@@ -585,6 +806,8 @@ export default async function DashboardPage() {
           </Card>
         </div>
       </div>
+      </>
+      )}
     </>
   );
 }
