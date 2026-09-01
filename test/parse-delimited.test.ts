@@ -64,6 +64,21 @@ describe("parseDelimited", () => {
     expect(parseDelimited("   ")).toEqual({ headers: [], rows: [], delimiter: "," });
   });
 
+  it("reads a CRLF file, which is what Excel and Windows produce", () => {
+    const { headers, rows } = parseDelimited("First,Last\r\nAsad,Khan\r\nSara,Ali");
+    expect(headers).toEqual(["First", "Last"]);
+    expect(rows).toEqual([["Asad", "Khan"], ["Sara", "Ali"]]);
+  });
+
+  it("keeps a CRLF that lives inside a quoted cell", () => {
+    // The carriage return is part of the cell's own text, not a row
+    // separator, so it stays. This is why sample-leads.csv is marked -text
+    // in .gitattributes: letting git rewrite the fixture changed the value
+    // the fixture test asserts.
+    const { rows } = parseDelimited('Name,Address\r\nAsad,"12 Mall Road\r\nLahore"');
+    expect(rows).toEqual([["Asad", "12 Mall Road\r\nLahore"]]);
+  });
+
   it("strips a UTF-8 BOM, which Excel exports carry", () => {
     const { headers } = parseDelimited("﻿First,Last\nA,B");
     expect(headers).toEqual(["First", "Last"]);

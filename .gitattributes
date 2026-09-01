@@ -1,0 +1,5 @@
+# Test fixtures are data, not source. Their bytes are what is under test, so git
+# must not rewrite line endings on checkout — core.autocrlf turned the embedded
+# LF inside a quoted CSV cell into CRLF, which changed the value the parser
+# returns and failed a test that was asserting the exact cell contents.
+*.csv -text
