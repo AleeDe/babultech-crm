@@ -921,7 +921,7 @@ export async function getAttentionItems() {
   const db = await supabaseServer();
   const now = today();
 
-  const [overdueInvoices, breachedCases, staleDeals, expiringAgreements] = await Promise.all([
+  const [overdueInvoices, breachedCases, staleDeals, expiringAgreements, expiringContracts] = await Promise.all([
     can(me, PERMISSIONS.INVOICE_READ)
       ? db.from("invoice")
           .select("id, invoiceNumber, totalAmount, outstandingAmount, dueDate, currencyCode, account ( id, name )")
@@ -959,6 +959,29 @@ export async function getAttentionItems() {
           .order("agreementExpiryDate")
           .limit(5)
       : { data: [] },
+    // Contracts approaching their end date.
+    //
+    // The contract page already warns when one is inside its notice period, but
+    // only once you open it — so the warning arrives for the contracts someone
+    // happened to look at, which is not the set that needs it. An auto-renewing
+    // contract nobody opens renews itself, which is the expensive case.
+    //
+    // 90 days rather than the 60 used for partner agreements: notice periods
+    // here run to 90 by default, and a warning that arrives after the notice
+    // window has closed is worse than none — it tells you about a decision you
+    // can no longer make.
+    // OPPORTUNITY_READ, not a contract permission: that is what listContracts
+    // and the contracts page already require, and inventing a stricter gate
+    // here would hide the warning from people who can open the contract itself.
+    can(me, PERMISSIONS.OPPORTUNITY_READ)
+      ? db.from("contract")
+          .select("id, contractNumber, name, endDate, noticePeriodDays, renewalType, contractValue, currencyCode, account ( id, name )")
+          .is("deletedAt", null)
+          .eq("status", "ACTIVE")
+          .lte("endDate", daysFromNow(90))
+          .order("endDate")
+          .limit(5)
+      : { data: [] },
   ]);
 
   const first = <T,>(v: unknown): T | null =>
@@ -980,5 +1003,22 @@ export async function getAttentionItems() {
       account: first<Named>(r.account),
     })),
     expiringAgreements: expiringAgreements.data ?? [],
+    expiringContracts: (expiringContracts.data ?? []).map((r: Record<string, unknown>) => {
+      const end = new Date(String(r.endDate));
+      const daysToEnd = Math.round((end.getTime() - Date.now()) / 86_400_000);
+      // The notice period is what makes this urgent rather than merely upcoming:
+      // once it has passed, an auto-renewing contract renews whatever anyone
+      // decides afterwards. Defaults to 90 to match the contract page.
+      const notice = r.noticePeriodDays == null ? 90 : Number(r.noticePeriodDays);
+      return {
+        ...r,
+        account: first<Named>(r.account),
+        daysToEnd,
+        inNoticeWindow: daysToEnd <= notice,
+        // An auto-renew inside its notice window is the expensive case: doing
+        // nothing signs you up for another term.
+        autoRenews: r.renewalType === "AUTO_RENEW",
+      };
+    }),
   };
 }

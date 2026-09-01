@@ -293,6 +293,35 @@ export default async function DashboardPage({
       tone: "warning" as const,
     },
     {
+      // Split from the general expiry list: an auto-renewing contract inside
+      // its notice window is the one where doing nothing has a consequence, so
+      // it gets its own line and the stronger tone.
+      count: attentionData.expiringContracts.filter(
+        (c: Record<string, any>) => c.autoRenews && c.inNoticeWindow,
+      ).length,
+      title: "Auto-renewing contracts inside their notice period",
+      detail: attentionData.expiringContracts
+        .filter((c: Record<string, any>) => c.autoRenews && c.inNoticeWindow)
+        .slice(0, 3)
+        .map((c: Record<string, any>) => `${c.name} — ${c.daysToEnd}d left`)
+        .join(" · "),
+      href: "/contracts",
+      tone: "danger" as const,
+    },
+    {
+      count: attentionData.expiringContracts.filter(
+        (c: Record<string, any>) => !(c.autoRenews && c.inNoticeWindow),
+      ).length,
+      title: "Contracts ending within 90 days",
+      detail: attentionData.expiringContracts
+        .filter((c: Record<string, any>) => !(c.autoRenews && c.inNoticeWindow))
+        .slice(0, 3)
+        .map((c: Record<string, any>) => `${c.name} — ${formatDate(c.endDate)}`)
+        .join(" · "),
+      href: "/contracts",
+      tone: "warning" as const,
+    },
+    {
       count: approvals.items.filter((i) => !i.blockedReason).length,
       title: "Waiting on your approval",
       detail: approvals.items
