@@ -3,6 +3,7 @@ import { getCampaign, updateCampaign, getCreateFormOptions } from "@/server/crm"
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { PageHeader, Forbidden, Input, Select, Textarea } from "@/components/ui";
 import { RecordForm, FormField } from "@/components/record-form";
+import { DateRange, RangeStart, RangeEnd } from "@/components/date-range-fields";
 
 const dateInput = (v: unknown) => (v ? String(v).slice(0, 10) : "");
 
@@ -74,15 +75,20 @@ export default async function EditCampaignPage({
               />
             </FormField>
 
-            <FormField label="Starts" name="startDate"
-            help="When the campaign begins.">
-              <Input name="startDate" type="date" defaultValue={dateInput(campaign.startDate)} />
-            </FormField>
+            <DateRange
+              startDefault={dateInput(campaign.startDate)}
+              endDefault={dateInput(campaign.endDate)}
+            >
+              <FormField label="Starts" name="startDate"
+              help="When the campaign begins.">
+                <RangeStart name="startDate" />
+              </FormField>
 
-            <FormField label="Ends" name="endDate"
-            help="When it finishes.">
-              <Input name="endDate" type="date" defaultValue={dateInput(campaign.endDate)} />
-            </FormField>
+              <FormField label="Ends" name="endDate"
+              help="When it finishes. Cannot be before the start date.">
+                <RangeEnd name="endDate" />
+              </FormField>
+            </DateRange>
 
             <FormField label="Expected leads" name="expectedLeads"
             help="How many leads you expect. The benchmark you judge the result against.">

@@ -1,6 +1,8 @@
-import { createCampaign, getCreateFormOptions } from "@/server/crm";
+import { createCampaign, createCampaignType, getCreateFormOptions } from "@/server/crm";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
-import { PageHeader, Forbidden, Input, Select, Textarea, Alert } from "@/components/ui";
+import { PageHeader, Forbidden, Input, Select, Textarea } from "@/components/ui";
+import { SelectWithAdd } from "@/components/select-with-add";
+import { DateRange, RangeStart, RangeEnd } from "@/components/date-range-fields";
 import { RecordForm, FormField } from "@/components/record-form";
 
 export default async function NewCampaignPage() {
@@ -17,14 +19,6 @@ export default async function NewCampaignPage() {
         description="A marketing push you want to attribute leads and revenue to."
       />
 
-      {campaignTypes.length === 0 && (
-        <div className="mb-4">
-          <Alert tone="warning">
-            There are no campaign types yet. An administrator can add them under Settings.
-          </Alert>
-        </div>
-      )}
-
       <div className="max-w-2xl">
         <RecordForm action={createCampaign} redirectTo="/campaigns" submitLabel="Create campaign">
               <FormField label="Name" name="name" required
@@ -34,13 +28,16 @@ export default async function NewCampaignPage() {
 
               <div className="grid gap-5 sm:grid-cols-2">
                 <FormField label="Type" name="campaignTypeId" required
-            help="The kind of activity — email, event, advertising, webinar.">
-                  <Select name="campaignTypeId" required defaultValue="">
-                    <option value="" disabled>Choose a type…</option>
-                    {campaignTypes.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </Select>
+            help="The kind of activity — email, event, advertising, webinar. Add one with + if it is not listed.">
+                  <SelectWithAdd
+                    name="campaignTypeId"
+                    required
+                    options={campaignTypes}
+                    placeholder="Choose a type…"
+                    addLabel="Add a campaign type"
+                    onCreate={createCampaignType}
+                    extraField={{ name: "channel", label: "Channel (optional)", placeholder: "Email" }}
+                  />
                 </FormField>
 
                 <FormField label="Owner" name="ownerUserId" required
@@ -67,15 +64,17 @@ export default async function NewCampaignPage() {
                   <Input name="budgetAmount" type="number" step="0.01" min="0" placeholder="850000" />
                 </FormField>
 
-                <FormField label="Starts" name="startDate"
-            help="When the campaign begins.">
-                  <Input name="startDate" type="date" />
-                </FormField>
+                <DateRange>
+                  <FormField label="Starts" name="startDate"
+              help="When the campaign begins.">
+                    <RangeStart name="startDate" />
+                  </FormField>
 
-                <FormField label="Ends" name="endDate"
-            help="When it finishes.">
-                  <Input name="endDate" type="date" />
-                </FormField>
+                  <FormField label="Ends" name="endDate"
+              help="When it finishes. Cannot be before the start date.">
+                    <RangeEnd name="endDate" />
+                  </FormField>
+                </DateRange>
 
                 <FormField
                   label="Expected leads"

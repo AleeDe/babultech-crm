@@ -28,12 +28,15 @@ export default async function LeadDetailPage({
 
   const [{ id }, query] = await Promise.all([params, searchParams]);
 
-  const [notes, documents, audit] = await Promise.all([
+  // getLead joins the group rather than following it: it takes only `id`, so
+   // waiting for the other three to finish first bought nothing but a second
+   // round trip. See the note on the project page for the latency arithmetic.
+  const [notes, documents, audit, lead] = await Promise.all([
     listNotes("Lead", id),
     listDocuments("Lead", id),
     getAuditTrail("Lead", id, 15),
+    getLead(id),
   ]);
-  const lead = await getLead(id);
   if (!lead) notFound();
 
   const name = `${lead.firstName} ${lead.lastName}`;
@@ -61,8 +64,23 @@ export default async function LeadDetailPage({
   return (
     <>
       <PageHeader title={name} description={lead.companyName ?? lead.leadNumber}>
-        <Badge tone={statusTone(lead.status)}>{humanize(lead.status)}</Badge>
-        {lead.rating && <Badge tone={statusTone(lead.rating)}>{humanize(lead.rating)}</Badge>}
+        {/* A plain title rather than a FieldHelp button: a badge has no room
+            for a marker beside it, and these two are labels rather than fields
+            someone fills in. */}
+        <Badge
+          tone={statusTone(lead.status)}
+          title="How far along this lead is: New, then Contacted, Qualified, Unqualified or Converted. Converting is what creates the account, contact and deal."
+        >
+          {humanize(lead.status)}
+        </Badge>
+        {lead.rating && (
+          <Badge
+            tone={statusTone(lead.rating)}
+            title="How warm they are — your judgement, not a calculation. Hot means ready to buy, Cold means keep in touch. Used to decide who to call first."
+          >
+            {humanize(lead.rating)}
+          </Badge>
+        )}
         {!converted && (
           <Button asChild variant="outline">
             <Link href={logTouchHref}>Log a touch</Link>
@@ -105,11 +123,25 @@ export default async function LeadDetailPage({
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Estimated value" value={formatMoney(lead.estimatedValue)} />
-        <StatTile label="Source" value={lead.leadSource ?? "—"} sublabel={lead.industry ?? undefined} />
-        <StatTile label="Owner" value={lead.owner?.fullName ?? "—"} />
+        <StatTile
+          label="Estimated value"
+          help="Roughly what this deal could be worth. A guess used to size the pipeline and decide who to chase first — it is not a quoted price and nobody has agreed to it."
+          value={formatMoney(lead.estimatedValue)}
+        />
+        <StatTile
+          label="Source"
+          help="How they first reached you. This is what tells you which channels are worth the spend — the second line is their industry."
+          value={lead.leadSource ?? "—"}
+          sublabel={lead.industry ?? undefined}
+        />
+        <StatTile
+          label="Owner"
+          help="Who is responsible for following this up. Ownership also controls visibility: a rep on OWN scope sees only the leads they own."
+          value={lead.owner?.fullName ?? "—"}
+        />
         <StatTile
           label="Next follow-up"
+          help="When you have committed to contact them again. Shown amber when nothing is set, because an unqualified lead with no next step is how prospects go quiet."
           value={lead.nextFollowUpAt ? formatDate(lead.nextFollowUpAt) : "None set"}
           tone={lead.nextFollowUpAt ? "neutral" : "warning"}
         />
@@ -121,7 +153,7 @@ export default async function LeadDetailPage({
             <CardTitle>How to reach them</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <DetailRow label="Email">
+            <DetailRow label="Email" help="Their work address. Used for the email you send from this record, so a wrong one fails silently.">
               {lead.email ? (
                 <a href={`mailto:${lead.email}`} className="inline-flex items-center gap-1.5 text-primary hover:underline">
                   <Mail className="h-3.5 w-3.5" /> {lead.email}
@@ -130,7 +162,7 @@ export default async function LeadDetailPage({
                 "—"
               )}
             </DetailRow>
-            <DetailRow label="Phone">
+            <DetailRow label="Phone" help="Best number to call. Carried over to the contact record when this lead is converted.">
               {lead.phone ? (
                 <a href={`tel:${lead.phone}`} className="inline-flex items-center gap-1.5 hover:underline">
                   <Phone className="h-3.5 w-3.5" /> {lead.phone}
@@ -139,7 +171,7 @@ export default async function LeadDetailPage({
                 "—"
               )}
             </DetailRow>
-            <DetailRow label="WhatsApp">
+            <DetailRow label="WhatsApp" help="Kept separate from Phone because it is often a different number, and because it is frequently the one that actually gets answered.">
               {lead.whatsapp ? (
                 <span className="inline-flex items-center gap-1.5">
                   <MessageCircle className="h-3.5 w-3.5" /> {lead.whatsapp}
@@ -148,8 +180,8 @@ export default async function LeadDetailPage({
                 "—"
               )}
             </DetailRow>
-            <DetailRow label="Job title">{lead.jobTitle ?? "—"}</DetailRow>
-            <DetailRow label="Company">{lead.companyName ?? "—"}</DetailRow>
+            <DetailRow label="Job title" help="What they do. The quickest read on whether this person can sign, influence, or neither.">{lead.jobTitle ?? "—"}</DetailRow>
+            <DetailRow label="Company" help="Where they work, as free text. No account exists yet — converting this lead is what creates one.">{lead.companyName ?? "—"}</DetailRow>
           </CardContent>
         </Card>
 
@@ -158,9 +190,9 @@ export default async function LeadDetailPage({
             <CardTitle>Where it came from</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <DetailRow label="Lead number">{lead.leadNumber}</DetailRow>
-            <DetailRow label="Source">{lead.leadSource ?? "—"}</DetailRow>
-            <DetailRow label="Campaign">
+            <DetailRow label="Lead number" help="Issued automatically and never reused. Quote it when someone asks about this prospect.">{lead.leadNumber}</DetailRow>
+            <DetailRow label="Source" help="The channel they arrived through — referral, website, event. Aggregated to show which channels return the spend.">{lead.leadSource ?? "—"}</DetailRow>
+            <DetailRow label="Campaign" help="The marketing push that produced this lead, if any. Links what the campaign cost to what it actually returned.">
               {lead.campaign ? (
                 <Link href={`/campaigns/${lead.campaign?.id}`} className="text-primary hover:underline">
                   {lead.campaign?.name}
@@ -169,7 +201,7 @@ export default async function LeadDetailPage({
                 "—"
               )}
             </DetailRow>
-            <DetailRow label="Referred by">
+            <DetailRow label="Referred by" help="The partner credited for this introduction. Carries through to the deal on conversion, which is what earns them commission.">
               {lead.referredByPartner ? (
                 <Link href={`/partners/${lead.referredByPartner?.id}`} className="text-primary hover:underline">
                   {lead.referredByPartner?.displayName}
@@ -178,7 +210,7 @@ export default async function LeadDetailPage({
                 "—"
               )}
             </DetailRow>
-            <DetailRow label="Created">{formatDateTime(lead.createdAt)}</DetailRow>
+            <DetailRow label="Created" help="When the lead entered the system. The clock against which a stale prospect is measured.">{formatDateTime(lead.createdAt)}</DetailRow>
           </CardContent>
         </Card>
       </div>

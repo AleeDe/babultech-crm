@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { listLeads } from "@/server/crm";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
@@ -42,6 +42,13 @@ export default async function LeadsPage({
         description="Unqualified prospects. Converting one creates the account, contact and deal — and carries any partner referral through."
       >
         <ExportButton entity="leads" params={{ search: params.search, status: params.status, source: params.source }} />
+        {can(_me, PERMISSIONS.LEAD_WRITE) && (
+          <Button asChild variant="outline">
+            <Link href="/leads/import">
+              <Upload className="h-4 w-4" /> Import
+            </Link>
+          </Button>
+        )}
         <Button asChild>
           <Link href="/leads/new">
             <Plus className="h-4 w-4" /> New lead

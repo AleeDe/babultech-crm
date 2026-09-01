@@ -404,6 +404,88 @@ const leadSchema = z.object({
   nextFollowUpAt: z.coerce.date().optional().nullable(),
 });
 
+/**
+ * Imports many leads at once, from a mapped spreadsheet.
+ *
+ * Rows arrive already mapped to lead fields by the import screen, so this does
+ * not know or care what the source columns were called. What it does is
+ * validate every row before writing any of them: a half-finished import leaves
+ * someone reconciling which prospects already exist, which is worse than a
+ * rejected paste they can fix and retry.
+ */
+export async function createLeadsBulk(
+  rows: z.infer<typeof leadSchema>[],
+): Promise<ActionResult<{ created: number }>> {
+  const _auth = await authorize(PERMISSIONS.LEAD_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  if (!rows.length) return { ok: false, error: "No rows to import." };
+  if (rows.length > 500) {
+    return { ok: false, error: "Import at most 500 rows at a time." };
+  }
+
+  const validated: z.infer<typeof leadSchema>[] = [];
+  const rowErrors: string[] = [];
+
+  rows.forEach((row, i) => {
+    const parsed = leadSchema.safeParse(row);
+    if (!parsed.success) {
+      const first = Object.entries(parsed.error.flatten().fieldErrors)[0];
+      rowErrors.push(
+        `Row ${i + 1}: ${first ? `${first[0]} — ${first[1]?.[0]}` : "invalid"}`,
+      );
+      return;
+    }
+    validated.push(parsed.data);
+  });
+
+  if (rowErrors.length) {
+    return { ok: false, error: rowErrors.slice(0, 10).join("\n") };
+  }
+
+  let created = 0;
+  try {
+    // Sequential, because leadNumber comes from a sequence that hands out one
+    // number at a time.
+    for (const d of validated) {
+      await createRecord(
+        "lead",
+        {
+          firstName: d.firstName,
+          lastName: d.lastName,
+          companyName: d.companyName || null,
+          jobTitle: d.jobTitle || null,
+          email: d.email || null,
+          phone: d.phone || null,
+          whatsapp: d.whatsapp || null,
+          industry: d.industry || null,
+          leadSource: d.leadSource || null,
+          campaignId: d.campaignId || null,
+          referredByPartnerId: d.referredByPartnerId || null,
+          ownerUserId: d.ownerUserId,
+          rating: d.rating || null,
+          estimatedValue: d.estimatedValue ?? null,
+          description: d.description || null,
+          nextFollowUpAt: d.nextFollowUpAt ?? null,
+          status: "NEW",
+        },
+        { field: "leadNumber", sequence: SEQUENCES.LEAD },
+      );
+      created += 1;
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        `${created} of ${validated.length} rows were created before this failed: ` +
+        (err instanceof Error ? err.message : "unknown error"),
+    };
+  }
+
+  revalidatePath("/leads");
+  return { ok: true, data: { created } };
+}
+
 export async function createLead(
   input: z.infer<typeof leadSchema>,
 ): Promise<ActionResult<{ id: string }>> {
@@ -836,6 +918,14 @@ export async function getFormOptions() {
 // price the deal), and activities are open to any signed-in user, since
 // everyone logs their own calls and tasks.
 
+const campaignTypeSchema = z.object({
+  name: z.string().trim().min(1, "Give the type a name.").max(100),
+  // Free text rather than an enum: the channels a business runs campaigns on
+  // are its own, and a fixed list would need a migration every time marketing
+  // tried something new.
+  channel: z.string().trim().max(100).optional().nullable(),
+});
+
 const campaignSchema = z.object({
   name: z.string().min(1, "Give the campaign a name.").max(200),
   campaignTypeId: z.string().uuid("Choose a campaign type."),
@@ -848,6 +938,68 @@ const campaignSchema = z.object({
   expectedLeads: z.coerce.number().int().min(0).optional().nullable(),
   expectedRevenue: z.coerce.number().min(0).optional().nullable(),
 });
+
+/**
+ * Creates a campaign type from inside the campaign form.
+ *
+ * Types were only ever seeded, never created: the "no campaign types yet"
+ * notice pointed at a Settings screen that does not manage them, so a new
+ * database left the Type field permanently unfillable and the campaign form
+ * unusable. Rather than send someone away to a page that would not have helped,
+ * the type is added where it is needed and selected on return.
+ *
+ * Gated on lead:write — the same permission the campaign form itself requires.
+ * Someone entitled to create the campaign is entitled to name the kind of
+ * campaign it is; a separate admin round-trip buys nothing here.
+ */
+export async function createCampaignType(
+  input: z.infer<typeof campaignTypeSchema>,
+): Promise<ActionResult<{ id: string; name: string }>> {
+  const _auth = await authorize(PERMISSIONS.LEAD_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  const parsed = campaignTypeSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const d = parsed.data;
+
+  const db = await supabaseServer();
+
+  // Case-insensitive, because "Webinar" and "webinar" in the same dropdown is a
+  // reporting problem later, not a naming preference now.
+  const { data: clash } = await db
+    .from("campaign_type")
+    .select("id, name")
+    .ilike("name", d.name)
+    .maybeSingle();
+
+  if (clash) {
+    return {
+      ok: false,
+      error: `"${clash.name}" already exists.`,
+      fieldErrors: { name: ["This type is already on the list."] },
+    };
+  }
+
+  try {
+    const created = await createRecord<{ id: string; name: string }>(
+      "campaign_type",
+      { name: d.name, channel: d.channel || null, active: true },
+    );
+    revalidatePath("/campaigns");
+    return { ok: true, data: { id: created.id, name: created.name } };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not add the campaign type.",
+    };
+  }
+}
 
 export async function createCampaign(
   input: z.infer<typeof campaignSchema>,
