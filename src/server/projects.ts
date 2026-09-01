@@ -921,6 +921,155 @@ export async function getTask(id: string) {
   };
 }
 
+/**
+ * The project's work log: every entry, plus the four things a manager reads it
+ * for.
+ *
+ * The project page already fetched a total and showed "Hours logged 0.0" — a
+ * number with nothing behind it. The entries existed in time_log the whole
+ * time; nothing ever displayed them, so there was no way to answer "what did
+ * anyone actually do on this?" from the project itself.
+ *
+ * Everything is derived from one read of time_log. PostgREST has no aggregate,
+ * so the grouping happens here, and doing it in one pass rather than four
+ * queries keeps the page to a single round trip.
+ *
+ * Rejected entries are excluded from every total: a rejected line is one that
+ * was disputed and thrown out, and counting it would overstate both effort and
+ * cost. It still appears in the entry list, because the person who logged it
+ * needs to see that it was rejected.
+ */
+export async function getProjectWorkLog(projectId: string, days = 30) {
+  await requirePermission(PERMISSIONS.PROJECT_READ);
+
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("time_log")
+    .select(
+      `id, workDate, hours, description, billable, approvalStatus,
+       startTime, endTime,
+       billingRate, costRate,
+       user:app_user!time_log_userId_fkey ( id, fullName ),
+       task:project_task ( id, name )`,
+    )
+    .eq("projectId", projectId)
+    .order("workDate", { ascending: false })
+    .order("createdAt", { ascending: false });
+
+  if (error) throw new Error(`Could not load the work log: ${error.message}`);
+
+  type LogRow = {
+    id: string;
+    workDate: string;
+    hours: string;
+    /** Null where the work was logged as a duration rather than clock times. */
+    startTime: string | null;
+    endTime: string | null;
+    description: string;
+    billable: boolean;
+    approvalStatus: string;
+    user: { id: string; fullName: string } | null;
+    task: { id: string; name: string } | null;
+  };
+
+  const rows: LogRow[] = (data ?? []).map((r: Record<string, any>) => ({
+    id: r.id,
+    workDate: String(r.workDate),
+    hours: String(r.hours),
+    startTime: r.startTime ? String(r.startTime) : null,
+    endTime: r.endTime ? String(r.endTime) : null,
+    description: String(r.description ?? ""),
+    billable: Boolean(r.billable),
+    approvalStatus: String(r.approvalStatus),
+    user: one(r.user as never) as { id: string; fullName: string } | null,
+    task: one(r.task as never) as { id: string; name: string } | null,
+  }));
+
+  // Rejected time is excluded from the arithmetic but kept in the list.
+  const counted = rows.filter((r) => r.approvalStatus !== "REJECTED");
+
+  const totalHours = counted.reduce((sum, r) => sum.plus(toDecimal(r.hours)), toDecimal(0));
+  const billableHours = counted
+    .filter((r) => r.billable)
+    .reduce((sum, r) => sum.plus(toDecimal(r.hours)), toDecimal(0));
+
+  // Per person, so it is visible who is carrying the project and who has not
+  // touched it this week.
+  const byPersonMap = new Map<
+    string,
+    { userId: string; fullName: string; hours: ReturnType<typeof toDecimal>; billable: ReturnType<typeof toDecimal>; lastEntry: string | null }
+  >();
+
+  for (const r of counted) {
+    const id = r.user?.id ?? "unknown";
+    const entry = byPersonMap.get(id) ?? {
+      userId: id,
+      fullName: r.user?.fullName ?? "Unknown",
+      hours: toDecimal(0),
+      billable: toDecimal(0),
+      lastEntry: null as string | null,
+    };
+    entry.hours = entry.hours.plus(toDecimal(r.hours));
+    if (r.billable) entry.billable = entry.billable.plus(toDecimal(r.hours));
+    // Rows arrive newest first, so the first one seen for a person is theirs.
+    if (!entry.lastEntry) entry.lastEntry = String(r.workDate);
+    byPersonMap.set(id, entry);
+  }
+
+  const byPerson = [...byPersonMap.values()]
+    .map((p) => ({
+      userId: p.userId,
+      fullName: p.fullName,
+      hours: p.hours.toString(),
+      billableHours: p.billable.toString(),
+      lastEntry: p.lastEntry,
+    }))
+    .sort((a, b) => Number(b.hours) - Number(a.hours));
+
+  // A dense daily series for the trend: every day in the window appears, so a
+  // gap in the work reads as a gap in the chart rather than being closed up.
+  const today = new Date();
+  const daily: { date: string; hours: number }[] = [];
+  const hoursOnDate = new Map<string, number>();
+  for (const r of counted) {
+    const d = String(r.workDate).slice(0, 10);
+    hoursOnDate.set(d, (hoursOnDate.get(d) ?? 0) + Number(r.hours));
+  }
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    daily.push({ date: key, hours: hoursOnDate.get(key) ?? 0 });
+  }
+
+  // "This week" runs from Monday, matching submitWeek() so the two never
+  // disagree about which week an entry belongs to.
+  const monday = new Date(today);
+  const weekday = (monday.getDay() + 6) % 7;
+  monday.setDate(monday.getDate() - weekday);
+  const mondayKey = monday.toISOString().slice(0, 10);
+
+  const thisWeekHours = counted
+    .filter((r) => String(r.workDate).slice(0, 10) >= mondayKey)
+    .reduce((sum, r) => sum.plus(toDecimal(r.hours)), toDecimal(0));
+
+  const pendingApproval = rows.filter(
+    (r) => r.approvalStatus === "SUBMITTED",
+  ).length;
+
+  return {
+    entries: rows,
+    totalHours: totalHours.toString(),
+    billableHours: billableHours.toString(),
+    nonBillableHours: totalHours.minus(billableHours).toString(),
+    thisWeekHours: thisWeekHours.toString(),
+    pendingApproval,
+    byPerson,
+    daily,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Resources — people booked onto the project
 // ---------------------------------------------------------------------------

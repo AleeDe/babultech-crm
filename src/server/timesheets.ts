@@ -7,6 +7,7 @@ import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
 import { createRecord, updateRecord } from "@/lib/db";
 import { PERMISSIONS, authorize, requirePermission, requireUser } from "@/lib/authz";
+import { hoursBetween, normaliseClock } from "@/lib/work-hours";
 import type { ActionResult } from "./partners";
 
 /**
@@ -23,15 +24,38 @@ import type { ActionResult } from "./partners";
 
 const HOURS_PER_DAY_CEILING = 24;
 
-const timeLogSchema = z.object({
-  projectId: z.string().uuid().optional().nullable(),
-  projectTaskId: z.string().uuid().optional().nullable(),
-  caseId: z.string().uuid().optional().nullable(),
-  workDate: z.coerce.date(),
-  hours: z.coerce.number().positive().max(HOURS_PER_DAY_CEILING),
-  description: z.string().min(1, "Say what you worked on."),
-  billable: z.boolean().default(true),
-});
+/**
+ * Clock times are optional and hours are not.
+ *
+ * `hours` is what approval, invoicing, cost and utilisation all read, so it is
+ * always stored. Start and end record *when* the work happened, which is what a
+ * customer asks when they query a bill — but demanding them would push people to
+ * invent times they never wrote down, and invented precision is worse than an
+ * honest total.
+ *
+ * `hours` is therefore optional in the schema and resolved afterwards: derived
+ * from the times when both are given, taken as typed when they are not. One of
+ * the two has to be present, which the refinement below enforces.
+ */
+const timeLogSchema = z
+  .object({
+    projectId: z.string().uuid().optional().nullable(),
+    projectTaskId: z.string().uuid().optional().nullable(),
+    caseId: z.string().uuid().optional().nullable(),
+    workDate: z.coerce.date(),
+    hours: z.coerce.number().positive().max(HOURS_PER_DAY_CEILING).optional().nullable(),
+    startTime: z.string().optional().nullable(),
+    endTime: z.string().optional().nullable(),
+    description: z.string().min(1, "Say what you worked on."),
+    billable: z.boolean().default(true),
+  })
+  .refine(
+    (v) => Boolean(v.hours) || hoursBetween(v.startTime, v.endTime) !== null,
+    {
+      message: "Give either a start and end time, or a number of hours.",
+      path: ["hours"],
+    },
+  );
 
 /** Monday of the week containing `date`. Timesheets are Monday–Sunday. */
 export async function startOfWeek(date: Date): Promise<Date> {
@@ -88,11 +112,37 @@ export async function logTime(
       projectId = task.projectId;
     }
 
+    // Derived, never trusted from the form: if both clock times are present
+    // they decide the duration, so the stored hours can never contradict the
+    // times shown beside them.
+    const derived = hoursBetween(data.startTime, data.endTime);
+    const hours = derived ?? data.hours;
+
+    if (!hours) {
+      return {
+        ok: false,
+        error: "Give either a start and end time, or a number of hours.",
+        fieldErrors: { hours: ["Required unless you enter start and end times."] },
+      };
+    }
+
+    if (hours > HOURS_PER_DAY_CEILING) {
+      return {
+        ok: false,
+        error: `That works out at ${hours} hours. Check the times — the most that can be logged against one date is ${HOURS_PER_DAY_CEILING}.`,
+        fieldErrors: { endTime: ["Longer than a day."] },
+      };
+    }
+
     const base = {
       userId: user.id,
       caseId: data.caseId ?? null,
       workDate: data.workDate.toISOString().slice(0, 10),
-      hours: data.hours,
+      hours,
+      // Padded to match what a TIME column returns, so a value read back
+      // compares equal to the one that was written.
+      startTime: normaliseClock(data.startTime),
+      endTime: normaliseClock(data.endTime),
       description: data.description,
       billable: data.billable,
       approvalStatus: "DRAFT",
@@ -148,6 +198,154 @@ export async function logTime(
   }
 }
 
+/**
+ * Logs one day's work across several tasks in a single submission, and
+ * optionally marks those tasks complete.
+ *
+ * A day rarely belongs to one task. The single-task form made someone submit
+ * the same date four times to record four pieces of work, and the natural
+ * shortcut - putting it all on one row with a description listing what was
+ * touched - loses the attribution that task-level cost and invoicing depend on.
+ *
+ * So the shape is one time_log row per task, created together. time_log holds a
+ * single projectTaskId by design (see time_log_context_check), and that is the
+ * right design: hours have to land on the task they were spent on. What was
+ * missing was a way to enter them together, not a looser table.
+ *
+ * Rows are validated as a set before any of them is written. A partial save
+ * here is worse than a rejected one - half a day recorded, with no indication
+ * of which half, is a timesheet nobody can reconcile.
+ */
+const workLogLineSchema = z.object({
+  projectTaskId: z.string().uuid().optional().nullable(),
+  hours: z.coerce.number().positive().max(HOURS_PER_DAY_CEILING),
+  description: z.string().min(1, "Say what you worked on."),
+  billable: z.boolean().default(true),
+  /** Move the task to COMPLETED once the time is recorded. */
+  completeTask: z.boolean().default(false),
+});
+
+const workLogDaySchema = z.object({
+  projectId: z.string().uuid(),
+  workDate: z.coerce.date(),
+  lines: z.array(workLogLineSchema).min(1, "Add at least one line."),
+});
+
+export async function logProjectDay(
+  input: z.infer<typeof workLogDaySchema>,
+): Promise<ActionResult<{ created: number; completed: number }>> {
+  const _auth = await authorize();
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
+
+  const parsed = workLogDaySchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const data = parsed.data;
+
+  // The ceiling applies to the day, not to each line. Four three-hour lines is
+  // twelve hours in one day however it is split up, and the check exists to
+  // catch a slipped decimal point rather than to police any single entry.
+  const dayTotal = data.lines.reduce((sum, l) => sum + l.hours, 0);
+  if (dayTotal > HOURS_PER_DAY_CEILING) {
+    return {
+      ok: false,
+      error: `That is ${dayTotal} hours in one day. Check the numbers — the most that can be logged against a single date is ${HOURS_PER_DAY_CEILING}.`,
+    };
+  }
+
+  // A task appearing twice is almost always a mistake in the form rather than
+  // an intention, and it would show as two entries nobody can tell apart.
+  const taskIds = data.lines.map((l) => l.projectTaskId).filter(Boolean);
+  if (new Set(taskIds).size !== taskIds.length) {
+    return {
+      ok: false,
+      error: "The same task is on more than one line. Combine them into one entry.",
+    };
+  }
+
+  const workDate = data.workDate.toISOString().slice(0, 10);
+  const db = await supabaseServer();
+
+  // Same membership rule as logTime: time is booked at the rate agreed for this
+  // person on this project, and someone not on the project cannot book to it at
+  // all. Skipping this check here would have made the multi-task form a way
+  // around a restriction the single-entry form enforces.
+  const { data: member } = await db
+    .from("project_member")
+    .select("active, billingRate, costRate")
+    .eq("projectId", data.projectId)
+    .eq("userId", user.id)
+    .maybeSingle();
+
+  if (!member || !member.active) {
+    return {
+      ok: false,
+      error:
+        "You are not an active member of this project, so you cannot book time to it. Ask the project manager to add you to the team.",
+    };
+  }
+
+  const rows = data.lines.map((l) => ({
+    userId: user.id,
+    projectId: data.projectId,
+    projectTaskId: l.projectTaskId || null,
+    caseId: null,
+    workDate,
+    hours: l.hours,
+    description: l.description,
+    billable: l.billable,
+    // Snapshotted per row, so a later rate change never rewrites what
+    // already-logged work was worth.
+    billingRate: l.billable ? member.billingRate : null,
+    costRate: member.costRate,
+    approvalStatus: "DRAFT",
+    updatedAt: new Date().toISOString(),
+  }));
+
+  const { data: inserted, error } = await db
+    .from("time_log")
+    .insert(rows)
+    .select("id");
+
+  if (error) {
+    return { ok: false, error: `Could not save the entries: ${error.message}` };
+  }
+
+  // Completing the tasks is deliberately a second step rather than part of the
+  // insert. The time is the record that matters and it is already safely
+  // written; if a status update fails - a task deleted underneath, a permission
+  // the person does not hold - the hours must not be rolled back with it. The
+  // count comes back so the caller can say what actually happened.
+  let completed = 0;
+  const toComplete = data.lines
+    .filter((l) => l.completeTask && l.projectTaskId)
+    .map((l) => l.projectTaskId as string);
+
+  if (toComplete.length > 0) {
+    const { data: done } = await db
+      .from("project_task")
+      .update({ status: "COMPLETED", updatedAt: new Date().toISOString() })
+      .in("id", toComplete)
+      .eq("projectId", data.projectId)
+      .select("id");
+    completed = (done ?? []).length;
+  }
+
+  revalidatePath(`/projects/${data.projectId}`);
+  revalidatePath("/timesheets");
+
+  return {
+    ok: true,
+    data: { created: (inserted ?? []).length, completed },
+  };
+}
+
 export async function updateTimeLog(
   id: string,
   input: z.infer<typeof timeLogSchema>,
@@ -184,7 +382,11 @@ export async function updateTimeLog(
       .from("time_log")
       .update({
         workDate: parsed.data.workDate.toISOString().slice(0, 10),
-        hours: parsed.data.hours,
+        // Same derivation as logTime: clock times win when both are given, so
+        // an edit cannot leave the hours disagreeing with the times beside them.
+        hours: hoursBetween(parsed.data.startTime, parsed.data.endTime) ?? parsed.data.hours,
+        startTime: normaliseClock(parsed.data.startTime),
+        endTime: normaliseClock(parsed.data.endTime),
         description: parsed.data.description,
         billable: parsed.data.billable,
         approvalStatus: "DRAFT",

@@ -4,16 +4,19 @@ import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
 import { NotesPanel } from "@/components/notes-panel";
 import { DocumentsPanel } from "@/components/documents-panel";
-import { getProject, getProjectBurn, getProjectFormOptions } from "@/server/projects";
+import { getProject, getProjectBurn, getProjectWorkLog } from "@/server/projects";
+import { supabaseServer } from "@/lib/supabase";
 import { getAuditTrail } from "@/lib/audit";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   StatTile, Button, Alert, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, formatNumber, humanize, serialize } from "@/lib/utils";
-import { TaskBoard, TeamPanel, PlanPanel, RaidPanel } from "./project-panels";
+import { TaskBoard, TeamPanel, PlanPanel, RaidPanel } from "./project-panels";
+
 import { ChangeRequestsPanel } from "./change-requests-panel";
-import { TaskBoardView } from "./task-board";
+import { RecordTabs } from "@/components/record-tabs";
+import { WorkLogPanel } from "./work-log";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 export default async function ProjectWorkspacePage({
@@ -26,18 +29,42 @@ export default async function ProjectWorkspacePage({
 
   const { id } = await params;
 
-  const [notes, documents] = await Promise.all([
-    listNotes("Project", id),
-    listDocuments("Project", id),
-  ]);
-  const project = await getProject(id);
-  if (!project) notFound();
+  // One wave, not three.
+  //
+  // These ran as Promise.all -> await getProject -> Promise.all, so the page
+  // paid three round trips end to end before rendering. Against the Mumbai
+  // database a single query has a median latency of ~400ms, and none of these
+  // seven calls needs a result from any other — every one of them takes only
+  // `id`, which is known here. Serialising them was costing roughly two thirds
+  // of the wait for nothing.
+  //
+  // The notFound() check still happens before anything reads `project`; it just
+  // no longer holds up the other six queries while it waits.
+  const [notes, documents, workLog, project, burn, options, audit] =
+    await Promise.all([
+      listNotes("Project", id),
+      listDocuments("Project", id),
+      getProjectWorkLog(id),
+      getProject(id),
+      getProjectBurn(id),
+      // Only the user list is read below, but getProjectFormOptions also fetches
+      // accounts, opportunities, contracts and currencies for the edit form —
+      // four reference tables pulled on every view of a page that never shows
+      // them. At ~400ms a query that is most of a second spent on nothing.
+      (async () => {
+        const db = await supabaseServer();
+        const { data } = await db
+          .from("app_user")
+          .select("id, fullName, jobTitle, costRate, defaultBillingRate")
+          .eq("status", "ACTIVE")
+          .is("deletedAt", null)
+          .order("fullName");
+        return { users: data ?? [] };
+      })(),
+      getAuditTrail("Project", id, 10),
+    ]);
 
-  const [burn, options, audit] = await Promise.all([
-    getProjectBurn(id),
-    getProjectFormOptions(),
-    getAuditTrail("Project", id, 10),
-  ]);
+  if (!project) notFound();
 
   const approvedHours = Number(project.approvedHours ?? 0);
   const loggedHours = Number(burn.loggedHours);
@@ -115,152 +142,216 @@ export default async function ProjectWorkspacePage({
         </div>
       )}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
-          <TaskBoardView
-            projectId={project.id}
-            tasks={s.tasks as never}
-            canWrite={can(_me, PERMISSIONS.PROJECT_WRITE)}
-          />
+      {/* Everything below the headline moved into tabs.
 
-          <TaskBoard
-            projectId={project.id}
-            tasks={s.tasks as never}
-            phases={s.phases as never}
-            milestones={s.milestones as never}
-            members={s.members as never}
-          />
+          The page rendered nine panels in one column - a drag board, a second
+          task list showing the same tasks, a plan, a team, a RAID log, change
+          requests, details, notes and documents. Reaching the team meant
+          scrolling past every task card on the project, and nothing on screen
+          said which parts mattered.
 
-          <PlanPanel
-            projectId={project.id}
-            phases={s.phases as never}
-            milestones={s.milestones as never}
-            users={s.users as never}
-            currency={project.currencyCode}
-            contractValue={project.contractValue ? String(project.contractValue) : null}
-          />
+          What stays above the tabs is what answers "is this project in
+          trouble?" - the status, the four figures, and the two alerts. Those
+          are read at a glance and acted on; the rest is read on purpose. */}
+      <RecordTabs
+        tabs={[
+          {
+            value: "tasks",
+            label: "Tasks",
+            count: s.tasks.length,
+            content: (
+              // One board, one source of truth.
+              //
+              // Two boards of the same tasks were stacked here: TaskBoardView
+              // for dragging, TaskBoard for adding and editing. No tool that
+              // does this well - ClickUp, Linear, Jira - shows the same tasks
+              // twice; a view switcher changes how you see them, never how many
+              // copies there are. TaskBoard now drags too, so the second board
+              // has nothing left to offer.
+              <TaskBoard
+                projectId={project.id}
+                tasks={s.tasks as never}
+                phases={s.phases as never}
+                milestones={s.milestones as never}
+                members={s.members as never}
+              />
+            ),
+          },
+          {
+            value: "activity",
+            label: "Work log",
+            count: workLog.entries.length,
+            content: (
+              <WorkLogPanel
+                projectId={project.id}
+                log={workLog}
+                tasks={(s.tasks as never as { id: string; name: string }[]).map((t) => ({ id: t.id, name: t.name }))}
+                approvedHours={project.approvedHours ? Number(project.approvedHours) : null}
+                canLog={can(_me, PERMISSIONS.PROJECT_READ)}
+              />
+            ),
+          },
+          {
+            value: "plan",
+            label: "Plan",
+            count: s.phases.length + s.milestones.length,
+            content: (
+              <PlanPanel
+                projectId={project.id}
+                phases={s.phases as never}
+                milestones={s.milestones as never}
+                users={s.users as never}
+                currency={project.currencyCode}
+                contractValue={project.contractValue ? String(project.contractValue) : null}
+              />
+            ),
+          },
+          {
+            value: "team",
+            label: "Team",
+            count: s.members.length,
+            content: (
+              <TeamPanel
+                projectId={project.id}
+                members={s.members as never}
+                users={s.users as never}
+                currency={project.currencyCode}
+              />
+            ),
+          },
+          {
+            value: "raid",
+            label: "Risks & issues",
+            count: openRisks.length + openIssues.length,
+            content: (
+              <div className="space-y-6">
+                <RaidPanel
+                  projectId={project.id}
+                  risks={s.risks as never}
+                  issues={s.issues as never}
+                  users={s.users as never}
+                />
+                <ChangeRequestsPanel changeRequests={project.changeRequests} />
+              </div>
+            ),
+          },
+          {
+            value: "details",
+            label: "Details",
+            content: (
+              <div className="grid gap-6 lg:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Details</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    <Row label="Customer">
+                      <Link href={`/accounts/${project.account?.id}`} className="text-primary hover:underline">
+                        {project.account?.name}
+                      </Link>
+                      <p className="text-xs text-muted-foreground">{project.account?.accountNumber}</p>
+                    </Row>
+                    <Row label="Project manager">{project.projectManager?.fullName}</Row>
+                    <Row label="Sourced from">
+                      {project.opportunity ? (
+                        <Link href={`/opportunities/${project.opportunity?.id}`} className="text-primary hover:underline">
+                          {project.opportunity?.opportunityNumber} - {project.opportunity?.name}
+                        </Link>
+                      ) : "—"}
+                    </Row>
+                    <Row label="Contract">
+                      {project.contract ? (
+                        <Link href="/contracts" className="text-primary hover:underline">
+                          {project.contract.contractNumber}
+                        </Link>
+                      ) : "—"}
+                    </Row>
+                    <Row label="Billing">{humanize(project.billingType)}</Row>
+                    <Row label="Contract value">{formatMoney(project.contractValue, project.currencyCode)}</Row>
+                    <Row label="Schedule">
+                      {formatDate(project.startDate)} → {formatDate(project.plannedEndDate)}
+                      {project.actualEndDate && (
+                        <p className="text-xs text-muted-foreground">
+                          Actually ended {formatDate(project.actualEndDate)}
+                        </p>
+                      )}
+                    </Row>
+                  </CardContent>
+                </Card>
 
-          <TeamPanel
-            projectId={project.id}
-            members={s.members as never}
-            users={s.users as never}
-            currency={project.currencyCode}
-          />
+                <div className="space-y-6">
+                  {project.scope && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Scope</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="whitespace-pre-wrap text-sm">{project.scope}</p>
+                      </CardContent>
+                    </Card>
+                  )}
 
-          <RaidPanel
-            projectId={project.id}
-            risks={s.risks as never}
-            issues={s.issues as never}
-            users={s.users as never}
-          />
+                  {project.cases.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Linked support cases</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2 text-sm">
+                        {project.cases.map((c: Record<string, any>) => (
+                          <div key={c.id} className="flex items-center justify-between gap-2 border-b pb-2 last:border-0">
+                            <Link href={`/cases/${c.id}`} className="min-w-0 flex-1 truncate hover:underline">
+                              {c.subject}
+                              <span className="block text-xs text-muted-foreground">{c.caseNumber}</span>
+                            </Link>
+                            <Badge tone={statusTone(c.status)}>{humanize(c.status)}</Badge>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
 
-          <ChangeRequestsPanel changeRequests={project.changeRequests} />
-        </div>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Change history</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm">
+                      {audit.length === 0 ? (
+                        <p className="text-muted-foreground">No changes recorded.</p>
+                      ) : (
+                        audit.map((a: Record<string, any>) => (
+                          <div key={a.id}>
+                            <p>
+                              <span className="font-medium">{humanize(a.fieldName)}</span>{" "}
+                              <span className="text-muted-foreground">
+                                {a.oldValue ?? "empty"} → {a.newValue ?? "empty"}
+                              </span>
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {a.changedBy?.fullName ?? "System"} · {formatDate(a.changedAt)}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            ),
+          },
+          {
+            value: "files",
+            label: "Notes & files",
+            count: notes.length + documents.length,
+            content: (
+              <div className="grid gap-6 lg:grid-cols-2">
+                <NotesPanel entityType="Project" entityId={id} notes={notes} />
+                <DocumentsPanel entityType="Project" entityId={id} documents={documents} />
+              </div>
+            ),
+          },
+        ]}
+      />
 
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <Row label="Customer">
-                <Link href={`/accounts/${project.account?.id}`} className="text-primary hover:underline">
-                  {project.account?.name}
-                </Link>
-                <p className="text-xs text-muted-foreground">{project.account?.accountNumber}</p>
-              </Row>
-              <Row label="Project manager">{project.projectManager?.fullName}</Row>
-              <Row label="Sourced from">
-                {project.opportunity ? (
-                  <Link href={`/opportunities/${project.opportunity?.id}`} className="text-primary hover:underline">
-                    {project.opportunity?.opportunityNumber} — {project.opportunity?.name}
-                  </Link>
-                ) : "—"}
-              </Row>
-              <Row label="Contract">
-                {project.contract ? (
-                  <Link href="/contracts" className="text-primary hover:underline">
-                    {project.contract.contractNumber}
-                  </Link>
-                ) : "—"}
-              </Row>
-              <Row label="Billing">{humanize(project.billingType)}</Row>
-              <Row label="Contract value">{formatMoney(project.contractValue, project.currencyCode)}</Row>
-              <Row label="Schedule">
-                {formatDate(project.startDate)} → {formatDate(project.plannedEndDate)}
-                {project.actualEndDate && (
-                  <p className="text-xs text-muted-foreground">
-                    Actually ended {formatDate(project.actualEndDate)}
-                  </p>
-                )}
-              </Row>
-              <Row label="RAID">
-                {openRisks.length} open risk(s), {openIssues.length} open issue(s)
-              </Row>
-            </CardContent>
-          </Card>
-
-          {project.cases.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Linked support cases</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                {project.cases.map((c: Record<string, any>) => (
-                  <div key={c.id} className="flex items-center justify-between gap-2 border-b pb-2 last:border-0">
-                    <Link href={`/cases/${c.id}`} className="min-w-0 flex-1 truncate hover:underline">
-                      {c.subject}
-                      <span className="block text-xs text-muted-foreground">{c.caseNumber}</span>
-                    </Link>
-                    <Badge tone={statusTone(c.status)}>{humanize(c.status)}</Badge>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          {project.scope && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Scope</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="whitespace-pre-wrap text-sm">{project.scope}</p>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Change history</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              {audit.length === 0 ? (
-                <p className="text-muted-foreground">No changes recorded.</p>
-              ) : (
-                audit.map((a: Record<string, any>) => (
-                  <div key={a.id}>
-                    <p>
-                      <span className="font-medium">{humanize(a.fieldName)}</span>{" "}
-                      <span className="text-muted-foreground">
-                        {a.oldValue ?? "empty"} → {a.newValue ?? "empty"}
-                      </span>
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {a.changedBy?.fullName ?? "System"} · {formatDate(a.changedAt)}
-                    </p>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <NotesPanel entityType="Project" entityId={id} notes={notes} />
-        <DocumentsPanel entityType="Project" entityId={id} documents={documents} />
-      </div>
     </>
   );
 }

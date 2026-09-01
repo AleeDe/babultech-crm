@@ -3,7 +3,7 @@
 import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Trash2, CornerDownRight } from "lucide-react";
+import { Plus, Trash2, CornerDownRight, ChevronRight } from "lucide-react";
 import {
   createTask, updateTask, changeTaskStatus,
   createPhase, deletePhase,
@@ -91,6 +91,25 @@ interface UserOption {
 const dateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
 
 /** Shared shell for the "click Add, get a form" pattern used across the panels. */
+/**
+ * An "add one of these" button, and the form it reveals.
+ *
+ * Every caller but one places this inside a heading row laid out with
+ * `flex items-center justify-between`. The button and the form used to be
+ * siblings in a fragment, so the form became a flex child of that row: squeezed
+ * into the right-hand column, stretching the row to its own height, and floating
+ * over the content below. That is the tall empty gap and the overlapping panel
+ * these forms kept showing.
+ *
+ * The fix is a full-width flex item on a wrappable row, rather than a wrapper
+ * trying to escape from the inside - a grid or a block placed here is still
+ * bound by the column the parent gives it. Those heading rows now carry
+ * `flex-wrap`, and `w-full` is what pushes the form onto a line of its own.
+ *
+ * `order-last` keeps the form beneath both the heading and the button whatever
+ * order the caller wrote them in, and `text-left` undoes the alignment it would
+ * otherwise inherit from a justify-between row.
+ */
 function AddSection({
   label,
   open,
@@ -107,7 +126,11 @@ function AddSection({
       <Button type="button" variant="outline" size="sm" onClick={onToggle}>
         {open ? "Cancel" : <><Plus className="h-4 w-4" /> {label}</>}
       </Button>
-      {open && <div className="mt-4 rounded-md border bg-muted/30 p-4">{children}</div>}
+      {open && (
+        <div className="order-last w-full rounded-md border border-dashed bg-muted/30 p-4 text-left">
+          {children}
+        </div>
+      )}
     </>
   );
 }
@@ -135,6 +158,13 @@ export function TaskBoard({
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [view, setView] = useState<"board" | "list">("board");
+  // Board drag state. Kept here rather than in a separate board component so
+  // dropping a card and changing status from the list go through one code path.
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  // One expanded parent at a time: opening every parent at once is the wall of
+  // cards this replaced.
+  const [openSubtasks, setOpenSubtasks] = useState<string | null>(null);
   const [parentFor, setParentFor] = useState<string | null>(null);
 
   const assignable = members.filter((m) => m.active);
@@ -302,68 +332,164 @@ export function TaskBoard({
     </form>
   );
 
-  const taskCard = (t: Task, isSub = false) => (
-    <div
-      key={t.id}
-      className={cn(
-        "rounded-md border bg-card p-3",
-        isSub && "ml-5 border-dashed",
-      )}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1.5 text-sm font-medium">
-            {isSub && <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-            <Link
-              href={`/projects/${projectId}/tasks/${t.id}`}
-              className="truncate hover:underline"
-            >
-              {t.name}
-            </Link>
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {t.assignedUser ? t.assignedUser?.fullName : "Unassigned"}
-            {t.dueDate && ` · due ${formatDate(t.dueDate)}`}
-            {t.estimatedHours && ` · ${Number(t.estimatedHours)}h`}
-            {!t.billable && " · non-billable"}
-          </p>
-        </div>
-        <Badge tone={statusTone(t.priority)}>{humanize(t.priority)}</Badge>
-      </div>
+  /**
+   * One task card.
+   *
+   * Rewritten against how ClickUp, Linear and Jira actually draw a board card,
+   * because the old one carried six permanently-visible controls - a status
+   * select, Edit, Subtask, priority, assignee and billable - on every card. Nine
+   * cards made fifty-four competing click targets on one screen, which is a
+   * Hick's Law problem before it is a styling one: every card offered the same
+   * three decisions, all the time.
+   *
+   * What changed, and why:
+   *
+   *   - Actions appear on hover and on keyboard focus, not permanently. The
+   *     card carries the title and the one chip that earns its place. This is
+   *     progressive disclosure: the board is for scanning, and scanning wants
+   *     the title, not the toolbar. `focus-within` keeps them reachable by
+   *     keyboard, and the group stays open while a control inside it has focus.
+   *
+   *   - The status <select> is gone from the board view. Dragging a card between
+   *     columns already changes status, through the same action, and a small
+   *     select is a far worse target than a whole column (Fitts). The list view
+   *     keeps its select, because a list has no columns to drag between.
+   *
+   *   - Subtasks collapse into a count on the parent instead of each becoming a
+   *     card of its own. Eight completed subtasks rendering as eight cards is
+   *     what made the Done column longer than the entire rest of the page.
+   */
+  const taskCard = (t: Task, opts: { isSub?: boolean; draggable?: boolean } = {}) => {
+    const { isSub = false, draggable = false } = opts;
+    const subtasks = subtasksOf(t.id);
+    const doneSubtasks = subtasks.filter((x) => x.status === "COMPLETED").length;
+    const expanded = openSubtasks === t.id;
 
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <Select
-          className="h-7 w-auto text-xs"
-          value={t.status}
-          disabled={pending}
-          onChange={(e) => quickStatus(t.id, e.target.value)}
-        >
-          {ALL_TASK_STATUSES.map((s) => (
-            <option key={s} value={s}>{humanize(s)}</option>
-          ))}
-        </Select>
-        <Button type="button" variant="ghost" size="sm" onClick={() => setEditingId(editingId === t.id ? null : t.id)}>
-          Edit
-        </Button>
-        {!isSub && (
-          <Button type="button" variant="ghost" size="sm" onClick={() => setParentFor(parentFor === t.id ? null : t.id)}>
-            Subtask
-          </Button>
+    return (
+      <div
+        key={t.id}
+        // `group` drives the hover/focus reveal below. Without focus-within the
+        // actions would be unreachable by keyboard, which is the usual way a
+        // hover-only pattern quietly breaks.
+        className={cn(
+          "group rounded-md border bg-card transition-shadow",
+          "hover:shadow-sm focus-within:shadow-sm",
+          isSub && "ml-4 border-dashed",
+          draggable && "cursor-grab active:cursor-grabbing",
+          dragging === t.id && "opacity-40",
         )}
-        {t._count.subtasks > 0 && (
-          <span className="text-xs text-muted-foreground">{t._count.subtasks} subtask(s)</span>
+        draggable={draggable}
+        onDragStart={draggable ? () => setDragging(t.id) : undefined}
+        onDragEnd={draggable ? () => setDragging(null) : undefined}
+      >
+        <div className="p-2.5">
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <Link
+                href={`/projects/${projectId}/tasks/${t.id}`}
+                className="block truncate text-sm font-medium hover:underline"
+              >
+                {isSub && <CornerDownRight className="mr-1 inline h-3 w-3 text-muted-foreground" />}
+                {t.name}
+              </Link>
+
+              {/* Second line only when there is something to say. An
+                  "Unassigned · non-billable" line under every card is noise
+                  repeated nine times; absence carries the same meaning. */}
+              {(t.assignedUser || t.dueDate || t.estimatedHours) && (
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {[
+                    t.assignedUser?.fullName,
+                    t.dueDate && `due ${formatDate(t.dueDate)}`,
+                    t.estimatedHours && `${Number(t.estimatedHours)}h`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              )}
+            </div>
+
+            {/* Only CRITICAL and HIGH get a chip. Medium is the default on
+                every task here, so a "Medium" badge on all nine cards marked
+                nothing - it just spent the colour that should flag the one
+                task that is actually urgent. */}
+            {(t.priority === "CRITICAL" || t.priority === "HIGH") && (
+              <Badge tone={statusTone(t.priority)}>{humanize(t.priority)}</Badge>
+            )}
+          </div>
+
+          {(subtasks.length > 0 || !t.billable) && (
+            <div className="mt-1.5 flex items-center gap-2">
+              {subtasks.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setOpenSubtasks(expanded ? null : t.id)}
+                  aria-expanded={expanded}
+                  className="inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <ChevronRight className={cn("h-3 w-3 transition-transform", expanded && "rotate-90")} />
+                  {doneSubtasks}/{subtasks.length} subtasks
+                </button>
+              )}
+              {!t.billable && (
+                <span className="text-xs text-muted-foreground">non-billable</span>
+              )}
+            </div>
+          )}
+
+          {/* Revealed on hover or keyboard focus. `h-0 overflow-hidden` rather
+              than `hidden` so the controls stay in the tab order and the card
+              does not resize as the pointer crosses it. */}
+          <div
+            className={cn(
+              "flex items-center gap-1 overflow-hidden transition-all",
+              "h-0 opacity-0 group-hover:mt-1.5 group-hover:h-7 group-hover:opacity-100",
+              "group-focus-within:mt-1.5 group-focus-within:h-7 group-focus-within:opacity-100",
+            )}
+          >
+            <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs"
+              onClick={() => setEditingId(editingId === t.id ? null : t.id)}>
+              Edit
+            </Button>
+            {!isSub && (
+              <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs"
+                onClick={() => setParentFor(parentFor === t.id ? null : t.id)}>
+                Subtask
+              </Button>
+            )}
+            {/* The list view has no columns to drag between, so it keeps a
+                status control. The board does not need one. */}
+            {!draggable && (
+              <Select
+                className="h-7 w-auto text-xs"
+                value={t.status}
+                disabled={pending}
+                onChange={(e) => quickStatus(t.id, e.target.value)}
+              >
+                {ALL_TASK_STATUSES.map((st) => (
+                  <option key={st} value={st}>{humanize(st)}</option>
+                ))}
+              </Select>
+            )}
+          </div>
+        </div>
+
+        {expanded && subtasks.length > 0 && (
+          <div className="space-y-1.5 border-t bg-muted/30 p-2">
+            {subtasks.map((sub) => taskCard(sub, { isSub: true }))}
+          </div>
+        )}
+
+        {editingId === t.id && <div className="border-t p-2.5">{taskForm(t, t.parentTaskId)}</div>}
+        {parentFor === t.id && (
+          <div className="border-t p-2.5">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">New subtask of “{t.name}”</p>
+            {taskForm(null, t.id)}
+          </div>
         )}
       </div>
-
-      {editingId === t.id && <div className="mt-3 border-t pt-3">{taskForm(t, t.parentTaskId)}</div>}
-      {parentFor === t.id && (
-        <div className="mt-3 border-t pt-3">
-          <p className="mb-2 text-xs font-medium text-muted-foreground">New subtask of “{t.name}”</p>
-          {taskForm(null, t.id)}
-        </div>
-      )}
-    </div>
-  );
+    );
+  };
 
   return (
     <Card>
@@ -379,13 +505,34 @@ export function TaskBoard({
             <option value="board">Board</option>
             <option value="list">List</option>
           </Select>
-          <AddSection label="Add task" open={adding} onToggle={() => { setAdding(!adding); setEditingId(null); }}>
-            {taskForm(null, null)}
-          </AddSection>
+          {/* Only the toggle lives in the header. The form itself is rendered
+              in the card body below, because CardHeader is a flex row: a form
+              placed here becomes a flex child beside the title, gets squeezed
+              into the right-hand column, and stretches the header to its own
+              height - which is the tall empty gap it left across the board. */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => { setAdding(true); setEditingId(null); setParentFor(null); }}
+            disabled={adding}
+          >
+            {/* Stays "Add task" while the form is open rather than flipping to
+                "Cancel". The form carries its own Cancel next to its submit,
+                and two Cancels on screen at once - one of them far from the
+                thing being cancelled - is the ambiguity this replaced. */}
+            <Plus className="h-4 w-4" /> Add task
+          </Button>
         </div>
       </CardHeader>
       <CardContent>
         {error && <div className="mb-4"><Alert tone="danger">{error}</Alert></div>}
+
+        {adding && (
+          <div className="mb-4 rounded-md border border-dashed bg-muted/30 p-4">
+            {taskForm(null, null)}
+          </div>
+        )}
 
         {tasks.length === 0 ? (
           <p className="text-sm text-muted-foreground">
@@ -394,14 +541,31 @@ export function TaskBoard({
         ) : view === "board" ? (
           <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
             {TASK_STATUSES.map((status) => {
-              const column = tasks.filter((t) => t.status === status);
+              // Top-level only. Subtasks live inside their parent card, so a
+              // parent with eight completed children is one card here rather
+              // than nine spread across two columns.
+              const column = topLevel.filter((t) => t.status === status);
+              const isTarget = dragOverColumn === status;
               return (
-                <div key={status} className="rounded-lg bg-muted/40 p-2">
-                  <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {humanize(status)} <span className="ml-1 font-normal">{column.length}</span>
+                <div
+                  key={status}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverColumn(status); }}
+                  onDragLeave={() => setDragOverColumn((c) => (c === status ? null : c))}
+                  onDrop={(e) => { e.preventDefault(); setDragOverColumn(null); if (dragging) quickStatus(dragging, status); setDragging(null); }}
+                  className={cn(
+                    "rounded-lg p-2 transition-colors",
+                    // The whole column is the drop target, which is the largest
+                    // one available - the Fitts's Law argument for dragging over
+                    // a per-card select in the first place.
+                    isTarget ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/40",
+                  )}
+                >
+                  <p className="mb-2 flex items-center justify-between px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <span>{humanize(status)}</span>
+                    <span className="font-normal tabular-nums">{column.length}</span>
                   </p>
                   <div className="space-y-2">
-                    {column.map((t) => taskCard(t, Boolean(t.parentTaskId)))}
+                    {column.map((t) => taskCard(t, { draggable: true }))}
                   </div>
                 </div>
               );
@@ -409,12 +573,7 @@ export function TaskBoard({
           </div>
         ) : (
           <div className="space-y-2">
-            {topLevel.map((t) => (
-              <div key={t.id} className="space-y-2">
-                {taskCard(t)}
-                {subtasksOf(t.id).map((s) => taskCard(s, true))}
-              </div>
-            ))}
+            {topLevel.map((t) => taskCard(t))}
           </div>
         )}
       </CardContent>
@@ -510,7 +669,7 @@ export function TeamPanel({
 
   return (
     <Card>
-      <CardHeader className="flex-row items-start justify-between space-y-0">
+      <CardHeader className="flex-row flex-wrap items-start justify-between gap-y-3 space-y-0">
         <div>
           <CardTitle>Team</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { logTime, updateTimeLog, deleteTimeLog, submitWeek } from "@/server/timesheets";
+import { hoursBetween, findOverlaps } from "@/lib/work-hours";
 import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert, Badge, statusTone,
@@ -13,10 +14,20 @@ import { cn, formatDate, formatNumber, humanize } from "@/lib/utils";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+/**
+ * A TIME column comes back as "09:00:00"; <input type="time"> only accepts
+ * "09:00" and silently shows blank for anything else — which would look like
+ * the saved time had been lost.
+ */
+const clockValue = (v: string | null | undefined) => (v ? v.slice(0, 5) : "");
+
 export interface Entry {
   id: string;
   workDate: string;
   hours: string;
+  /** Null on entries logged as a duration, and on everything before this existed. */
+  startTime: string | null;
+  endTime: string | null;
   description: string;
   billable: boolean;
   approvalStatus: string;
@@ -72,6 +83,25 @@ export function TimesheetClient({
   const hoursOn = (day: string) =>
     entries.filter((e) => e.workDate.slice(0, 10) === day).reduce((s, e) => s + Number(e.hours), 0);
 
+  /**
+   * Days where two entries claim the same clock time.
+   *
+   * A warning rather than a refusal: two things genuinely do run at once — a
+   * code review during a meeting — and blocking an honest entry costs more than
+   * an occasional double-count a reviewer can see and query. Entries logged as
+   * a plain duration have no times to compare and are left out of it.
+   */
+  const overlappingDays = useMemo(() => {
+    const byDay = new Map<string, Entry[]>();
+    for (const e of entries) {
+      const day = e.workDate.slice(0, 10);
+      byDay.set(day, [...(byDay.get(day) ?? []), e]);
+    }
+    return [...byDay.entries()]
+      .filter(([, dayEntries]) => findOverlaps(dayEntries).length > 0)
+      .map(([day]) => day);
+  }, [entries]);
+
   function save(fd: FormData, entryId: string | null) {
     setError(null);
     setNotice(null);
@@ -86,6 +116,8 @@ export function TimesheetClient({
       caseId: target === "CASE" ? get("caseId") : null,
       workDate: get("workDate"),
       hours: get("hours"),
+      startTime: get("startTime"),
+      endTime: get("endTime"),
       description: String(fd.get("description") ?? ""),
       billable: fd.get("billable") === "on",
     } as never;
@@ -95,6 +127,8 @@ export function TimesheetClient({
       if (result.ok) {
         setAdding(false);
         setEditingId(null);
+        setStartTime("");
+        setEndTime("");
         router.refresh();
       } else {
         setError(result.error);
@@ -122,6 +156,13 @@ export function TimesheetClient({
       } else setError(result.error);
     });
   }
+
+  // Held in state rather than read from the form on submit, so the hours box
+  // can update as the times are typed. Reset whenever a different entry is
+  // opened, otherwise yesterday's times would seed today's row.
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const derivedHours = hoursBetween(startTime, endTime);
 
   const entryForm = (entry: Entry | null) => (
     <form action={(fd) => save(fd, entry?.id ?? null)} className="space-y-4">
@@ -197,9 +238,49 @@ export function TimesheetClient({
             max={addDays(weekStart, 6)}
           />
         </Field>
-        <Field label="Hours" required
-            help="How long it took, in hours. Use decimals — 1.5 for an hour and a half.">
-          <Input name="hours" type="number" step="0.25" min="0.25" max="24" required defaultValue={entry?.hours ?? ""} />
+        <Field label="Started"
+            help="Clock time you began. Optional — fill both times and the hours are worked out for you.">
+          <Input
+            name="startTime"
+            type="time"
+            defaultValue={clockValue(entry?.startTime)}
+            onChange={(e) => setStartTime(e.target.value)}
+          />
+        </Field>
+        <Field label="Ended"
+            help="Clock time you stopped. An earlier time than the start is read as working past midnight.">
+          <Input
+            name="endTime"
+            type="time"
+            defaultValue={clockValue(entry?.endTime)}
+            onChange={(e) => setEndTime(e.target.value)}
+          />
+        </Field>
+        <Field
+          label="Hours"
+          required={derivedHours === null}
+          // Says which of the two the person is actually using, rather than
+          // leaving them to wonder whether the box they left empty matters.
+          hint={
+            derivedHours !== null
+              ? `Worked out from the times: ${derivedHours}h`
+              : "Or enter the total directly."
+          }
+          help="How long it took, in hours. Filled in automatically when both clock times are given; type it yourself when you did not note them.">
+          <Input
+            name="hours"
+            type="number"
+            step="0.25"
+            min="0.25"
+            max="24"
+            required={derivedHours === null}
+            // Controlled once the times decide it, so the two can never show
+            // different numbers; free to type when they do not.
+            value={derivedHours !== null ? String(derivedHours) : undefined}
+            readOnly={derivedHours !== null}
+            defaultValue={derivedHours !== null ? undefined : (entry?.hours ?? "")}
+            className={derivedHours !== null ? "bg-muted/50" : undefined}
+          />
         </Field>
         <div className="sm:col-span-2 lg:col-span-4">
           <Field label="What you did" required
@@ -219,7 +300,7 @@ export function TimesheetClient({
       </div>
 
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={() => { setAdding(false); setEditingId(null); }}>
+        <Button type="button" variant="ghost" size="sm" onClick={() => { setAdding(false); setEditingId(null); setStartTime(""); setEndTime(""); }}>
           Cancel
         </Button>
         <Button type="submit" size="sm" disabled={pending}>
@@ -280,6 +361,15 @@ export function TimesheetClient({
             })}
           </div>
 
+          {overlappingDays.length > 0 && (
+            <Alert tone="warning">
+              Two entries claim the same clock time on{" "}
+              {overlappingDays.map((d) => formatDate(d)).join(", ")}. That may be
+              deliberate — a review during a meeting — but if it is not, the same
+              hour is counted twice.
+            </Alert>
+          )}
+
           {adding && <div className="rounded-md border bg-muted/30 p-4">{entryForm(null)}</div>}
         </CardContent>
       </Card>
@@ -324,10 +414,25 @@ export function TimesheetClient({
                     </div>
                   </div>
                   <div className="mt-2 flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{formatDate(e.workDate)}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDate(e.workDate)}
+                      {/* Only when they were recorded — an entry logged as a
+                          plain duration shows the date alone rather than an
+                          empty dash pretending a time is missing. */}
+                      {e.startTime && e.endTime && (
+                        <> · {clockValue(e.startTime)}–{clockValue(e.endTime)}</>
+                      )}
+                    </span>
                     {!locked && (
                       <>
-                        <Button type="button" variant="ghost" size="sm" onClick={() => setEditingId(editingId === e.id ? null : e.id)}>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => {
+                          const opening = editingId !== e.id;
+                          setEditingId(opening ? e.id : null);
+                          // Seed from the entry being opened, so the derived
+                          // hours match the times the form is about to show.
+                          setStartTime(opening ? clockValue(e.startTime) : "");
+                          setEndTime(opening ? clockValue(e.endTime) : "");
+                        }}>
                           Edit
                         </Button>
                         <Button type="button" variant="ghost" size="icon" disabled={pending} onClick={() => remove(e.id)} aria-label="Delete entry">
