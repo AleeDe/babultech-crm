@@ -4,6 +4,7 @@ import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
 import { NotesPanel } from "@/components/notes-panel";
 import { DocumentsPanel } from "@/components/documents-panel";
+import { RecordTabs } from "@/components/record-tabs";
 import { getOpportunity } from "@/server/opportunities";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
@@ -79,8 +80,19 @@ export default async function OpportunityDetailPage({
         />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      {/* Tabbed for the same reason the project page was: seven panels in one
+          column means the reader scrolls past everything to reach anything, and
+          nothing on screen says which parts matter.
+
+          The header, badges and figures stay outside — they answer "is this deal
+          healthy?", which is the question someone opens the page with. */}
+      <RecordTabs
+        tabs={[
+          {
+            value: "deal",
+            label: "The deal",
+            content: (
+              <div className="space-y-6">
           <PartnerPanel
             opportunityId={opp.id}
             amount={String(opp.amount)}
@@ -188,9 +200,14 @@ export default async function OpportunityDetailPage({
               )}
             </CardContent>
           </Card>
-        </div>
-
-        <div className="space-y-6">
+              </div>
+            ),
+          },
+          {
+            value: "details",
+            label: "Details",
+            content: (
+              <div className="space-y-6">
           <StageControl opportunityId={opp.id} currentStage={opp.stage} />
 
           <Card>
@@ -281,13 +298,23 @@ export default async function OpportunityDetailPage({
               )}
             </CardContent>
           </Card>
-        </div>
-      </div>
-
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+              </div>
+            ),
+          },
+          {
+            value: "files",
+            label: "Notes & files",
+            count: notes.length + documents.length,
+            content: (
+<div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NotesPanel entityType="Opportunity" entityId={id} notes={notes} />
         <DocumentsPanel entityType="Opportunity" entityId={id} documents={documents} />
       </div>
+            ),
+          },
+        ]}
+      />
+
     </>
   );
 }
