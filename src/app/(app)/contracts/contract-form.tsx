@@ -49,10 +49,22 @@ const dateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
 export function ContractForm({
   options,
   defaults,
+  prefill,
   currentUserId,
 }: {
   options: ContractFormOptions;
   defaults?: ContractDefaults;
+  /**
+   * Starting values for a new contract, as opposed to `defaults`, which loads
+   * an existing one for editing and carries an id.
+   *
+   * Set when arriving from an accepted quotation, which is the direction this
+   * usually runs: the quote is what was agreed, and the contract turns it into
+   * a term. Coming the other way — opening a blank form and hunting for the
+   * quote — meant choosing the customer first, because the quote list is
+   * filtered by them.
+   */
+  prefill?: { accountId?: string; quotationId?: string; opportunityId?: string };
   currentUserId: string;
 }) {
   const router = useRouter();
@@ -60,10 +72,22 @@ export function ContractForm({
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
-  const [accountId, setAccountId] = useState(defaults?.accountId ?? "");
+  const seeded = prefill?.quotationId
+    ? options.quotations.find((q) => q.id === prefill.quotationId)
+    : undefined;
+
+  const [accountId, setAccountId] = useState(
+    defaults?.accountId ?? prefill?.accountId ?? "",
+  );
   const [status, setStatus] = useState(defaults?.status ?? "DRAFT");
-  const [value, setValue] = useState(defaults?.contractValue ?? "");
-  const [currency, setCurrency] = useState(defaults?.currencyCode ?? "PKR");
+  // Seeded from the quote for the same reason picking it in the form does:
+  // the value was already agreed, and retyping it is how the two drift apart.
+  const [value, setValue] = useState(
+    defaults?.contractValue ?? (seeded ? String(seeded.totalAmount) : ""),
+  );
+  const [currency, setCurrency] = useState(
+    defaults?.currencyCode ?? seeded?.currencyCode ?? "PKR",
+  );
 
   const editing = Boolean(defaults);
   const accountOpportunities = useMemo(
@@ -166,11 +190,23 @@ export function ContractForm({
               ))}
             </Select>
           </Field>
-          <Field label="From accepted quote" hint="Fills the value and currency for you."
+          <Field
+            label="From accepted quote"
+            // The list is filtered to the chosen customer, so before one is
+            // picked it is necessarily empty — and an empty dropdown reading
+            // "None" looks like "no quotes exist" rather than "choose a
+            // customer first". The hint says which it is.
+            hint={
+              !accountId
+                ? "Choose a customer first — this lists their accepted quotes."
+                : accountQuotes.length === 0
+                  ? "This customer has no accepted quotes yet. A quote must be accepted before a contract can be built from it."
+                  : "Fills the value and currency for you."
+            }
             help="Build the contract from a quote the customer already accepted, so the values carry across rather than being retyped.">
             <Select
               name="quotationId"
-              defaultValue={defaults?.quotationId ?? ""}
+              defaultValue={defaults?.quotationId ?? prefill?.quotationId ?? ""}
               disabled={!accountId}
               onChange={(e) => seedFromQuote(e.target.value)}
             >
@@ -184,7 +220,7 @@ export function ContractForm({
           </Field>
           <Field label="Opportunity"
             help="The deal that produced this contract.">
-            <Select name="opportunityId" defaultValue={defaults?.opportunityId ?? ""} disabled={!accountId}>
+            <Select name="opportunityId" defaultValue={defaults?.opportunityId ?? prefill?.opportunityId ?? ""} disabled={!accountId}>
               <option value="">None</option>
               {accountOpportunities.map((o) => (
                 <option key={o.id} value={o.id}>{o.opportunityNumber} — {o.name}</option>

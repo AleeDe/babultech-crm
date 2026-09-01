@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Target, TrendingUp, Banknote, Receipt, LifeBuoy, Handshake } from "lucide-react";
+import {
+  Target, TrendingUp, Banknote, Receipt, LifeBuoy, Handshake,
+  FolderKanban, CalendarCheck,
+} from "lucide-react";
 import { Sparkline, Delta, CountUp } from "@/components/sparkline";
 import { cn, formatCompactMoney } from "@/lib/utils";
 
@@ -13,7 +16,10 @@ import { cn, formatCompactMoney } from "@/lib/utils";
  * Doing this with a lookup rather than a prop also means an unknown key fails
  * at the type level instead of rendering a blank tile at runtime.
  */
-const ICONS = { Target, TrendingUp, Banknote, Receipt, LifeBuoy, Handshake } as const;
+const ICONS = {
+  Target, TrendingUp, Banknote, Receipt, LifeBuoy, Handshake,
+  FolderKanban, CalendarCheck,
+} as const;
 export type PulseIcon = keyof typeof ICONS;
 
 const FORMATS = {
@@ -49,7 +55,12 @@ export function PulseTile({
   raw: number;
   format?: PulseFormat;
   sublabel?: string;
-  series: number[];
+  /**
+   * Omit where no honest 30-day series exists for the figure. A flat line of
+   * zeros is not "no trend" — it draws as a real trend that happens to be
+   * nothing, which is a claim about the data rather than an absence of it.
+   */
+  series?: number[];
   delta: number | null;
   goodDirection?: "up" | "down";
   href: string;
@@ -102,9 +113,11 @@ export function PulseTile({
         <Delta value={delta} good={goodDirection} className="shrink-0" />
       </div>
 
-      <div className="-mx-4 -mb-4 mt-3 opacity-70 transition-opacity group-hover:opacity-100">
-        <Sparkline values={series} tone={tone} height={36} />
-      </div>
+      {series && series.length > 0 && (
+        <div className="-mx-4 -mb-4 mt-3 opacity-70 transition-opacity group-hover:opacity-100">
+          <Sparkline values={series} tone={tone} height={36} />
+        </div>
+      )}
     </Link>
   );
 }

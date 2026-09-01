@@ -481,13 +481,32 @@ export async function getQuotationFormOptions(opportunityId?: string) {
 
   const db = await supabaseServer();
 
-  const [opportunities, products, taxRates] = await Promise.all([
+  const [opportunities, contacts, products, taxRates, currencies] = await Promise.all([
     db
       .from("opportunity")
-      .select("id, opportunityNumber, name, accountId, currencyCode, amount")
+      // account and lines are embedded because the form uses both: the account
+      // name labels each option, and the deal's own product lines are what the
+      // "pull lines from the deal" shortcut copies into the quote.
+      .select(
+        `id, opportunityNumber, name, accountId, currencyCode, amount,
+         account ( name ),
+         lines:opportunity_product (
+           productId, quantity, unitPrice, discountPercent, taxRateId,
+           product ( name )
+         )`,
+      )
       .is("deletedAt", null)
       .not("stage", "in", '("CLOSED_WON","CLOSED_LOST")')
       .order("createdAt", { ascending: false }),
+    // Every live contact, narrowed to the chosen deal's account in the form.
+    // Filtering here instead would mean refetching each time the opportunity
+    // changes, and the list is small enough that one read covers the page.
+    db
+      .from("contact")
+      .select("id, firstName, lastName, accountId")
+      .is("deletedAt", null)
+      .eq("active", true)
+      .order("firstName"),
     db
       .from("product")
       .select("id, name, productCode, standardPrice, defaultTaxRateId")
@@ -495,11 +514,24 @@ export async function getQuotationFormOptions(opportunityId?: string) {
       .eq("active", true)
       .order("name"),
     db.from("tax_rate").select("id, name, ratePercent").eq("active", true).order("name"),
+    db.from("currency").select("code, name").eq("active", true).order("code"),
   ]);
 
   return {
-    opportunities: opportunities.data ?? [],
+    // PostgREST returns an embedded to-one relation as an array, so account and
+    // product are flattened here rather than in the form — the shape the
+    // component declares is the shape it should receive.
+    opportunities: (opportunities.data ?? []).map((o) => ({
+      ...o,
+      account: one(o.account as { name: string } | { name: string }[] | null),
+      lines: (o.lines ?? []).map((l) => ({
+        ...l,
+        product: one(l.product as { name: string } | { name: string }[] | null),
+      })),
+    })),
+    contacts: contacts.data ?? [],
     products: products.data ?? [],
     taxRates: taxRates.data ?? [],
+    currencies: currencies.data ?? [],
   };
 }

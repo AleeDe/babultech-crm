@@ -65,7 +65,7 @@ export default async function EditQuotationPage({
         title={`Edit ${quote.quoteNumber}`}
         description={`Version ${quote.versionNumber} · ${humanize(quote.status)}`}
       />
-      <QuoteForm options={serialize(options) as unknown as QuoteFormOptions} defaults={defaults} />
+      <QuoteForm options={serialize(options)} defaults={defaults} />
     </div>
   );
 }

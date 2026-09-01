@@ -26,11 +26,11 @@ export default async function OpportunityDetailPage({
 
   const { id } = await params;
 
-  const [notes, documents] = await Promise.all([
+  // One wave: none of these needs a result from another, and each extra wave
+  // costs a full round trip against a database ~400ms away.
+  const [notes, documents, opp, availablePartners, audit] = await Promise.all([
     listNotes("Opportunity", id),
     listDocuments("Opportunity", id),
-  ]);
-  const [opp, availablePartners] = await Promise.all([
     getOpportunity(id),
     (async () => {
       const db = await supabaseServer();
@@ -42,10 +42,9 @@ export default async function OpportunityDetailPage({
         .order("displayName");
       return data ?? [];
     })(),
+    getAuditTrail("Opportunity", id, 15),
   ]);
   if (!opp) notFound();
-
-  const audit = await getAuditTrail("Opportunity", id, 15);
   const acceptedQuote = opp.quotations.find((q: Record<string, any>) => q.status === "ACCEPTED");
 
   return (

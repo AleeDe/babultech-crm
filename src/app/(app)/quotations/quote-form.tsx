@@ -20,14 +20,18 @@ export interface QuoteFormOptions {
     name: string;
     accountId: string;
     currencyCode: string;
-    account: { name: string };
+    // Nullable because PostgREST returns an embedded to-one relation as an
+    // array that may be empty, and the flattening in getQuotationFormOptions
+    // turns that into null. The render already reads it with `?.`, so this
+    // makes the type say what the code was doing.
+    account: { name: string } | null;
     lines: {
       productId: string;
       quantity: string;
       unitPrice: string;
       discountPercent: string | null;
       taxRateId: string | null;
-      product: { name: string };
+      product: { name: string } | null;
     }[];
   }[];
   products: ProductOption[];
@@ -115,7 +119,11 @@ export function QuoteForm({
         return {
           key: `i${importSeq}`,
           productId: l.productId,
-          description: l.product?.name,
+          // A line with no product still needs a description — the schema
+          // requires one — so a deleted or missing product falls back to a
+          // placeholder the person can type over rather than an empty cell
+          // that silently fails validation on save.
+          description: l.product?.name ?? "Item",
           quantity: String(Number(l.quantity)),
           unitPrice: String(Number(l.unitPrice)),
           discountPercent: l.discountPercent ? String(Number(l.discountPercent)) : "",

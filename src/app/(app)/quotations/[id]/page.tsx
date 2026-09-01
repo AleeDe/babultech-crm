@@ -114,6 +114,25 @@ export default async function QuotationDetailPage({
             <Link href={`/quotations/${quote.id}/edit`}>Edit</Link>
           </Button>
         )}
+        {/* The accepted quote is the natural starting point for a contract:
+            it already says what was agreed, for whom, and on which deal.
+            Building it from the blank contract form instead meant choosing the
+            customer first, because the quote list there is filtered by them —
+            which is the wrong way round and reads as "no quotes exist".
+
+            Hidden once a contract exists, so the button never invites a second
+            one against the same agreement. */}
+        {quote.status === "ACCEPTED" &&
+          quote.contracts.length === 0 &&
+          can(_me, PERMISSIONS.CONTRACT_WRITE) && (
+            <Button asChild>
+              <Link
+                href={`/contracts/new?quotationId=${quote.id}&accountId=${quote.accountId}&opportunityId=${quote.opportunityId}`}
+              >
+                Create contract
+              </Link>
+            </Button>
+          )}
       </PageHeader>
 
       {expired && (

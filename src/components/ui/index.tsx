@@ -326,6 +326,7 @@ export function StatTile({
   label,
   value,
   sublabel,
+  help,
   tone = "neutral",
   href,
   icon,
@@ -333,6 +334,8 @@ export function StatTile({
   label: string;
   value: string;
   sublabel?: string;
+  /** What the figure means, on the same terms as DetailRow's. */
+  help?: string;
   tone?: "neutral" | "success" | "warning" | "danger" | "info";
   href?: string;
   /** Decorative only — the label already says what the tile is. */
@@ -367,6 +370,10 @@ export function StatTile({
       <div className="flex items-center gap-1.5 text-muted-foreground">
         {icon && <span aria-hidden className={toneClass}>{icon}</span>}
         <p className="text-xs font-medium uppercase tracking-wide">{label}</p>
+        {/* Only on a tile that is not itself a link: a <button> inside an <a>
+            is invalid HTML, and the click would fight the navigation. A linked
+            tile leads to the screen that explains itself anyway. */}
+        {help && !href && <FieldHelp text={help} />}
       </div>
       <p className={cn("mt-1.5 text-2xl font-semibold tabular tracking-tight", toneClass)}>
         {value}
@@ -416,14 +423,27 @@ export function Forbidden({ what = "this screen" }: { what?: string }) {
 /** Label-above-value row used down the side of every detail page. */
 export function DetailRow({
   label,
+  help,
   children,
 }: {
   label: string;
+  /**
+   * What this field means, for the reader who did not fill it in.
+   *
+   * The create forms explain every field; the detail page explained none of
+   * them, which is backwards — the person filling a form usually knows what
+   * they are typing, while the person reading the record later is the one who
+   * has to work out what "WhatsApp" is for when there is already a phone number.
+   */
+  help?: string;
   children: React.ReactNode;
 }) {
   return (
     <div>
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+        {help && <FieldHelp text={help} />}
+      </p>
       <div className="mt-0.5">{children}</div>
     </div>
   );

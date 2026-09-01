@@ -23,7 +23,7 @@ export default async function NewQuotationPage({
         description="Saved as a draft. Sending it locks the numbers — after that you revise rather than edit."
       />
       <QuoteForm
-        options={serialize(options) as unknown as QuoteFormOptions}
+        options={serialize(options)}
         lockedOpportunityId={opportunityId}
       />
     </div>
