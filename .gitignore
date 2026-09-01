@@ -13,3 +13,7 @@ backups/
 # addresses. Re-fetch it with the command in scripts/migrate-clickup.mjs rather
 # than committing it.
 scripts/clickup-export.json
+
+# Database password for the Mumbai project — never commit
+.db-password-mumbai.txt
+backups/mumbai-migration/.env.sydney

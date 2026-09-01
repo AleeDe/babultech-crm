@@ -5,7 +5,7 @@ import { ExpenseImportForm } from "./import-form";
 
 export default async function ExpenseImportPage() {
   const me = await requireUser();
-  if (!can(me, PERMISSIONS.INVOICE_WRITE)) return <Forbidden what="expenses" />;
+  if (!can(me, PERMISSIONS.EXPENSE_WRITE)) return <Forbidden what="expenses" />;
 
   const options = await getPayableFormOptions();
 

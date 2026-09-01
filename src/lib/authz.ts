@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { supabaseServer, supabaseAdmin } from "./supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { holds } from "./nav-permissions";
 
 /**
  * The subset of the Supabase client these helpers use. Narrow on purpose: it
@@ -132,14 +133,7 @@ export const requireUser: () => Promise<SessionUser> = cache(loadUser);
  * e.g. "opportunity:*", "*:read", "*".
  */
 export function can(user: SessionUser, permission: string): boolean {
-  if (user.permissions.includes("*")) return true;
-  if (user.permissions.includes(permission)) return true;
-
-  const [entity, action] = permission.split(":");
-  return (
-    user.permissions.includes(`${entity}:*`) ||
-    user.permissions.includes(`*:${action}`)
-  );
+  return holds(user.permissions, permission);
 }
 
 export async function requirePermission(permission: string): Promise<SessionUser> {
@@ -289,6 +283,14 @@ export const PERMISSIONS = {
   INVOICE_WRITE: "invoice:write",
   INVOICE_APPROVE: "invoice:approve",
   PAYMENT_WRITE: "payment:write",
+  // Expense claims are deliberately NOT invoice:*. Anyone who spends money out
+  // of pocket needs to file a claim, which briefly made invoice:read the
+  // qualification for it — and that permission is also the key to the entire
+  // receivables ledger, so every consultant who could claim a taxi fare could
+  // also read the company's invoices, payments and supplier bills.
+  EXPENSE_READ: "expense:read",
+  EXPENSE_WRITE: "expense:write",
+  EXPENSE_APPROVE: "expense:approve",
   // Admin
   ADMIN: "admin:*",
 } as const;

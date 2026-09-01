@@ -18,7 +18,20 @@ export default async function ResourcesPage({
   searchParams: Promise<{ weeks?: string }>;
 }) {
   const _me = await requireUser();
-  if (!can(_me, PERMISSIONS.PROJECT_READ)) return <Forbidden what="resource utilisation" />;
+
+  // project:read is what opens a project; this page is a different thing.
+  //
+  // It lists every colleague's allocation, utilisation and — in the rate column
+  // — what the company pays them. That is a staffing and margin view for whoever
+  // books the work, not something a consultant needs to do their own.
+  //
+  // time:approve is the right test rather than project:write: a consultant holds
+  // project:write to update the work they are booked on, so that would not have
+  // excluded them. Approving someone else's time is what actually marks a person
+  // as managing other people's capacity.
+  if (!can(_me, PERMISSIONS.TIME_APPROVE)) {
+    return <Forbidden what="resource utilisation" />;
+  }
 
   const { weeks } = await searchParams;
   const window = Math.min(Math.max(Number(weeks) || 4, 1), 26);

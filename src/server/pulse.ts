@@ -174,27 +174,114 @@ export interface FeedItem {
  * place every write lands, it carries who and what changed, and RLS on it
  * matches the records it describes.
  */
+/**
+ * Which audited entity types a reader may see, keyed by the permission that
+ * governs the module the record belongs to.
+ *
+ * Mirrors app_can_read_audit() in
+ * supabase/migrations/20260830000001_audit_history_rls.sql. RLS is the real
+ * boundary — this list only keeps the query from asking for rows it will not be
+ * given, and makes the intent legible here rather than only in SQL. If the two
+ * disagree, the database wins and the stream quietly loses rows: keep them
+ * together.
+ */
+const AUDIT_ENTITY_PERMISSIONS: Record<string, string> = {
+  Lead: "lead:read",
+  Campaign: "lead:read",
+  Account: "account:read",
+  Contact: "account:read",
+  Opportunity: "opportunity:read",
+  Quotation: "quotation:read",
+  Contract: "contract:read",
+  Product: "opportunity:read",
+  Partner: "partner:read",
+  Commission: "commission:read",
+  Case: "case:read",
+  SupportCase: "case:read",
+  Project: "project:read",
+  Task: "project:read",
+  Timesheet: "project:read",
+  Invoice: "invoice:read",
+  Payment: "invoice:read",
+  VendorBill: "invoice:read",
+  Expense: "expense:read",
+  // Who was deactivated and who was given which role is administration's
+  // business, and the first thing worth reading if you should not be here.
+  User: "admin:*",
+};
+
+/** The audited entity types this user may see, for the panel and its socket. */
+export async function getVisibleAuditTypes(): Promise<string[]> {
+  const me = await requireUser();
+  return Object.entries(AUDIT_ENTITY_PERMISSIONS)
+    .filter(([, permission]) => can(me, permission))
+    .map(([entityType]) => entityType);
+}
+
 export async function getRecentChanges(limit = 25): Promise<FeedItem[]> {
-  await requireUser();
+  const me = await requireUser();
   const db = await supabaseServer();
+
+  const visibleTypes = await getVisibleAuditTypes();
+
+  // Nothing to watch: a reader with no module read permission at all. Returning
+  // early also avoids an `in ()` with an empty list, which PostgREST rejects.
+  if (visibleTypes.length === 0) return [];
 
   const { data } = await db
     .from("audit_history")
     .select("id, changedAt, entityType, entityId, fieldName, oldValue, newValue, changedBy:app_user ( fullName )")
+    .in("entityType", visibleTypes)
     .order("changedAt", { ascending: false })
-    .limit(limit);
+    // Over-fetched because the ownership pass below removes rows: asking for
+    // exactly `limit` would return a short list whenever any of them belong to
+    // someone else.
+    .limit(limit * 4);
 
-  return ((data ?? []) as Record<string, any>[]).map((r) => ({
-    id: String(r.id),
-    at: String(r.changedAt),
-    entityType: String(r.entityType),
-    entityId: String(r.entityId),
-    fieldName: String(r.fieldName),
-    oldValue: r.oldValue ?? null,
-    newValue: r.newValue ?? null,
-    // PostgREST returns an embedded to-one as an object or a one-element array
-    // depending on how it inferred the relationship.
-    actor:
-      (Array.isArray(r.changedBy) ? r.changedBy[0]?.fullName : r.changedBy?.fullName) ?? null,
-  }));
+  // Entity-type access is not the same as row access.
+  //
+  // Holding expense:read lets a consultant open the expense module, but the
+  // module itself only shows them their own claims — so an audit feed of
+  // "Expense approvalStatus SUBMITTED -> APPROVED" for the whole company hands
+  // them, through the side door, exactly the activity the list screen scopes
+  // away. Claims they did not file are filtered out here, matching
+  // listExpenses().
+  //
+  // Only expenses need this today: every other audited type is either already
+  // company-wide within its module (invoices, products) or gated by a
+  // permission that implies the wider view.
+  const rows = (data ?? []) as Record<string, any>[];
+  const expenseRows = rows.filter((r) => r.entityType === "Expense");
+
+  let visibleExpenseIds: Set<string> | null = null;
+  if (expenseRows.length > 0 && !can(me, PERMISSIONS.EXPENSE_APPROVE)) {
+    const { data: mine } = await db
+      .from("expense")
+      .select("id")
+      .eq("employeeUserId", me.id)
+      .in("id", [...new Set(expenseRows.map((r) => String(r.entityId)))]);
+    visibleExpenseIds = new Set((mine ?? []).map((e) => String(e.id)));
+  }
+
+  return rows
+    .filter(
+      (r) =>
+        r.entityType !== "Expense" ||
+        visibleExpenseIds === null ||
+        visibleExpenseIds.has(String(r.entityId)),
+    )
+    .slice(0, limit)
+    .map((r) => ({
+      id: String(r.id),
+      at: String(r.changedAt),
+      entityType: String(r.entityType),
+      entityId: String(r.entityId),
+      fieldName: String(r.fieldName),
+      oldValue: r.oldValue ?? null,
+      newValue: r.newValue ?? null,
+      // PostgREST returns an embedded to-one as an object or a one-element
+      // array depending on how it inferred the relationship.
+      actor:
+        (Array.isArray(r.changedBy) ? r.changedBy[0]?.fullName : r.changedBy?.fullName) ?? null,
+    }));
 }

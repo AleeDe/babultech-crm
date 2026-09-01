@@ -2,16 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   LayoutDashboard, Megaphone, UserPlus, Building2, Users, Target,
   FileText, FileSignature, Handshake, Coins, LifeBuoy, FolderKanban,
   Receipt, Package, CalendarCheck, Menu, X, LogOut, Clock, UsersRound, Banknote,
   ShieldCheck, UserCog, Settings, BookOpen, CheckSquare, FileInput, Wallet, Stamp,
+  ChevronDown,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
+import { holdsAny } from "@/lib/nav-permissions";
 import { signOutAction } from "@/lib/sign-out-action";
 import { MobileNav } from "./mobile-nav";
+import { CommandPalette } from "./command-palette";
 
 interface NavItem {
   href: string;
@@ -19,12 +22,25 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   /** Phase 3+ modules are visible but marked so nobody expects a working screen. */
   soon?: boolean;
+  /**
+   * Permissions that reveal this destination. Holding any one is enough, which
+   * is what "read it or write it" needs: a role with only `case:write` still
+   * belongs on the Cases screen.
+   *
+   * Omitted means everyone — the dashboard, my work, and the guide are not
+   * gated on anything, because every signed-in person has their own copy.
+   */
+  permissions?: string[];
 }
 
 interface NavGroup {
   label: string;
   items: NavItem[];
-  /** Hidden entirely from anyone without admin:* — not just disabled. */
+  /**
+   * A group disappears once every item inside it is filtered out, so a group
+   * needs no permission of its own. This flag survives for Administration
+   * alone, where the group is hidden by role rather than by the pages in it.
+   */
   adminOnly?: boolean;
 }
 
@@ -34,51 +50,51 @@ const NAV: NavGroup[] = [
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/my-work", label: "My work", icon: CheckSquare },
-      { href: "/approvals", label: "Approvals", icon: Stamp },
+      { href: "/approvals", label: "Approvals", icon: Stamp, permissions: ["quotation:approve", "invoice:approve", "expense:approve", "time:approve", "commission:approve"] },
     ],
   },
   {
     label: "Marketing",
     items: [
-      { href: "/campaigns", label: "Campaigns", icon: Megaphone },
-      { href: "/leads", label: "Leads", icon: UserPlus },
+      { href: "/campaigns", label: "Campaigns", icon: Megaphone, permissions: ["lead:read"] },
+      { href: "/leads", label: "Leads", icon: UserPlus, permissions: ["lead:read"] },
     ],
   },
   {
     label: "Sales",
     items: [
-      { href: "/accounts", label: "Accounts", icon: Building2 },
-      { href: "/contacts", label: "Contacts", icon: Users },
-      { href: "/opportunities", label: "Opportunities", icon: Target },
-      { href: "/quotations", label: "Quotations", icon: FileText },
-      { href: "/contracts", label: "Contracts", icon: FileSignature },
-      { href: "/products", label: "Products", icon: Package },
+      { href: "/accounts", label: "Accounts", icon: Building2, permissions: ["account:read"] },
+      { href: "/contacts", label: "Contacts", icon: Users, permissions: ["account:read"] },
+      { href: "/opportunities", label: "Opportunities", icon: Target, permissions: ["opportunity:read"] },
+      { href: "/quotations", label: "Quotations", icon: FileText, permissions: ["quotation:read", "quotation:write"] },
+      { href: "/contracts", label: "Contracts", icon: FileSignature, permissions: ["contract:read", "contract:write", "opportunity:read"] },
+      { href: "/products", label: "Products", icon: Package, permissions: ["opportunity:read"] },
     ],
   },
   {
     label: "Partners",
     items: [
-      { href: "/partners", label: "Partners", icon: Handshake },
-      { href: "/commissions", label: "Commissions", icon: Coins },
+      { href: "/partners", label: "Partners", icon: Handshake, permissions: ["partner:read"] },
+      { href: "/commissions", label: "Commissions", icon: Coins, permissions: ["commission:read"] },
     ],
   },
   {
     label: "Delivery",
     items: [
-      { href: "/cases", label: "Support Cases", icon: LifeBuoy },
-      { href: "/projects", label: "Projects", icon: FolderKanban },
-      { href: "/timesheets", label: "Timesheets", icon: Clock },
-      { href: "/resources", label: "Resources", icon: UsersRound },
+      { href: "/cases", label: "Support Cases", icon: LifeBuoy, permissions: ["case:read"] },
+      { href: "/projects", label: "Projects", icon: FolderKanban, permissions: ["project:read"] },
+      { href: "/timesheets", label: "Timesheets", icon: Clock, permissions: ["project:read"] },
+      { href: "/resources", label: "Resources", icon: UsersRound, permissions: ["time:approve"] },
       { href: "/activities", label: "Activities", icon: CalendarCheck },
     ],
   },
   {
     label: "Finance",
     items: [
-      { href: "/invoices", label: "Invoices", icon: Receipt },
-      { href: "/payments", label: "Payments", icon: Banknote },
-      { href: "/vendor-bills", label: "Vendor Bills", icon: FileInput },
-      { href: "/expenses", label: "Expenses", icon: Wallet },
+      { href: "/invoices", label: "Invoices", icon: Receipt, permissions: ["invoice:read"] },
+      { href: "/payments", label: "Payments", icon: Banknote, permissions: ["invoice:read"] },
+      { href: "/vendor-bills", label: "Vendor Bills", icon: FileInput, permissions: ["invoice:read"] },
+      { href: "/expenses", label: "Expenses", icon: Wallet, permissions: ["expense:read"] },
     ],
   },
   {
@@ -98,14 +114,79 @@ const NAV: NavGroup[] = [
 export function AppShell({
   user,
   isAdmin,
+  permissions,
   children,
 }: {
   user: { fullName: string; email: string; roleName: string };
   isAdmin: boolean;
+  /** The signed-in role's permission strings, straight from security_role. */
+  permissions: string[];
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+
+  // Navigation is built from the same permissions the server enforces, so a
+  // link is shown only where the page behind it will actually load. This is
+  // presentation, not protection — every page still calls requirePermission —
+  // but a menu full of screens that refuse on arrival is its own kind of broken,
+  // and a consultant has no reason to look at a Finance heading at all.
+  //
+  // A group whose items all filter out disappears with them: an "Overview"
+  // header above nothing is worse than no header.
+  const nav = NAV.filter((group) => !group.adminOnly || isAdmin)
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => holdsAny(permissions, item.permissions)),
+    }))
+    .filter((group) => group.items.length > 0);
+
+  /**
+   * Which groups are open.
+   *
+   * Fully expanded the nav is around 1,200px tall against roughly 840px of
+   * viewport on a 1080p screen, so Settings and the user guide sat below a
+   * scrollbar — the thing you reach for least is the thing you have to scroll
+   * to. Collapsing the groups you are not working in brings it back inside the
+   * screen.
+   *
+   * The group containing the current page always opens, whatever was saved:
+   * arriving on a screen and not seeing where you are in the tree is worse than
+   * ignoring a stored preference.
+   */
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("nav-collapsed");
+      if (saved) setCollapsed(JSON.parse(saved));
+    } catch {
+      // A private window or blocked storage is not a reason to break the nav.
+    }
+  }, []);
+
+  function toggleGroup(label: string) {
+    setCollapsed((prev) => {
+      const next = { ...prev, [label]: !prev[label] };
+      try {
+        window.localStorage.setItem("nav-collapsed", JSON.stringify(next));
+      } catch {
+        // Ignored for the same reason as above.
+      }
+      return next;
+    });
+  }
+
+  const paletteItems = useMemo(
+    () =>
+      nav.flatMap((group) =>
+        group.items
+          .filter((item) => !item.soon)
+          .map((item) => ({ href: item.href, label: item.label, group: group.label })),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [permissions.join(","), isAdmin],
+  );
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -123,11 +204,25 @@ export function AppShell({
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r bg-card shadow-lg transition-transform lg:static lg:translate-x-0 lg:shadow-none",
+          "fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r bg-card shadow-lg transition-transform",
+          // Sticks to the viewport on desktop instead of flowing with the page.
+          //
+          // `lg:static` put the sidebar in the page's own flow inside a
+          // min-h-screen row, so on a long list it grew as tall as the content
+          // and the sign-out block sat wherever the page happened to end —
+          // several screens down. The nav already had `flex-1 overflow-y-auto`,
+          // but a scroll container only scrolls when something bounds its
+          // height, and nothing did.
+          //
+          // Sticky with an explicit viewport height gives it that bound: the
+          // brand and the account block stay put, and only the nav between them
+          // moves. h-screen rather than 100dvh because the sidebar is hidden on
+          // the phones where the two differ.
+          "lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:shadow-none",
           open ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="flex h-14 items-center justify-between border-b px-5">
+        <div className="flex h-14 shrink-0 items-center justify-between border-b px-5">
           <Link href="/" className="flex items-center gap-2 font-semibold">
             <span className="grid h-7 w-7 place-items-center rounded bg-primary text-xs font-bold text-primary-foreground">
               BT
@@ -139,13 +234,39 @@ export function AppShell({
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
-          {NAV.filter((group) => !group.adminOnly || isAdmin).map((group) => (
-            <div key={group.label} className="mb-5">
-              <p className="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {group.label}
-              </p>
-              <ul className="space-y-0.5">
+        {/* Above the groups, because it is the fastest route to anything and
+            should not itself need scrolling to. */}
+        <div className="shrink-0 px-3 pt-3">
+          <CommandPalette items={paletteItems} />
+        </div>
+
+        <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+          {nav.map((group) => {
+            // The group holding the current page is forced open, so you can
+            // always see where you are even if it was collapsed last visit.
+            const hasActive = group.items.some((item) => isActive(item.href));
+            const isOpen = hasActive || !collapsed[group.label];
+
+            return (
+            <div key={group.label} className="mb-3">
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.label)}
+                aria-expanded={isOpen}
+                // A full-width row rather than a small chevron: Fitts's Law
+                // rewards the large target, and there is nothing else on this
+                // line to hit by mistake.
+                className="mb-1 flex w-full items-center gap-1 rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="flex-1 text-left">{group.label}</span>
+                <ChevronDown
+                  className={cn(
+                    "h-3 w-3 shrink-0 transition-transform",
+                    !isOpen && "-rotate-90",
+                  )}
+                />
+              </button>
+              <ul className={cn("space-y-0.5", !isOpen && "hidden")}>
                 {group.items.map((item) => {
                   const Icon = item.icon;
                   return (
@@ -186,10 +307,13 @@ export function AppShell({
                 })}
               </ul>
             </div>
-          ))}
+            );
+          })}
         </nav>
 
-        <div className="border-t p-3">
+        {/* shrink-0 so a long nav cannot squeeze this out of the layout: it is
+            the one thing that must always be reachable without scrolling. */}
+        <div className="shrink-0 border-t p-3">
           <div className="flex items-center gap-2.5 rounded-lg bg-muted/40 px-2 py-2 transition-colors hover:bg-muted/70">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-secondary text-xs font-semibold">
               {initials(user.fullName)}
@@ -219,7 +343,7 @@ export function AppShell({
         </main>
       </div>
 
-      <MobileNav onOpenMenu={() => setOpen(true)} />
+      <MobileNav onOpenMenu={() => setOpen(true)} permissions={permissions} />
     </div>
   );
 }

@@ -62,6 +62,9 @@ export async function getPendingApprovals(): Promise<{
 
   const seeQuotations = can(me, PERMISSIONS.QUOTATION_APPROVE);
   const seeInvoicing = can(me, PERMISSIONS.INVOICE_APPROVE);
+  // Expense claims moved off invoice:approve so that filing one no longer
+  // requires the receivables ledger. The queue follows.
+  const seeExpenses = can(me, PERMISSIONS.EXPENSE_APPROVE);
   const seeTime = can(me, PERMISSIONS.TIME_APPROVE);
   const seeCommission = can(me, PERMISSIONS.COMMISSION_APPROVE);
 
@@ -80,7 +83,7 @@ export async function getPendingApprovals(): Promise<{
           .limit(100)
       : none,
 
-    seeInvoicing
+    seeExpenses
       ? db
           .from("expense")
           .select(

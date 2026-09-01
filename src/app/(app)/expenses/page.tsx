@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Plus, Upload, Clock, Wallet, Receipt, Coins } from "lucide-react";
-import { listExpenses, getExpenseTotals, getPayablesSummary } from "@/server/payables";
+import { listExpenses, getExpenseTotals, getExpenseClaimSummary } from "@/server/payables";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { ExportButton } from "@/components/export-button";
 import { ListFilters, optionsFrom } from "@/components/list-filters";
@@ -22,7 +22,7 @@ export default async function ExpensesPage({
   }>;
 }) {
   const me = await requireUser();
-  if (!can(me, PERMISSIONS.INVOICE_READ)) return <Forbidden what="expenses" />;
+  if (!can(me, PERMISSIONS.EXPENSE_READ)) return <Forbidden what="expenses" />;
 
   const params = await searchParams;
   const filters = {
@@ -35,7 +35,7 @@ export default async function ExpensesPage({
     listExpenses({ ...filters, page: Number(params.page) || 1 }),
     // Totals span every matching row, so the tiles do not shrink as you page.
     getExpenseTotals(filters),
-    getPayablesSummary(),
+    getExpenseClaimSummary(),
   ]);
 
   const filtered = Boolean(params.search || params.approvalStatus || params.paymentStatus);
@@ -47,10 +47,12 @@ export default async function ExpensesPage({
         description="What the business spent, who is owed it, and whether the customer is paying for it."
       >
         <ExportButton entity="expenses" params={filters} />
-        <Button asChild variant="outline">
-          <Link href="/vendor-bills">Vendor bills</Link>
-        </Button>
-        {can(me, PERMISSIONS.INVOICE_WRITE) && (
+        {can(me, PERMISSIONS.INVOICE_READ) && (
+          <Button asChild variant="outline">
+            <Link href="/vendor-bills">Vendor bills</Link>
+          </Button>
+        )}
+        {can(me, PERMISSIONS.EXPENSE_WRITE) && (
           <>
             <Button asChild variant="outline">
               <Link href="/expenses/import">
@@ -73,17 +75,17 @@ export default async function ExpensesPage({
         <StatTile
           icon={<Clock className="h-4 w-4" />}
           label="Awaiting approval"
-          value={formatMoney(summary.expensesAwaitingApproval)}
-          sublabel={`${summary.expensesAwaitingApprovalCount} claim${summary.expensesAwaitingApprovalCount === 1 ? "" : "s"}`}
-          tone={summary.expensesAwaitingApprovalCount > 0 ? "warning" : "neutral"}
+          value={formatMoney(summary.awaitingApproval)}
+          sublabel={`${summary.awaitingApprovalCount} claim${summary.awaitingApprovalCount === 1 ? "" : "s"}`}
+          tone={summary.awaitingApprovalCount > 0 ? "warning" : "neutral"}
           href="/expenses?approvalStatus=SUBMITTED"
         />
         <StatTile
           icon={<Wallet className="h-4 w-4" />}
           label="Approved, unpaid"
-          value={formatMoney(summary.expensesToPay)}
-          sublabel={`${summary.expensesToPayCount} to settle`}
-          tone={summary.expensesToPayCount > 0 ? "info" : "success"}
+          value={formatMoney(summary.toPay)}
+          sublabel={`${summary.toPayCount} to settle`}
+          tone={summary.toPayCount > 0 ? "info" : "success"}
           href="/expenses?approvalStatus=APPROVED&paymentStatus=UNPAID"
         />
         <StatTile
@@ -135,7 +137,7 @@ export default async function ExpensesPage({
                 <Button asChild variant="outline">
                   <Link href="/expenses">Clear filters</Link>
                 </Button>
-              ) : can(me, PERMISSIONS.INVOICE_WRITE) ? (
+              ) : can(me, PERMISSIONS.EXPENSE_WRITE) ? (
                 <Button asChild>
                   <Link href="/expenses/new">Record an expense</Link>
                 </Button>
@@ -146,8 +148,8 @@ export default async function ExpensesPage({
           <>
             <ExpenseBulkTable
               expenses={expenses.rows}
-              canApprove={can(me, PERMISSIONS.INVOICE_APPROVE)}
-              canPay={can(me, PERMISSIONS.PAYMENT_WRITE)}
+              canApprove={can(me, PERMISSIONS.EXPENSE_APPROVE)}
+              canPay={can(me, PERMISSIONS.EXPENSE_APPROVE)}
               currentUserId={me.id}
             />
             <Pagination

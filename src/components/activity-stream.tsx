@@ -31,11 +31,31 @@ interface StreamRow extends FeedItem {
   fresh?: boolean;
 }
 
-export function ActivityStream({ initial }: { initial: FeedItem[] }) {
+export function ActivityStream({
+  initial,
+  visibleTypes,
+}: {
+  initial: FeedItem[];
+  /**
+   * The audited entity types this reader may see.
+   *
+   * RLS on audit_history is the boundary that matters and the socket is
+   * filtered by it, so this is a second check rather than the only one — but
+   * the panel appends whatever the socket hands it, and a client that renders
+   * only what it was told to expect cannot start leaking because a policy was
+   * later loosened somewhere else.
+   */
+  visibleTypes: string[];
+}) {
   const [rows, setRows] = useState<StreamRow[]>(initial);
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+
+  // Held in a ref so a new array identity from the server does not tear down
+  // and rebuild the socket subscription on every render.
+  const allowed = useRef(new Set(visibleTypes));
+  allowed.current = new Set(visibleTypes);
 
   useEffect(() => {
     const db = supabaseBrowser();
@@ -49,6 +69,7 @@ export function ActivityStream({ initial }: { initial: FeedItem[] }) {
           if (pausedRef.current) return;
 
           const r = payload.new as Record<string, any>;
+          if (!allowed.current.has(String(r.entityType))) return;
           const row: StreamRow = {
             id: String(r.id),
             at: String(r.changedAt),

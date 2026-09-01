@@ -32,6 +32,7 @@ export default async function ApprovalsPage() {
   const canApproveAnything =
     can(me, PERMISSIONS.QUOTATION_APPROVE) ||
     can(me, PERMISSIONS.INVOICE_APPROVE) ||
+    can(me, PERMISSIONS.EXPENSE_APPROVE) ||
     can(me, PERMISSIONS.TIME_APPROVE) ||
     can(me, PERMISSIONS.COMMISSION_APPROVE);
 

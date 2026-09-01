@@ -6,7 +6,7 @@ import { FieldHelp } from "@/components/field-help";
 
 export default async function NewExpensePage() {
   const me = await requireUser();
-  if (!can(me, PERMISSIONS.INVOICE_WRITE)) return <Forbidden what="recording expenses" />;
+  if (!can(me, PERMISSIONS.EXPENSE_WRITE)) return <Forbidden what="recording expenses" />;
 
   const { categories, vendors, users, projects, currencies } = await getPayableFormOptions();
 

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
-import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { requireUser, can, scopeFilter, PERMISSIONS } from "@/lib/authz";
+import { applyScope } from "@/lib/db";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, StatTile, Select, Input, Button, Forbidden
@@ -46,6 +47,17 @@ export default async function CasesPage({
     const s = params.search.replace(/[,()]/g, "");
     caseQuery = caseQuery.or(`subject.ilike.%${s}%,caseNumber.ilike.%${s}%`);
   }
+
+  // Row scope, the same filter every list in src/server/* applies.
+  //
+  // RLS on support_case covers this at the database, but the app has never
+  // relied on RLS alone — the policy is the backstop, not the rule — and
+  // without this the page's own query asks for every case in the company.
+  //
+  // Scoped on ownerUserId, which follows the person a case is assigned to.
+  // A consultant sees the cases that are theirs; a project manager sees their
+  // team's; support leads with ALL see the queue.
+  caseQuery = applyScope(caseQuery, await scopeFilter(_me, "ownerUserId"));
 
   const { data: caseRows } = await caseQuery;
 

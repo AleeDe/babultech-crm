@@ -8,7 +8,7 @@ import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
 import { createRecord, updateRecord, applySearch, LIST_LIMIT, EXPENSE_PAGE_SIZE } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
-import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
+import { PERMISSIONS, authorize, can, requirePermission } from "@/lib/authz";
 import { notifyExpenseSubmitted, notifyExpenseDecided } from "./expense-notifications";
 import type { ActionResult } from "./partners";
 
@@ -62,7 +62,7 @@ export async function listExpenses(filters?: {
   page?: number;
   pageSize?: number;
 }) {
-  await requirePermission(PERMISSIONS.INVOICE_READ);
+  const me = await requirePermission(PERMISSIONS.EXPENSE_READ);
 
   const db = await supabaseServer();
 
@@ -86,6 +86,16 @@ export async function listExpenses(filters?: {
     // expenseDate alone is not unique — several rows share a date — so without a
     // tiebreaker the same row can appear on two pages and another on none.
     .order("expenseNumber", { ascending: false });
+
+  // A claimant sees their own claims; an approver sees the ones they decide on.
+  //
+  // Until expenses had their own permission this was invisible: reaching the
+  // list at all required invoice:read, which only finance roles held, so the
+  // absence of an ownership filter never showed. Now that consultants can open
+  // the screen, the filter is what keeps their colleagues' claims off it.
+  if (!can(me, PERMISSIONS.EXPENSE_APPROVE)) {
+    query = query.eq("employeeUserId", me.id);
+  }
 
   if (filters?.approvalStatus) query = query.eq("approvalStatus", filters.approvalStatus);
   if (filters?.paymentStatus) query = query.eq("paymentStatus", filters.paymentStatus);
@@ -125,7 +135,7 @@ export async function getExpenseTotals(filters?: {
   paymentStatus?: string;
   projectId?: string;
 }) {
-  await requirePermission(PERMISSIONS.INVOICE_READ);
+  const me = await requirePermission(PERMISSIONS.EXPENSE_READ);
 
   const db = await supabaseServer();
 
@@ -133,6 +143,12 @@ export async function getExpenseTotals(filters?: {
     .from("expense")
     .select("amount, billableToCustomer, approvalStatus, paymentStatus")
     .is("deletedAt", null);
+
+  // Same scope as listExpenses, so the tiles total the rows underneath them
+  // rather than the whole company's spending.
+  if (!can(me, PERMISSIONS.EXPENSE_APPROVE)) {
+    query = query.eq("employeeUserId", me.id);
+  }
 
   if (filters?.approvalStatus) query = query.eq("approvalStatus", filters.approvalStatus);
   if (filters?.paymentStatus) query = query.eq("paymentStatus", filters.paymentStatus);
@@ -157,7 +173,7 @@ export async function getExpenseTotals(filters?: {
 export async function createExpense(
   input: z.infer<typeof expenseSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const _auth = await authorize(PERMISSIONS.INVOICE_WRITE);
+  const _auth = await authorize(PERMISSIONS.EXPENSE_WRITE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = expenseSchema.safeParse(input);
@@ -217,7 +233,7 @@ export async function createExpense(
 }
 
 export async function getExpense(id: string) {
-  await requirePermission(PERMISSIONS.INVOICE_READ);
+  const me = await requirePermission(PERMISSIONS.EXPENSE_READ);
   const db = await supabaseServer();
 
   const { data, error } = await db
@@ -234,6 +250,17 @@ export async function getExpense(id: string) {
 
   if (error) throw new Error(`Could not load expense: ${error.message}`);
   if (!data) return null;
+
+  // Reached by id, so the list's scope does not apply here — without this a
+  // claimant could read a colleague's claim, and its amount and receipt, by
+  // typing the URL. Indistinguishable from "no such expense" on purpose: which
+  // ids exist is itself not theirs to learn.
+  if (
+    !can(me, PERMISSIONS.EXPENSE_APPROVE) &&
+    data.employeeUserId !== me.id
+  ) {
+    return null;
+  }
 
   const project = one(data.project as never) as Record<string, unknown> | null;
 
@@ -289,7 +316,7 @@ export async function setExpenseApproval(
   next: "SUBMITTED" | "APPROVED" | "REJECTED",
 ): Promise<ActionResult<{ id: string }>> {
   const _auth = await authorize(
-    next === "SUBMITTED" ? PERMISSIONS.INVOICE_WRITE : PERMISSIONS.INVOICE_APPROVE,
+    next === "SUBMITTED" ? PERMISSIONS.EXPENSE_WRITE : PERMISSIONS.EXPENSE_APPROVE,
   );
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
@@ -347,7 +374,7 @@ export async function setExpenseApprovalBulk(
   next: "SUBMITTED" | "APPROVED" | "REJECTED",
 ): Promise<ActionResult<{ updated: number; skipped: { id: string; reason: string }[] }>> {
   const _auth = await authorize(
-    next === "SUBMITTED" ? PERMISSIONS.INVOICE_WRITE : PERMISSIONS.INVOICE_APPROVE,
+    next === "SUBMITTED" ? PERMISSIONS.EXPENSE_WRITE : PERMISSIONS.EXPENSE_APPROVE,
   );
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
@@ -399,7 +426,7 @@ export async function setExpenseApprovalBulk(
 export async function markExpensePaidBulk(
   ids: string[],
 ): Promise<ActionResult<{ updated: number; skipped: { id: string; reason: string }[] }>> {
-  const _auth = await authorize(PERMISSIONS.PAYMENT_WRITE);
+  const _auth = await authorize(PERMISSIONS.EXPENSE_APPROVE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
   if (!ids.length) return { ok: false, error: "Nothing selected." };
@@ -454,7 +481,7 @@ export async function markExpensePaidBulk(
 export async function createExpensesBulk(
   rows: z.infer<typeof expenseSchema>[],
 ): Promise<ActionResult<{ created: number }>> {
-  const _auth = await authorize(PERMISSIONS.INVOICE_WRITE);
+  const _auth = await authorize(PERMISSIONS.EXPENSE_WRITE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
   if (!rows.length) return { ok: false, error: "No rows to import." };
@@ -529,7 +556,7 @@ export async function createExpensesBulk(
 }
 
 export async function markExpensePaid(id: string): Promise<ActionResult<{ id: string }>> {
-  const _auth = await authorize(PERMISSIONS.PAYMENT_WRITE);
+  const _auth = await authorize(PERMISSIONS.EXPENSE_APPROVE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const db = await supabaseServer();
@@ -1093,6 +1120,57 @@ export async function getPayableFormOptions() {
 }
 
 /** Totals for the payables dashboard tiles. */
+/**
+ * The two claim figures the expense screen puts in its header, scoped to the
+ * reader.
+ *
+ * getPayablesSummary answers the same two questions company-wide, but it also
+ * carries vendor-bill totals and sits behind invoice:read — so a consultant
+ * calling it for their own claim counts was refused, and granting them the
+ * invoice permission to fix that is exactly what put the whole finance ledger
+ * in front of them in the first place.
+ *
+ * An approver sees every claim waiting on them, which is the job. A claimant
+ * sees their own, because "PKR 1.4M awaiting approval" is not a fact about a
+ * consultant's two taxi receipts.
+ */
+export async function getExpenseClaimSummary() {
+  const me = await requirePermission(PERMISSIONS.EXPENSE_READ);
+  const db = await supabaseServer();
+
+  // An approver counts everyone's claims; a claimant counts their own.
+  const mineOnly = can(me, PERMISSIONS.EXPENSE_APPROVE) ? null : me.id;
+
+  let pendingQuery = db
+    .from("expense")
+    .select("amount")
+    .is("deletedAt", null)
+    .eq("approvalStatus", "SUBMITTED");
+  if (mineOnly) pendingQuery = pendingQuery.eq("employeeUserId", mineOnly);
+
+  let unpaidQuery = db
+    .from("expense")
+    .select("amount")
+    .is("deletedAt", null)
+    .eq("approvalStatus", "APPROVED")
+    .eq("paymentStatus", "UNPAID");
+  if (mineOnly) unpaidQuery = unpaidQuery.eq("employeeUserId", mineOnly);
+
+  const [pending, unpaid] = await Promise.all([pendingQuery, unpaidQuery]);
+
+  const sum = (res: { data?: unknown }) =>
+    ((res.data ?? []) as Record<string, unknown>[])
+      .reduce((total, row) => total.plus(toDecimal(row.amount)), ZERO)
+      .toFixed(2);
+
+  return {
+    awaitingApproval: sum(pending),
+    awaitingApprovalCount: ((pending.data ?? []) as unknown[]).length,
+    toPay: sum(unpaid),
+    toPayCount: ((unpaid.data ?? []) as unknown[]).length,
+  };
+}
+
 export async function getPayablesSummary() {
   await requirePermission(PERMISSIONS.INVOICE_READ);
   const db = await supabaseServer();

@@ -22,7 +22,7 @@ export default async function ExpenseDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const me = await requireUser();
-  if (!can(me, PERMISSIONS.INVOICE_READ)) return <Forbidden what="expenses" />;
+  if (!can(me, PERMISSIONS.EXPENSE_READ)) return <Forbidden what="expenses" />;
 
   const { id } = await params;
 
@@ -87,8 +87,8 @@ export default async function ExpenseDetailPage({
             expenseId={expense.id}
             approvalStatus={expense.approvalStatus}
             paymentStatus={expense.paymentStatus}
-            canApprove={can(me, PERMISSIONS.INVOICE_APPROVE)}
-            canPay={can(me, PERMISSIONS.PAYMENT_WRITE)}
+            canApprove={can(me, PERMISSIONS.EXPENSE_APPROVE)}
+            canPay={can(me, PERMISSIONS.EXPENSE_APPROVE)}
             isOwnClaim={isOwnClaim}
           />
         </CardContent>

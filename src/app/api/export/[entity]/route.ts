@@ -277,7 +277,7 @@ const EXPORTS: Record<string, ExportDefinition> = {
   },
 
   expenses: {
-    needs: PERMISSIONS.INVOICE_READ,
+    needs: PERMISSIONS.EXPENSE_READ,
     filename: "expenses",
     // An export is the whole filtered set, not the page being looked at, so it
     // asks for one page big enough to hold everything.
