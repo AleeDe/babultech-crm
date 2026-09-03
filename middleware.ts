@@ -4,10 +4,20 @@ import { NextResponse, type NextRequest } from "next/server";
 /**
  * Bounces anonymous traffic to /login and keeps the Supabase session fresh.
  *
- * Calling getUser() here does double duty: it verifies the token with Supabase
- * rather than trusting the cookie, and it writes back a refreshed token when the
- * old one is close to expiring. Server Components cannot set cookies, so
- * without this pass a long-lived tab would eventually fall off its session.
+ * getClaims() verifies the JWT's signature locally against the project's
+ * published JWKS (ES256), so the common case costs no network round trip — the
+ * key set is fetched once and cached for the life of the process. It still
+ * refreshes an expiring token, because the client is built with the cookie
+ * adapter below and writes the new one back through setAll(). Server Components
+ * cannot set cookies, so without this pass a long-lived tab would eventually
+ * fall off its session.
+ *
+ * This deliberately does NOT call getUser(). That is a round trip to Supabase
+ * Auth on every request, and requireUser() in lib/authz.ts already makes one on
+ * the way to loading the profile — two sequential calls to the same service
+ * before a page fetched a single row. A forged token cannot pass the signature
+ * check here, and anything getClaims() lets through still has to survive
+ * requireUser().
  *
  * This is not the authorization boundary. Every page under (app) still goes
  * through requireUser() and every server action through requirePermission(),
@@ -39,11 +49,9 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: claims } = await supabase.auth.getClaims();
 
-  if (!user) {
+  if (!claims) {
     const url = new URL("/login", request.url);
     return NextResponse.redirect(url);
   }

@@ -9,11 +9,11 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
+  // Only asking "is anyone signed in?", so verify the token locally against the
+  // cached JWKS rather than spending a round trip on the answer.
   const db = await supabaseServer();
-  const {
-    data: { user },
-  } = await db.auth.getUser();
-  if (user) redirect("/");
+  const { data: claims } = await db.auth.getClaims();
+  if (claims) redirect("/");
 
   const { error } = await searchParams;
 

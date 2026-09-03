@@ -70,11 +70,20 @@ async function loadUser(): Promise<SessionUser> {
 
   // Supabase Auth is the only identity provider, and auth.users.id ===
   // app_user.id, so the verified user id keys the profile lookup directly.
-  const {
-    data: { user: supabaseUser },
-  } = await db.auth.getUser();
+  //
+  // getClaims() rather than getUser(): the id is already in the JWT, and the
+  // project signs with ES256, so this verifies the signature against the cached
+  // JWKS locally instead of spending a round trip to Mumbai asking Auth to read
+  // back a claim we are holding. getUser() would re-fetch the whole user record
+  // over the network to obtain one field.
+  //
+  // The trust argument is unchanged. A token that fails the signature check is
+  // rejected here, and `sub` on a validly signed token was put there by Supabase
+  // Auth, not by the caller. The profile read below is still pinned to that id
+  // and still decides whether the account may act at all.
+  const { data: claims } = await db.auth.getClaims();
 
-  const userId = supabaseUser?.id ?? null;
+  const userId = claims?.claims?.sub ?? null;
 
   if (!userId) throw new AuthorizationError("Not signed in.");
 
@@ -85,8 +94,8 @@ async function loadUser(): Promise<SessionUser> {
   // even a correctly signed-in user reads as "not active".
   //
   // Using the service role here is safe and is not a hole in row security:
-  // `userId` comes from a verified session (a Supabase JWT or a NextAuth
-  // cookie), never from user input, and the query is pinned to that single id.
+  // `userId` comes from a verified Supabase JWT, never from user input, and the
+  // query is pinned to that single id.
   // Every *data* query still runs through the caller's own client, where RLS
   // applies.
   const profileDb = supabaseAdmin();
