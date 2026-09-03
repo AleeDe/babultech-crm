@@ -8,7 +8,7 @@ import {
   FileText, FileSignature, Handshake, Coins, LifeBuoy, FolderKanban,
   Receipt, Package, CalendarCheck, Menu, X, LogOut, Clock, UsersRound, Banknote,
   ShieldCheck, UserCog, Settings, BookOpen, CheckSquare, FileInput, Wallet, Stamp,
-  ChevronDown,
+  ChevronDown, PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { holdsAny } from "@/lib/nav-permissions";
@@ -156,14 +156,46 @@ export function AppShell({
    */
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
+  /**
+   * Whether the whole sidebar is reduced to an icon rail.
+   *
+   * Separate from `collapsed` above, which hides items inside a group. This
+   * hides the labels and narrows the column, trading the ability to read a
+   * destination for about 190px of width — worth it on the wide tables, where
+   * the sidebar costs more than it earns.
+   *
+   * Starts expanded on every load and is corrected from storage in the effect
+   * below, rather than read during render: the server has no localStorage, so
+   * reading it inline would render a different tree on the client and trip
+   * hydration. One frame at the stored width is the cost of that correctness,
+   * and `transition-[width]` is suppressed until after that first paint so the
+   * rail does not visibly slide open on arrival.
+   */
+  const [railed, setRailed] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem("nav-collapsed");
       if (saved) setCollapsed(JSON.parse(saved));
+      setRailed(window.localStorage.getItem("nav-railed") === "1");
     } catch {
       // A private window or blocked storage is not a reason to break the nav.
     }
+    setHydrated(true);
   }, []);
+
+  function toggleRail() {
+    setRailed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem("nav-railed", next ? "1" : "0");
+      } catch {
+        // Ignored for the same reason as above.
+      }
+      return next;
+    });
+  }
 
   function toggleGroup(label: string) {
     setCollapsed((prev) => {
@@ -205,6 +237,11 @@ export function AppShell({
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r bg-card shadow-lg transition-transform",
+          // Only the desktop column narrows. On mobile the sidebar is an
+          // overlay you open and dismiss, so a rail there would be a smaller
+          // target for no gain in space.
+          hydrated && "lg:transition-[width]",
+          railed && "lg:w-16",
           // Sticks to the viewport on desktop instead of flowing with the page.
           //
           // `lg:static` put the sidebar in the page's own flow inside a
@@ -222,21 +259,57 @@ export function AppShell({
           open ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="flex h-14 shrink-0 items-center justify-between border-b px-5">
-          <Link href="/" className="flex items-center gap-2 font-semibold">
-            <span className="grid h-7 w-7 place-items-center rounded bg-primary text-xs font-bold text-primary-foreground">
+        <div className={cn(
+          "flex h-14 shrink-0 items-center justify-between border-b",
+          railed ? "lg:justify-center lg:px-0" : "px-5",
+        )}>
+          <Link
+            href="/"
+            className={cn("flex items-center gap-2 font-semibold", railed && "lg:gap-0")}
+            title={railed ? "BabulTech CRM" : undefined}
+          >
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded bg-primary text-xs font-bold text-primary-foreground">
               BT
             </span>
-            <span>BabulTech CRM</span>
+            <span className={cn(railed && "lg:hidden")}>BabulTech CRM</span>
           </Link>
           <button className="lg:hidden" onClick={() => setOpen(false)} aria-label="Close menu">
             <X className="h-5 w-5" />
           </button>
+          {/* Desktop only: the mobile sidebar closes with the X above. */}
+          <button
+            type="button"
+            onClick={toggleRail}
+            className={cn(
+              "hidden text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:block",
+              railed && "lg:hidden",
+            )}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
         </div>
+
+        {/* When railed the brand row centres the logo, so the reopen control
+            moves to its own row rather than fighting it for the width. */}
+        {railed && (
+          <button
+            type="button"
+            onClick={toggleRail}
+            className="hidden shrink-0 justify-center border-b py-2 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:flex"
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </button>
+        )}
 
         {/* Above the groups, because it is the fastest route to anything and
             should not itself need scrolling to. */}
-        <div className="shrink-0 px-3 pt-3">
+        {/* Hidden on the rail: a search input cannot be usefully rendered at
+            64px, and ⌘K still opens it from anywhere. */}
+        <div className={cn("shrink-0 px-3 pt-3", railed && "lg:hidden")}>
           <CommandPalette items={paletteItems} />
         </div>
 
@@ -256,7 +329,10 @@ export function AppShell({
                 // A full-width row rather than a small chevron: Fitts's Law
                 // rewards the large target, and there is nothing else on this
                 // line to hit by mistake.
-                className="mb-1 flex w-full items-center gap-1 rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className={cn(
+                  "mb-1 flex w-full items-center gap-1 rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  railed && "lg:hidden",
+                )}
               >
                 <span className="flex-1 text-left">{group.label}</span>
                 <ChevronDown
@@ -266,7 +342,9 @@ export function AppShell({
                   )}
                 />
               </button>
-              <ul className={cn("space-y-0.5", !isOpen && "hidden")}>
+              {/* On the rail the group header is hidden, so a collapsed group
+                  would be an unexplained gap. Items always show there. */}
+              <ul className={cn("space-y-0.5", !isOpen && (railed ? "hidden lg:block" : "hidden"))}>
                 {group.items.map((item) => {
                   const Icon = item.icon;
                   return (
@@ -274,8 +352,11 @@ export function AppShell({
                       <Link
                         href={item.href}
                         onClick={() => setOpen(false)}
+                        // title, so a railed icon still says what it is on hover.
+                        title={railed ? item.label : undefined}
                         className={cn(
                           "group relative flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-all",
+                          railed && "lg:justify-center lg:gap-0 lg:px-0",
                           isActive(item.href)
                             ? "bg-primary/10 font-medium text-primary"
                             : "text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -285,7 +366,10 @@ export function AppShell({
                             findable without reading every label. */}
                         {isActive(item.href) && (
                           <span
-                            className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary"
+                            className={cn(
+                              "absolute top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary",
+                              railed ? "-left-1" : "-left-3",
+                            )}
                             aria-hidden
                           />
                         )}
@@ -295,9 +379,12 @@ export function AppShell({
                             !isActive(item.href) && "group-hover:scale-110",
                           )}
                         />
-                        <span className="flex-1">{item.label}</span>
+                        <span className={cn("flex-1", railed && "lg:hidden")}>{item.label}</span>
                         {item.soon && (
-                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          <span className={cn(
+                            "rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground",
+                            railed && "lg:hidden",
+                          )}>
                             Phase 3
                           </span>
                         )}
@@ -313,17 +400,45 @@ export function AppShell({
 
         {/* shrink-0 so a long nav cannot squeeze this out of the layout: it is
             the one thing that must always be reachable without scrolling. */}
-        <div className="shrink-0 border-t p-3">
-          <div className="flex items-center gap-2.5 rounded-lg bg-muted/40 px-2 py-2 transition-colors hover:bg-muted/70">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-secondary text-xs font-semibold">
-              {initials(user.fullName)}
-            </span>
-            <Link href="/profile" className="min-w-0 flex-1" onClick={() => setOpen(false)}>
+        <div className={cn("shrink-0 border-t p-3", railed && "lg:px-1.5")}>
+          <div className={cn(
+            "flex items-center gap-2.5 rounded-lg bg-muted/40 px-2 py-2 transition-colors hover:bg-muted/70",
+            // Railed, the row stacks: avatar over sign-out. Side by side at
+            // 64px leaves each about 24px, which is below a comfortable target
+            // and puts sign-out within a few pixels of the profile link.
+            railed && "lg:flex-col lg:gap-1.5 lg:px-0",
+          )}>
+            {/* The avatar is the profile link on the rail, where the name it
+                normally sits beside is hidden. Expanded, the name carries the
+                link and this stays decorative. */}
+            <Link
+              href="/profile"
+              onClick={() => setOpen(false)}
+              className={cn("shrink-0", !railed && "pointer-events-none")}
+              tabIndex={railed ? undefined : -1}
+              title={railed ? `${user.fullName} — ${user.roleName}` : undefined}
+              aria-label={railed ? "Your profile" : undefined}
+              aria-hidden={!railed}
+            >
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-secondary text-xs font-semibold">
+                {initials(user.fullName)}
+              </span>
+            </Link>
+            <Link
+              href="/profile"
+              className={cn("min-w-0 flex-1", railed && "lg:hidden")}
+              onClick={() => setOpen(false)}
+            >
               <p className="truncate text-sm font-medium hover:underline">{user.fullName}</p>
               <p className="truncate text-xs text-muted-foreground">{user.roleName}</p>
             </Link>
-            <form action={signOutAction}>
-              <button type="submit" className="text-muted-foreground hover:text-foreground" aria-label="Sign out">
+            <form action={signOutAction} className="shrink-0">
+              <button
+                type="submit"
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Sign out"
+                title={railed ? "Sign out" : undefined}
+              >
                 <LogOut className="h-4 w-4" />
               </button>
             </form>
