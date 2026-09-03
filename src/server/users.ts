@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
+import { supabaseServer, supabaseAdmin, supabaseAnon } from "@/lib/supabase";
 import { createRecord, updateRecord, LIST_LIMIT } from "@/lib/db";
 import { one } from "@/lib/decimal";
 import { PERMISSIONS, authorize, requirePermission, requireUser } from "@/lib/authz";
@@ -411,13 +411,23 @@ export async function changeOwnPassword(
   try {
     const db = await supabaseServer();
 
-    const { data: user } = await db
-      .from("app_user")
-      .select("passwordHash")
-      .eq("id", actor.id)
-      .maybeSingle();
+    // The current password is checked against Supabase Auth, which is what
+    // actually guards sign-in. This used to bcrypt.compare() against
+    // app_user.passwordHash, but that column is dead since the move to Supabase
+    // Auth and was revoked from `authenticated` in
+    // 20260902000000_hide_rate_columns.sql — the read came back empty and every
+    // password change failed as "that is not your current password".
+    //
+    // signInWithPassword on a throwaway client, so a wrong password cannot
+    // disturb the session the caller is currently holding.
+    const verify = supabaseAnon();
+    const { error: verifyError } = await verify.auth.signInWithPassword({
+      email: actor.email,
+      password: currentPassword,
+    });
+    await verify.auth.signOut();
 
-    if (!user?.passwordHash || !(await bcrypt.compare(currentPassword, user.passwordHash))) {
+    if (verifyError) {
       return {
         ok: false,
         error: "That is not your current password.",
@@ -438,12 +448,12 @@ export async function changeOwnPassword(
       return { ok: false, error: `Could not update your sign-in password: ${authError.message}` };
     }
 
+    // passwordHash is deliberately not written. Supabase Auth above holds the
+    // real credential; mirroring it into a revoked, unread column would only
+    // keep a second copy of a secret nothing checks.
     const { error } = await db
       .from("app_user")
-      .update({
-        passwordHash: await bcrypt.hash(parsed.data, BCRYPT_ROUNDS),
-        updatedAt: new Date().toISOString(),
-      })
+      .update({ updatedAt: new Date().toISOString() })
       .eq("id", actor.id);
 
     if (error) throw new Error(error.message);
@@ -457,7 +467,16 @@ export async function changeOwnPassword(
 export async function listUsers(filters?: { search?: string; roleId?: string; status?: string }) {
   await requirePermission(PERMISSIONS.ADMIN);
 
-  const db = await supabaseServer();
+  // Service role, because this selects `*` and app_user no longer grants every
+  // column to `authenticated`: costRate, defaultBillingRate and passwordHash
+  // were revoked in 20260902000000_hide_rate_columns.sql, and Postgres fails a
+  // `SELECT *` that reaches a column the role cannot read. The rates are not
+  // incidental here — the page counts people missing them — so the fix is to
+  // read them with authority rather than to drop them from the select.
+  //
+  // Not a wider door: requirePermission(ADMIN) above already gates this, and
+  // user administration is exactly the screen allowed to see pay rates.
+  const db = supabaseAdmin();
 
   let query = db
     .from("app_user")
@@ -506,7 +525,9 @@ export async function listUsers(filters?: { search?: string; roleId?: string; st
 export async function getUser(id: string) {
   await requirePermission(PERMISSIONS.ADMIN);
 
-  const db = await supabaseServer();
+  // Same reason as listUsers: `*` over a table whose rate columns are revoked
+  // from `authenticated`, behind the same ADMIN gate.
+  const db = supabaseAdmin();
 
   const { data, error } = await db
     .from("app_user")

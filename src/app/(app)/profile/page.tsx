@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/authz";
-import { supabaseServer } from "@/lib/supabase";
+import { supabaseAdmin } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, DetailRow,
@@ -17,7 +17,13 @@ const SCOPE_EXPLAINER: Record<string, string> = {
 export default async function ProfilePage() {
   const session = await requireUser();
 
-  const db = await supabaseServer();
+  // Service role: this selects `*`, and app_user's rate columns are revoked from
+  // `authenticated` (20260902000000_hide_rate_columns.sql), so a `*` through the
+  // user's own client fails the whole query. Naming the columns instead would
+  // collapse the embedded relations to `never` in the generated types.
+  //
+  // Pinned to session.id — this reads the caller's own row and nobody else's.
+  const db = supabaseAdmin();
 
   const { data: row } = await db
     .from("app_user")
