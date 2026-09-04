@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseExpenseDate, parseAmount, parseExpenseRows,
-  splitSheet, guessMapping, parseMappedRows,
+  splitSheet, guessMapping, parseMappedRows, sheetFromWorkbookRows,
 } from "../src/lib/parse-expense-rows";
 
 /**
@@ -223,5 +223,56 @@ describe("quoted cells", () => {
     expect(row.amount).toBe(45000);
     expect(row.notes).toBe("Two months, paid early");
     expect(row.errors).toHaveLength(0);
+  });
+});
+
+/**
+ * A workbook hands back typed cells, which is strictly better than a CSV of
+ * the same sheet: a real Date carries no "is 5/8 May or August" question. The
+ * conversion has to preserve that rather than flatten it back into an
+ * ambiguous string.
+ */
+describe("sheetFromWorkbookRows", () => {
+  it("writes a Date cell as ISO, so no reading has to be guessed", () => {
+    const s = sheetFromWorkbookRows([
+      ["Expense Type", "Date", "Amount"],
+      ["Rent", new Date(2026, 7, 5), 45000],
+    ]);
+    const [row] = parseMappedRows(s, guessMapping(s));
+    expect(row.date).toBe("2026-08-05");
+    // The CSV of this sheet would have said "read as 5/8 month-first".
+    expect(row.dateNote).toBeNull();
+    expect(row.amount).toBe(45000);
+  });
+
+  it("drops the trailing empty rows a scrolled spreadsheet carries", () => {
+    const s = sheetFromWorkbookRows([
+      ["Expense Type", "Date", "Amount"],
+      ["Rent", new Date(2026, 7, 5), 45000],
+      [null, null, null],
+      ["", "", ""],
+    ]);
+    expect(s.rows).toHaveLength(1);
+  });
+
+  it("ignores columns that are formatted but empty", () => {
+    const s = sheetFromWorkbookRows([
+      ["Expense Type", "Date", "Amount", null, null],
+      ["Rent", new Date(2026, 7, 5), 45000, null, null],
+    ]);
+    expect(s.width).toBe(3);
+  });
+
+  it("keeps a numeric amount exact rather than formatting it", () => {
+    const s = sheetFromWorkbookRows([
+      ["Expense Type", "Date", "Amount"],
+      ["Rent", new Date(2026, 7, 5), 45000.5],
+    ]);
+    const [row] = parseMappedRows(s, guessMapping(s));
+    expect(row.amount).toBe(45000.5);
+  });
+
+  it("returns nothing for an empty sheet", () => {
+    expect(sheetFromWorkbookRows([[null, null], ["", ""]]).rows).toHaveLength(0);
   });
 });

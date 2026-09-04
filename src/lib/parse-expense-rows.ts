@@ -218,17 +218,29 @@ function isNumericCell(input: string): boolean {
  * fee, 5/8/2026, 45000" mentions both "type" and "date" but is data.
  */
 export function splitSheet(text: string): SplitSheet {
-  const { headers, rows: body } = parseDelimited(text);
-  if (headers.length === 0) return { header: null, rows: [], width: 0 };
+  const { headers, rows } = parseDelimited(text);
+  return sheetFromRows(headers, rows);
+}
+
+/**
+ * Builds a SplitSheet from rows already split into cells.
+ *
+ * The shared tail of both routes: a CSV arrives through parseDelimited, an
+ * .xlsx through readExpenseWorkbook, and from here on neither can be told from
+ * the other. `first` is the sheet's first row, which may or may not be a
+ * header — deciding that is this function's job.
+ */
+function sheetFromRows(first: string[], body: string[][]): SplitSheet {
+  if (first.length === 0) return { header: null, rows: [], width: 0 };
 
   const carriesData = (cells: string[]) =>
     cells.some((c) => c !== "" && (parseExpenseDate(c).date !== null || isNumericCell(c)));
 
-  const filled = headers.filter((c) => c !== "");
-  const lower = headers.join(" ").toLowerCase();
+  const filled = first.filter((c) => c !== "");
+  const lower = first.join(" ").toLowerCase();
 
   const looksLikeHeader =
-    !carriesData(headers) &&
+    !carriesData(first) &&
     filled.length > 1 &&
     // Every cell has to read as a label rather than a stray number.
     filled.every((c) => /[a-z]/i.test(c)) &&
@@ -237,19 +249,68 @@ export function splitSheet(text: string): SplitSheet {
       // below: a body row normally carries a date or an amount, a header does not.
       (body.length > 0 && carriesData(body[0])));
 
-  // parseDelimited pads its body rows to the header width but not beyond, so
-  // the header's own length is the width either way.
-  const width = headers.length;
-  const all = looksLikeHeader ? body : [headers, ...body];
+  // The first row's length is the width: parseDelimited pads its body rows to
+  // the header and no further, and the workbook reader pads every row alike.
+  const width = first.length;
+  const all = looksLikeHeader ? body : [first, ...body];
 
   return {
-    header: looksLikeHeader ? headers : null,
+    header: looksLikeHeader ? first : null,
     rows: all.map((cells, index) => ({
       line: index + 1,
       cells: pad(cells, width),
     })),
     width,
   };
+}
+
+/**
+ * Renders one .xlsx cell as the text the rest of this file expects.
+ *
+ * A workbook hands back typed cells, and a Date among them is a gift: it is
+ * already unambiguous, so writing it as ISO sidesteps the whole "is 5/8 May or
+ * August" problem that a CSV of the same sheet would have carried. Doing
+ * anything else here — toLocaleDateString, say — would manufacture the
+ * ambiguity the typed value had spared us.
+ *
+ * Numbers are written plainly rather than formatted: a thousands separator
+ * would only have to be stripped again by parseAmount, and a locale that uses
+ * "," for the decimal point would make 45,5 unreadable.
+ */
+function cellToText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) {
+    return iso(value.getFullYear(), value.getMonth() + 1, value.getDate());
+  }
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+  return String(value).trim();
+}
+
+/**
+ * Turns a workbook's rows into a SplitSheet.
+ *
+ * Takes the rows rather than the file so this stays testable and free of the
+ * reader: the caller does the reading, which in the browser means the library's
+ * own File-based entry point.
+ *
+ * Trailing empty rows and columns are dropped first. A spreadsheet someone has
+ * scrolled through is routinely 1000 rows of nothing below the last real one,
+ * and every one of those would otherwise arrive as a row missing its date, its
+ * amount and its type.
+ */
+export function sheetFromWorkbookRows(rows: unknown[][]): SplitSheet {
+  const text = rows.map((r) => r.map(cellToText));
+
+  const used = text.filter((r) => r.some((c) => c !== ""));
+  if (used.length === 0) return { header: null, rows: [], width: 0 };
+
+  // Width from the widest row that actually holds something, so a stray format
+  // applied to column ZZ does not widen the mapping table by twenty columns.
+  const width = Math.max(...used.map((r) => r.reduce((last, c, i) => (c !== "" ? i + 1 : last), 0)));
+  const trimmed = used.map((r) => pad(r, width));
+
+  return sheetFromRows(trimmed[0], trimmed.slice(1));
 }
 
 const HEADER_HINTS = [

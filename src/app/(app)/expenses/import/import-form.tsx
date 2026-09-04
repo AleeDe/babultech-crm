@@ -9,8 +9,8 @@ import {
 } from "@/components/ui";
 import { formatMoney } from "@/lib/utils";
 import {
-  splitSheet, guessMapping, parseMappedRows, matchCategoryId,
-  IMPORT_FIELDS, type ColumnMapping, type ImportField,
+  splitSheet, sheetFromWorkbookRows, guessMapping, parseMappedRows, matchCategoryId,
+  IMPORT_FIELDS, type ColumnMapping, type ImportField, type SplitSheet,
 } from "@/lib/parse-expense-rows";
 import { createExpensesBulk, createExpenseCategory } from "@/server/payables";
 
@@ -56,6 +56,11 @@ export function ExpenseImportForm({
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  // Set only when an .xlsx is loaded; a CSV or a paste leaves these empty and
+  // goes through `text` instead. One of the two is always the source.
+  const [workbookSheets, setWorkbookSheets] = useState<SplitSheet[]>([]);
+  const [sheetNames, setSheetNames] = useState<string[]>([]);
+  const [sheetIndex, setSheetIndex] = useState(0);
   const [employeeUserId, setEmployeeUserId] = useState(users[0]?.id ?? "");
   const [projectId, setProjectId] = useState("");
   const [currencyCode, setCurrencyCode] = useState("PKR");
@@ -76,7 +81,8 @@ export function ExpenseImportForm({
     return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [categories, added]);
 
-  const sheet = useMemo(() => splitSheet(text), [text]);
+  const workbook = workbookSheets[sheetIndex] ?? null;
+  const sheet = useMemo(() => workbook ?? splitSheet(text), [workbook, text]);
 
   // The guess is a starting point, not the mapping: once someone corrects a
   // column their choice has to survive re-renders, so it is held in state and
@@ -132,14 +138,46 @@ export function ExpenseImportForm({
   const canImport = resolved.length > 0 && badRows.length === 0 && Boolean(employeeUserId);
 
   /**
-   * Reads a dropped or chosen file into the same text the paste box feeds.
+   * Reads a dropped or chosen file.
    *
-   * Everything downstream — the split, the mapping, the preview — works off
-   * that one string, so a file and a paste cannot diverge in what they import.
+   * A CSV becomes text and joins the same path a paste takes. An .xlsx cannot:
+   * its cells arrive typed, and flattening a real Date back into "5/8/2026"
+   * would hand the guesser an ambiguity the workbook had already resolved. So a
+   * workbook is split straight into a sheet, and `workbook` state is what says
+   * which of the two is currently loaded.
+   *
+   * The library is imported here rather than at the top of the file so its
+   * ~100KB only loads for someone who actually drops a workbook.
    */
   function readFile(file: File) {
     setError(null);
     setFileName(file.name);
+
+    if (/\.xlsx?$/i.test(file.name)) {
+      setText("");
+      import("read-excel-file/browser")
+        .then(async ({ default: readXlsxFile }) => {
+          // The default export returns every sheet. A workbook with a tab per
+          // month is the normal shape for expenses, so which tab to import is
+          // a question to ask rather than a first-sheet assumption to make.
+          const sheets = await readXlsxFile(file);
+          setSheetNames(sheets.map((s) => s.sheet));
+          setSheetIndex(0);
+          setWorkbookSheets(sheets.map((s) => sheetFromWorkbookRows(s.data as unknown[][])));
+        })
+        .catch(() => {
+          setError(
+            `Could not read "${file.name}". If it is an old .xls, open it in Excel and save it as .xlsx or CSV.`,
+          );
+          setFileName(null);
+          setWorkbookSheets([]);
+          setSheetNames([]);
+        });
+      return;
+    }
+
+    setSheetNames([]);
+    setWorkbookSheets([]);
     const reader = new FileReader();
     reader.onload = () => setText(String(reader.result ?? ""));
     reader.onerror = () => {
@@ -273,17 +311,17 @@ export function ExpenseImportForm({
             ) : (
               <>
                 <span className="text-sm font-medium">
-                  Drop a CSV here, or click to choose one
+                  Drop an Excel file or CSV here, or click to choose one
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  From Google Sheets: File → Download → Comma-separated values.
-                  From Excel: Save As → CSV.
+                  .xlsx straight out of Excel, or a CSV from Google Sheets
+                  (File → Download → Comma-separated values).
                 </span>
               </>
             )}
             <input
               type="file"
-              accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
+              accept=".xlsx,.csv,.tsv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/tab-separated-values,text/plain"
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -295,6 +333,27 @@ export function ExpenseImportForm({
               }}
             />
           </label>
+
+          {/* A workbook kept per month is the usual shape, so which tab to
+              import is asked rather than assumed. Without this the first tab
+              would import silently and the other eleven would look imported. */}
+          {sheetNames.length > 1 && (
+            <Field
+              label="Sheet"
+              hint={`This workbook has ${sheetNames.length} sheets. One is imported at a time.`}
+            >
+              <Select
+                value={String(sheetIndex)}
+                onChange={(e) => setSheetIndex(Number(e.target.value))}
+              >
+                {sheetNames.map((name, i) => (
+                  <option key={name} value={i}>
+                    {name} ({workbookSheets[i]?.rows.length ?? 0} rows)
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
 
           {/* Pasting still works, but it is the fallback now: a file is what
               people actually have, and a ten-row textarea sitting open invited
@@ -311,7 +370,12 @@ export function ExpenseImportForm({
                 <Textarea
                   rows={8}
                   value={text}
-                  onChange={(e) => { setText(e.target.value); setFileName(null); }}
+                  onChange={(e) => {
+                    setText(e.target.value);
+                    setFileName(null);
+                    setWorkbookSheets([]);
+                    setSheetNames([]);
+                  }}
                   placeholder={SAMPLE}
                   className="font-mono text-xs"
                 />
@@ -463,7 +527,7 @@ export function ExpenseImportForm({
             <div className="ml-auto flex gap-2">
               <Button
                 variant="outline"
-                onClick={() => { setText(""); setFileName(null); }}
+                onClick={() => { setText(""); setFileName(null); setWorkbookSheets([]); setSheetNames([]); }}
                 disabled={pending}
               >
                 <ArrowLeft className="h-4 w-4" /> Clear
