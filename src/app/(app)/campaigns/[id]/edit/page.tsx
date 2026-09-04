@@ -37,7 +37,7 @@ export default async function EditCampaignPage({
 
           <div className="grid gap-5 sm:grid-cols-2">
             <FormField label="Type" name="campaignTypeId" required
-            help="The kind of activity — email, event, advertising, webinar.">
+            help="The kind of activity - email, event, advertising, webinar.">
               <Select name="campaignTypeId" required defaultValue={campaign.campaignTypeId}>
                 {campaignTypes.map((t) => (
                   <option key={t.id} value={t.id}>{t.name}</option>

@@ -197,7 +197,7 @@ export function TimesheetClient({
               >
                 <option value="">Select…</option>
                 {options.projects.map((p) => (
-                  <option key={p.id} value={p.id}>{p.projectNumber} — {p.name}</option>
+                  <option key={p.id} value={p.id}>{p.projectNumber} - {p.name}</option>
                 ))}
               </Select>
             </Field>
@@ -220,7 +220,7 @@ export function TimesheetClient({
               <Select name="caseId" required>
                 <option value="">Select…</option>
                 {options.cases.map((c) => (
-                  <option key={c.id} value={c.id}>{c.caseNumber} — {c.subject}</option>
+                  <option key={c.id} value={c.id}>{c.caseNumber} - {c.subject}</option>
                 ))}
               </Select>
             </Field>
@@ -239,7 +239,7 @@ export function TimesheetClient({
           />
         </Field>
         <Field label="Started"
-            help="Clock time you began. Optional — fill both times and the hours are worked out for you.">
+            help="Clock time you began. Optional - fill both times and the hours are worked out for you.">
           <Input
             name="startTime"
             type="time"
@@ -365,7 +365,7 @@ export function TimesheetClient({
             <Alert tone="warning">
               Two entries claim the same clock time on{" "}
               {overlappingDays.map((d) => formatDate(d)).join(", ")}. That may be
-              deliberate — a review during a meeting — but if it is not, the same
+              deliberate - a review during a meeting - but if it is not, the same
               hour is counted twice.
             </Alert>
           )}
@@ -398,7 +398,7 @@ export function TimesheetClient({
                           </Link>
                         ) : e.case ? (
                           <Link href={`/cases/${e.case.id}`} className="hover:underline">
-                            {e.case.caseNumber} — {e.case.subject}
+                            {e.case.caseNumber} - {e.case.subject}
                           </Link>
                         ) : "Unlinked"}
                         {e.projectTask && (
@@ -416,7 +416,7 @@ export function TimesheetClient({
                   <div className="mt-2 flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">
                       {formatDate(e.workDate)}
-                      {/* Only when they were recorded — an entry logged as a
+                      {/* Only when they were recorded - an entry logged as a
                           plain duration shows the date alone rather than an
                           empty dash pretending a time is missing. */}
                       {e.startTime && e.endTime && (

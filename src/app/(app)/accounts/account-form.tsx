@@ -165,7 +165,7 @@ export function AccountForm({
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Customer status" hint="Only meaningful once they are a customer."
-            help="For customers only: how healthy the relationship is — onboarding, active, at risk, or gone.">
+            help="For customers only: how healthy the relationship is - onboarding, active, at risk, or gone.">
             <Select name="customerStatus" defaultValue={defaults?.customerStatus ?? ""}>
               <option value="">Not set</option>
               {CUSTOMER_STATUSES.map((s) => (

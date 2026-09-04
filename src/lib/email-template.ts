@@ -153,7 +153,7 @@ export function renderDocumentEmail(input: DocumentEmail): { html: string; text:
 <!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
 </head>
 <body style="margin:0;padding:0;background-color:${b.backgroundColor};">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escape(documentTitle)} — ${escape(
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escape(documentTitle)}, ${escape(
     message.split("\n")[0].slice(0, 90),
   )}</div>
 

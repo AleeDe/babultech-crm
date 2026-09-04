@@ -130,7 +130,7 @@ export default async function ExpensesPage({
             description={
               filtered
                 ? "Try a different status, or clear the search to see everything."
-                : "Record what the business spends — rent, software, hardware, travel. Expenses on a project can be billed on to the customer."
+                : "Record what the business spends - rent, software, hardware, travel. Expenses on a project can be billed on to the customer."
             }
             action={
               filtered ? (

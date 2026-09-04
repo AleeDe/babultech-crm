@@ -61,7 +61,7 @@ export function PartnersView({
       id: "blocked",
       count: totals.blockedPartners,
       title: "Partners who cannot currently earn",
-      detail: "Inactive, or their agreement has lapsed — commission stops silently",
+      detail: "Inactive, or their agreement has lapsed - commission stops silently",
       href: "/partners",
       tone: "critical" as const,
     },

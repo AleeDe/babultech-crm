@@ -39,7 +39,7 @@ export default async function PortalAccountPage() {
             </DetailRow>
             <DetailRow label="Tax number">{partner.taxNumber ?? "—"}</DetailRow>
             <p className="pt-2 text-xs text-muted-foreground">
-              To change any of this — including your bank details — contact your partner manager.
+              To change any of this - including your bank details - contact your partner manager.
               Bank details are never shown here.
             </p>
           </CardContent>

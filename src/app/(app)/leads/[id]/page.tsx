@@ -76,7 +76,7 @@ export default async function LeadDetailPage({
         {lead.rating && (
           <Badge
             tone={statusTone(lead.rating)}
-            title="How warm they are — your judgement, not a calculation. Hot means ready to buy, Cold means keep in touch. Used to decide who to call first."
+            title="How warm they are - your judgement, not a calculation. Hot means ready to buy, Cold means keep in touch. Used to decide who to call first."
           >
             {humanize(lead.rating)}
           </Badge>
@@ -125,12 +125,12 @@ export default async function LeadDetailPage({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           label="Estimated value"
-          help="Roughly what this deal could be worth. A guess used to size the pipeline and decide who to chase first — it is not a quoted price and nobody has agreed to it."
+          help="Roughly what this deal could be worth. A guess used to size the pipeline and decide who to chase first - it is not a quoted price and nobody has agreed to it."
           value={formatMoney(lead.estimatedValue)}
         />
         <StatTile
           label="Source"
-          help="How they first reached you. This is what tells you which channels are worth the spend — the second line is their industry."
+          help="How they first reached you. This is what tells you which channels are worth the spend - the second line is their industry."
           value={lead.leadSource ?? "—"}
           sublabel={lead.industry ?? undefined}
         />
@@ -181,7 +181,7 @@ export default async function LeadDetailPage({
               )}
             </DetailRow>
             <DetailRow label="Job title" help="What they do. The quickest read on whether this person can sign, influence, or neither.">{lead.jobTitle ?? "—"}</DetailRow>
-            <DetailRow label="Company" help="Where they work, as free text. No account exists yet — converting this lead is what creates one.">{lead.companyName ?? "—"}</DetailRow>
+            <DetailRow label="Company" help="Where they work, as free text. No account exists yet - converting this lead is what creates one.">{lead.companyName ?? "—"}</DetailRow>
           </CardContent>
         </Card>
 
@@ -191,7 +191,7 @@ export default async function LeadDetailPage({
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <DetailRow label="Lead number" help="Issued automatically and never reused. Quote it when someone asks about this prospect.">{lead.leadNumber}</DetailRow>
-            <DetailRow label="Source" help="The channel they arrived through — referral, website, event. Aggregated to show which channels return the spend.">{lead.leadSource ?? "—"}</DetailRow>
+            <DetailRow label="Source" help="The channel they arrived through - referral, website, event. Aggregated to show which channels return the spend.">{lead.leadSource ?? "—"}</DetailRow>
             <DetailRow label="Campaign" help="The marketing push that produced this lead, if any. Links what the campaign cost to what it actually returned.">
               {lead.campaign ? (
                 <Link href={`/campaigns/${lead.campaign?.id}`} className="text-primary hover:underline">

@@ -26,7 +26,7 @@ export default async function EditQuotationPage({
         <PageHeader title={quote.quoteNumber} description={`Version ${quote.versionNumber}`} />
         <Alert tone="info">
           This quote is {humanize(quote.status).toLowerCase()} and has already been put in front of
-          the customer, so it cannot be edited. Create a revision instead — the original stays on
+          the customer, so it cannot be edited. Create a revision instead - the original stays on
           record as what they were actually shown.
         </Alert>
         <div className="mt-4 flex gap-2">

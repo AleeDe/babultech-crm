@@ -86,7 +86,7 @@ export default async function InvoicesPage({
       <div className="mb-6">
         <Alert tone="info">
           Phase 4 module. Invoicing, payment allocation, expenses and vendor bills are modelled and
-          the AR/AP views are written — this page reads them; the billing workflow comes next.
+          the AR/AP views are written - this page reads them; the billing workflow comes next.
         </Alert>
       </div>
 

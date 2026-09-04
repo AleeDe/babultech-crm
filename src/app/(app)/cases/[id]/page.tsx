@@ -191,7 +191,7 @@ export default async function CaseDetailPage({
               {c.project && (
                 <Row label="Project">
                   <Link href={`/projects`} className="text-primary hover:underline">
-                    {c.project?.projectNumber} — {c.project?.name}
+                    {c.project?.projectNumber} - {c.project?.name}
                   </Link>
                 </Row>
               )}

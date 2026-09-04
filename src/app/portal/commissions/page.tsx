@@ -51,7 +51,7 @@ export default async function PortalCommissionsPage({
         {records.length === 0 ? (
           <EmptyState
             title="No commission records"
-            description="A record is created when a deal you are attached to reaches the point your plan pays on — usually when the customer pays us."
+            description="A record is created when a deal you are attached to reaches the point your plan pays on - usually when the customer pays us."
           />
         ) : (
           <Table>
@@ -117,7 +117,7 @@ export default async function PortalCommissionsPage({
 
       <div className="mt-4">
         <Alert tone="info">
-          A negative record is a reversal — commission that was earned and later clawed back,
+          A negative record is a reversal - commission that was earned and later clawed back,
           usually because the customer refunded or cancelled. The original record stays on your
           statement so the history is never rewritten.
         </Alert>

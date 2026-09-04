@@ -198,11 +198,11 @@ export function OpportunityForm({
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <Field label="Deal name" required error={fieldErrors.name?.[0]}
-            help="What this deal is, in a few words. Something like 'SmartPOS — 12 tills' beats the customer name repeated.">
-            <Input name="name" required defaultValue={defaults?.name} placeholder="Acme — ERP rollout" />
+            help="What this deal is, in a few words. Something like 'SmartPOS - 12 tills' beats the customer name repeated.">
+            <Input name="name" required defaultValue={defaults?.name} placeholder="Acme - ERP rollout" />
           </Field>
           <Field label="Customer" required error={fieldErrors.accountId?.[0]}
-            help="The account you are selling to. Everything downstream — quotes, contracts, invoices — inherits it from here.">
+            help="The account you are selling to. Everything downstream - quotes, contracts, invoices - inherits it from here.">
             <Select
               name="accountId"
               required
@@ -242,7 +242,7 @@ export function OpportunityForm({
           </Field>
 
           {!editing && (
-            <Field label="Stage" required hint="After this, the stage moves only from the deal page — the close rules live there."
+            <Field label="Stage" required hint="After this, the stage moves only from the deal page - the close rules live there."
             help="How far along the deal is. Moving it to Closed Won is what makes it count as revenue.">
               <Select name="stage" required defaultValue="DISCOVERY">
                 {STAGES.map((s) => (
@@ -270,7 +270,7 @@ export function OpportunityForm({
             />
           </Field>
           <Field label="Probability %" hint="Left blank, the stage sets it."
-            help="Your confidence this closes, as a percentage. Used to weight the pipeline — 50% on a 100,000 deal counts as 50,000.">
+            help="Your confidence this closes, as a percentage. Used to weight the pipeline - 50% on a 100,000 deal counts as 50,000.">
             <Input
               name="probabilityPercent"
               type="number"
@@ -321,7 +321,7 @@ export function OpportunityForm({
               onChange={(e) => setCurrencyCode(e.target.value)}
             >
               {options.currencies.map((c) => (
-                <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
+                <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
               ))}
             </Select>
           </Field>

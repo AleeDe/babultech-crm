@@ -20,7 +20,7 @@ export default async function NewQuotationPage({
     <div className="mx-auto max-w-5xl">
       <PageHeader
         title="New quote"
-        description="Saved as a draft. Sending it locks the numbers — after that you revise rather than edit."
+        description="Saved as a draft. Sending it locks the numbers - after that you revise rather than edit."
       />
       <QuoteForm
         options={serialize(options)}

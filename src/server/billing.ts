@@ -215,7 +215,7 @@ export async function updateInvoice(
     if (!(EDITABLE_INVOICE as readonly string[]).includes(before.status)) {
       return {
         ok: false,
-        error: `${before.invoiceNumber} has been sent to the customer. Issue a credit note or write it off — a sent invoice is not editable.`,
+        error: `${before.invoiceNumber} has been sent to the customer. Issue a credit note or write it off - a sent invoice is not editable.`,
       };
     }
 
@@ -439,7 +439,7 @@ export async function runMilestoneBilling(
         : contractValue.times(milestone.billingPercent ?? 0).dividedBy(100);
 
       if (amount.lessThanOrEqualTo(0)) {
-        skipped.push(`${milestone.name} — no billable amount could be worked out`);
+        skipped.push(`${milestone.name} - no billable amount could be worked out`);
         continue;
       }
 
@@ -461,12 +461,12 @@ export async function runMilestoneBilling(
           paidAmount: "0.00",
           outstandingAmount: amount.toFixed(2),
           paymentTermsDays: 30,
-          notes: `Milestone billing — ${milestone.name} (${milestone.project.name}).`,
+          notes: `Milestone billing, ${milestone.name} (${milestone.project.name}).`,
         },
         p_line_table: "invoice_line",
         p_lines: [
           {
-            description: `${milestone.project.name} — ${milestone.name}`,
+            description: `${milestone.project.name}, ${milestone.name}`,
             projectId: milestone.project.id,
             milestoneId: milestone.id,
             quantity: 1,
@@ -545,7 +545,7 @@ export async function runTimeBilling(
       const lineTotal = g.hours.times(g.rate).toDecimalPlaces(2);
       subtotal = subtotal.plus(lineTotal);
       return {
-        description: `${g.name} — ${g.hours.toString()} hours @ ${g.rate.toString()}`,
+        description: `${g.name}, ${g.hours.toString()} hours @ ${g.rate.toString()}`,
         hours: g.hours.toString(),
         rate: g.rate.toString(),
         lineTotal: lineTotal.toFixed(2),
@@ -562,7 +562,7 @@ export async function runTimeBilling(
       p_account_id: project.accountId,
       p_contract_id: project.contractId,
       p_currency: project.currencyCode,
-      p_notes: `Time and materials — ${project.name}.`,
+      p_notes: `Time and materials, ${project.name}.`,
       p_subtotal: subtotal.toFixed(2),
       p_groups: groupPayload,
     });

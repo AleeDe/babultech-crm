@@ -27,7 +27,7 @@ export default async function ContactsPage({
     <>
       <PageHeader
         title="Contacts"
-        description="People. A contact may belong to an account, or stand alone — an individual partner has no company behind them."
+        description="People. A contact may belong to an account, or stand alone - an individual partner has no company behind them."
       >
         <ExportButton entity="contacts" params={{ search: params.search }} />
         <Button asChild>

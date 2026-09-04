@@ -85,7 +85,7 @@ export default async function NewProductPage() {
                 </FormField>
 
                 <FormField label="Unit" name="unitOfMeasure"
-            help="What you sell it by — each, per hour, per user, per month.">
+            help="What you sell it by - each, per hour, per user, per month.">
                   <Input name="unitOfMeasure" placeholder="Licence" />
                 </FormField>
 
@@ -124,7 +124,7 @@ export default async function NewProductPage() {
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" name="active" value="true" defaultChecked />
-                  Active — available to quote
+                  Active - available to quote
                 </label>
               </div>
         </RecordForm>

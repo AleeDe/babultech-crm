@@ -14,7 +14,7 @@ export default async function NewUserPage() {
     <div className="mx-auto max-w-4xl">
       <PageHeader
         title="New user"
-        description="A login, a profile and a role. Pick the role first — it changes what the rest of the form asks for."
+        description="A login, a profile and a role. Pick the role first - it changes what the rest of the form asks for."
       />
       <UserForm options={serialize(options) as unknown as UserFormOptions} />
     </div>

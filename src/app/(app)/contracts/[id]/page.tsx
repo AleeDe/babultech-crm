@@ -247,7 +247,7 @@ export default async function ContractDetailPage({
               <DetailRow label="Sourced from">
                 {contract.opportunity ? (
                   <Link href={`/opportunities/${contract.opportunity?.id}`} className="text-primary hover:underline">
-                    {contract.opportunity?.opportunityNumber} — {contract.opportunity?.name}
+                    {contract.opportunity?.opportunityNumber} - {contract.opportunity?.name}
                   </Link>
                 ) : "—"}
               </DetailRow>

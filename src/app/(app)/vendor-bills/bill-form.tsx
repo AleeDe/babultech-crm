@@ -150,7 +150,7 @@ export function BillForm({ options }: { options: BillFormOptions }) {
               <Select name="currencyCode" defaultValue="PKR">
                 {options.currencies.map((c) => (
                   <option key={c.code} value={c.code}>
-                    {c.code} — {c.name}
+                    {c.code} - {c.name}
                   </option>
                 ))}
               </Select>

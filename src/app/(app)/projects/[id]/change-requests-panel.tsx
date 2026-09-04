@@ -41,7 +41,7 @@ export function ChangeRequestsPanel({
         {changeRequests.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No change requests. Anything the customer asks for beyond the agreed scope belongs
-            here — otherwise the project quietly absorbs it.
+            here - otherwise the project quietly absorbs it.
           </p>
         ) : (
           <>

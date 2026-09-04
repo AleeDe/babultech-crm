@@ -47,7 +47,7 @@ function outcome(requested: number, updated: number): BulkOutcome {
     updated,
     note:
       updated === 0
-        ? "Nothing was changed — none of those rows are yours to edit."
+        ? "Nothing was changed - none of those rows are yours to edit."
         : `${requested - updated} row(s) were left alone, either because they are outside your access or no longer in a state that allows it.`,
   };
 }

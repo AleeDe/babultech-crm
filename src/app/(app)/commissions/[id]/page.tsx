@@ -45,7 +45,7 @@ export default async function CommissionDetailPage({
       {commission.reversesRecordId && (
         <div className="mb-5">
           <Alert tone="warning">
-            This is a clawback — it reverses an earlier commission record.
+            This is a clawback - it reverses an earlier commission record.
           </Alert>
         </div>
       )}

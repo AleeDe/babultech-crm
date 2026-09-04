@@ -117,7 +117,7 @@ export function ConvertForm({
               onChange={(e) => setUseExisting(e.target.checked)}
               className="h-4 w-4 rounded border-input"
             />
-            This company already exists — attach to an existing account instead of creating one
+            This company already exists - attach to an existing account instead of creating one
           </label>
 
           {matches.length > 0 && (
@@ -132,7 +132,7 @@ export function ConvertForm({
                   .slice(0, 3)
                   .map((m) => m.account.name)
                   .join(", ")}
-                {" — attach to it rather than creating a second record. "}
+                {", attach to it rather than creating a second record. "}
                 Two accounts for one customer split their deals, invoices and
                 cases, and merging them afterwards is difficult.
               </p>
@@ -141,7 +141,7 @@ export function ConvertForm({
 
           {useExisting ? (
             <Field label="Existing account" required
-            help="Link to a company already in the system instead of creating a duplicate. Check here first — duplicate accounts are hard to merge later.">
+            help="Link to a company already in the system instead of creating a duplicate. Check here first - duplicate accounts are hard to merge later.">
               <Select
                 name="accountId"
                 required
@@ -198,7 +198,7 @@ export function ConvertForm({
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Deal name"
             help="What the resulting opportunity is called.">
-                <Input name="opportunityName" defaultValue={`${suggestedName} — new business`} />
+                <Input name="opportunityName" defaultValue={`${suggestedName} - new business`} />
               </Field>
               <Field label="Amount" hint="Defaults to the lead's estimated value."
             help="What you expect the deal to be worth.">

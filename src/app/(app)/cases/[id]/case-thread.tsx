@@ -126,7 +126,7 @@ export function CaseThread({
                 <li key={e.id} className="flex items-center gap-2">
                   <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
                   <span className="font-medium">{humanize(e.eventType)}</span>
-                  {e.reason && <span className="text-muted-foreground">— {e.reason}</span>}
+                  {e.reason && <span className="text-muted-foreground">: {e.reason}</span>}
                   <span className="ml-auto shrink-0 text-muted-foreground">
                     {formatDateTime(e.eventAt)}
                   </span>
@@ -138,7 +138,7 @@ export function CaseThread({
 
         {comments.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Nothing recorded yet. What the customer said and what was tried belongs here — it is
+            Nothing recorded yet. What the customer said and what was tried belongs here - it is
             the only account of the work once the case is closed.
           </p>
         ) : (

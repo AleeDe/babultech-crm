@@ -200,7 +200,7 @@ export default async function InvoiceDetailPage({
                           )}
                           {/* Qty × unit price is the arithmetic that explains
                               the total, so on a phone it moves under the
-                              description instead of disappearing — a line
+                              description instead of disappearing - a line
                               total nobody can check is not worth showing. */}
                           <p className="mt-0.5 text-xs tabular text-muted-foreground sm:hidden">
                             {formatNumber(l.quantity, 2)} × {formatMoney(l.unitPrice, invoice.currencyCode)}
@@ -300,7 +300,7 @@ export default async function InvoiceDetailPage({
               <DetailRow label="Project">
                 {invoice.project ? (
                   <Link href={`/projects/${invoice.project?.id}`} className="text-primary hover:underline">
-                    {invoice.project?.projectNumber} — {invoice.project?.name}
+                    {invoice.project?.projectNumber} - {invoice.project?.name}
                   </Link>
                 ) : "—"}
               </DetailRow>

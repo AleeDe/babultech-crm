@@ -47,7 +47,7 @@ function validate(data: z.infer<typeof contractSchema>): ActionResult<never> | n
   if (data.status === "ACTIVE" && !data.signedDate) {
     return {
       ok: false,
-      error: "An active contract needs a signature date — otherwise nothing says the customer agreed.",
+      error: "An active contract needs a signature date - otherwise nothing says the customer agreed.",
       fieldErrors: { signedDate: ["Required before a contract can go active."] },
     };
   }

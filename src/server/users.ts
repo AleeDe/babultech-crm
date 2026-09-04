@@ -84,7 +84,7 @@ async function validateAgainstRole(
     if (!data.partnerId) {
       return {
         ok: false,
-        error: "A partner user has to be linked to a partner record — that link is what their access is scoped through.",
+        error: "A partner user has to be linked to a partner record - that link is what their access is scoped through.",
         fieldErrors: { partnerId: ["Choose the partner this login belongs to."] },
       };
     }

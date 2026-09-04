@@ -71,7 +71,7 @@ export function PageGuide() {
           )}
         />
         <span className="min-w-0 flex-1 text-sm text-muted-foreground">
-          {/* Closed, the purpose line is the whole point of the strip — it has
+          {/* Closed, the purpose line is the whole point of the strip - it has
               to say something useful without being opened. */}
           {guide.purpose}
         </span>

@@ -75,7 +75,7 @@ export default async function MyWorkPage() {
             <div className="mt-5">
               <Alert tone="warning">
                 No time logged this week. Unlogged hours cost the project nothing and make
-                utilisation read low — <Link href="/timesheets" className="underline">log them here</Link>.
+                utilisation read low, <Link href="/timesheets" className="underline">log them here</Link>.
               </Alert>
             </div>
           )}

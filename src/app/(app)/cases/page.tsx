@@ -122,7 +122,7 @@ export default async function CasesPage({
         {cases.length === 0 ? (
           <EmptyState
             title="No cases yet"
-            description="Cases arrive from email, the portal, phone or WhatsApp — or you can raise one here against a customer contact."
+            description="Cases arrive from email, the portal, phone or WhatsApp - or you can raise one here against a customer contact."
             action={
               <Button asChild>
                 <Link href="/cases/new">Create the first case</Link>

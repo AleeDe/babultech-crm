@@ -106,7 +106,7 @@ export function NotesPanel({
 
         {notes.length === 0 && !adding ? (
           <p className="py-2 text-sm text-muted-foreground">
-            No notes yet. Notes are where the reasoning lives — why a discount was given, what the
+            No notes yet. Notes are where the reasoning lives - why a discount was given, what the
             customer actually said.
           </p>
         ) : (

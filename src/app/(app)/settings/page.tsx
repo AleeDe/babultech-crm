@@ -32,7 +32,7 @@ export default async function SettingsPage() {
         <div className="mb-6">
           <Alert tone="warning">
             All of these lists are empty. If you expected data here, the reference tables may
-            not have read policies applied yet — see supabase/migrations.
+            not have read policies applied yet - see supabase/migrations.
           </Alert>
         </div>
       )}

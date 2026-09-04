@@ -100,7 +100,7 @@ export function SendEmailPanel({
         {!configured && (
           <Alert tone="info">
             Email is not configured on this deployment. Set <code>RESEND_API_KEY</code> and{" "}
-            <code>EMAIL_FROM</code> to send from here — until then, download the record and send it
+            <code>EMAIL_FROM</code> to send from here - until then, download the record and send it
             yourself.
           </Alert>
         )}
@@ -134,7 +134,7 @@ export function SendEmailPanel({
             </Field>
 
             <p className="text-xs text-muted-foreground">
-              The {documentLabel} number, dates and totals are appended automatically — you do not
+              The {documentLabel} number, dates and totals are appended automatically - you do not
               need to repeat them here.
             </p>
 

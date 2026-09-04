@@ -171,7 +171,7 @@ export function WorkLogPanel({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
           label="Hours logged"
-          help="Every approved and pending entry on this project. Rejected time is excluded — it was disputed and thrown out, so counting it would overstate the effort."
+          help="Every approved and pending entry on this project. Rejected time is excluded - it was disputed and thrown out, so counting it would overstate the effort."
           value={formatNumber(total, 1)}
           sublabel={`${formatNumber(Number(log.thisWeekHours), 1)} this week`}
         />
@@ -184,7 +184,7 @@ export function WorkLogPanel({
         />
         <StatTile
           label="Budget used"
-          help="Logged hours against the approved budget. Over 100% means the engagement is running past what was agreed — raise a change request rather than absorbing it."
+          help="Logged hours against the approved budget. Over 100% means the engagement is running past what was agreed - raise a change request rather than absorbing it."
           value={burnPercent === null ? "—" : `${formatNumber(burnPercent, 0)}%`}
           sublabel={
             approvedHours
@@ -472,7 +472,7 @@ export function WorkLogPanel({
                 >
                   <span className="w-24 shrink-0 text-xs text-muted-foreground">
                     {formatDate(e.workDate)}
-                    {/* Only when recorded — an entry logged as a duration shows
+                    {/* Only when recorded - an entry logged as a duration shows
                         the date alone rather than an empty range. */}
                     {e.startTime && e.endTime && (
                       <span className="block">

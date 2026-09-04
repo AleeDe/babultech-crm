@@ -45,7 +45,7 @@ export default async function PortalDealsPage() {
         <div className="mt-5">
           <Alert tone="warning">
             {expiringRegistrations.length} deal registration(s) expire within {REGISTRATION_EXPIRY_WARNING_DAYS} days. Once a
-            registration lapses, the deal may no longer be credited to you — talk to your partner
+            registration lapses, the deal may no longer be credited to you - talk to your partner
             manager before then.
           </Alert>
         </div>
@@ -55,7 +55,7 @@ export default async function PortalDealsPage() {
         {deals.length === 0 ? (
           <EmptyState
             title="No deals registered"
-            description="When we attach you to an opportunity — because you sourced it, influenced it, resold it or are delivering it — it appears here."
+            description="When we attach you to an opportunity - because you sourced it, influenced it, resold it or are delivering it - it appears here."
           />
         ) : (
           <Table>

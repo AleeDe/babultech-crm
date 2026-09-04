@@ -161,7 +161,7 @@ export function ContractForm({
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <Field label="Contract name" required error={fieldErrors.name?.[0]}
             help="What this agreement is called. Use something the customer would recognise.">
-            <Input name="name" required defaultValue={defaults?.name} placeholder="Acme — annual support" />
+            <Input name="name" required defaultValue={defaults?.name} placeholder="Acme - annual support" />
           </Field>
           <Field label="Customer" required
             help="The account the contract is with.">
@@ -179,7 +179,7 @@ export function ContractForm({
             </Select>
           </Field>
           <Field label="Contract type" required
-            help="The kind of agreement — a one-off, a subscription, a support agreement.">
+            help="The kind of agreement - a one-off, a subscription, a support agreement.">
             <Input name="contractType" required defaultValue={defaults?.contractType} placeholder="Support / Licence / Services" />
           </Field>
           <Field label="Owner" required
@@ -198,7 +198,7 @@ export function ContractForm({
             // customer first". The hint says which it is.
             hint={
               !accountId
-                ? "Choose a customer first — this lists their accepted quotes."
+                ? "Choose a customer first - this lists their accepted quotes."
                 : accountQuotes.length === 0
                   ? "This customer has no accepted quotes yet. A quote must be accepted before a contract can be built from it."
                   : "Fills the value and currency for you."
@@ -213,7 +213,7 @@ export function ContractForm({
               <option value="">None</option>
               {accountQuotes.map((q) => (
                 <option key={q.id} value={q.id}>
-                  {q.quoteNumber} v{q.versionNumber} — {formatMoney(q.totalAmount, q.currencyCode)}
+                  {q.quoteNumber} v{q.versionNumber} - {formatMoney(q.totalAmount, q.currencyCode)}
                 </option>
               ))}
             </Select>
@@ -223,7 +223,7 @@ export function ContractForm({
             <Select name="opportunityId" defaultValue={defaults?.opportunityId ?? prefill?.opportunityId ?? ""} disabled={!accountId}>
               <option value="">None</option>
               {accountOpportunities.map((o) => (
-                <option key={o.id} value={o.id}>{o.opportunityNumber} — {o.name}</option>
+                <option key={o.id} value={o.id}>{o.opportunityNumber} - {o.name}</option>
               ))}
             </Select>
           </Field>
@@ -276,12 +276,12 @@ export function ContractForm({
             help="The currency the contract is denominated in.">
             <Select name="currencyCode" required value={currency} onChange={(e) => setCurrency(e.target.value)}>
               {options.currencies.map((c) => (
-                <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
+                <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
               ))}
             </Select>
           </Field>
           <Field label="Billing frequency"
-            help="How often the customer is invoiced under it — monthly, quarterly, annually, or once.">
+            help="How often the customer is invoiced under it - monthly, quarterly, annually, or once.">
             <Select name="billingFrequency" defaultValue={defaults?.billingFrequency ?? ""}>
               <option value="">Not set</option>
               {FREQUENCIES.map((f) => (

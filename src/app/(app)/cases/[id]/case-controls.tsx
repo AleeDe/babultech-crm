@@ -31,7 +31,7 @@ export function FirstResponseControl({
         {error && <Alert tone="danger">{error}</Alert>}
         <p className="text-sm text-muted-foreground">
           Not yet recorded. This is the clock SLA attainment is measured against
-          {late ? " — and it is already past due." : "."}
+          {late ? ", and it is already past due." : "."}
         </p>
         <Button
           className="w-full"

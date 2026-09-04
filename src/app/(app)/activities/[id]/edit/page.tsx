@@ -36,7 +36,7 @@ export default async function EditActivityPage({
         <RecordForm action={save} redirectTo={`/activities/${id}`} submitLabel="Save changes">
           {/* The form submits the whole record, so a field the form does not
               render is saved as NULL. These two carry the record the touch
-              concerns and are set only when it was logged from that record —
+              concerns and are set only when it was logged from that record,
               without them, editing a touch would quietly detach it. */}
           {activity.relatedEntityType && activity.relatedEntityId && (
             <>
@@ -125,7 +125,7 @@ export default async function EditActivityPage({
           </div>
 
           <FormField label="Location" name="location"
-            help="Where it happens — an address, or a meeting link.">
+            help="Where it happens - an address, or a meeting link.">
             <Input name="location" defaultValue={activity.location ?? ""} />
           </FormField>
 

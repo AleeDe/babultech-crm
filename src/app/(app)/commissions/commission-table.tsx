@@ -146,7 +146,7 @@ export function CommissionTable({ rows }: { rows: Row[] }) {
       {rows.length === 0 ? (
         <EmptyState
           title="No commission records"
-          description="Records appear automatically when a partner-attached deal hits its plan trigger — won, invoiced, or paid."
+          description="Records appear automatically when a partner-attached deal hits its plan trigger - won, invoiced, or paid."
         />
       ) : (
         <Table>

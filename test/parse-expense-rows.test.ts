@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { parseExpenseDate, parseAmount, parseExpenseRows } from "../src/lib/parse-expense-rows";
+import {
+  parseExpenseDate, parseAmount, parseExpenseRows,
+  splitSheet, guessMapping, parseMappedRows, sheetFromWorkbookRows,
+} from "../src/lib/parse-expense-rows";
 
 /**
  * The date handling is the risky part of the importer: the same eight
@@ -83,5 +86,193 @@ describe("parseExpenseRows", () => {
   it("collects errors per row instead of throwing", () => {
     const rows = parseExpenseRows("Rent\tHasan\tnot-a-date\tabc\t");
     expect(rows[0].errors.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The mapping is what lets a sheet import in whatever order its columns are
+ * already in. A wrong guess is recoverable — the importer shows it and lets it
+ * be corrected — but a guess that quietly reads the wrong column as the amount
+ * is how the wrong number reaches the accounts, so the common shapes are pinned
+ * here.
+ */
+describe("splitSheet", () => {
+  it("detects a header row and keeps it out of the body", () => {
+    const sheet = splitSheet("Expense Type,Expense Date,Amount\nRent,5/8/2026,45000");
+    expect(sheet.header).toEqual(["Expense Type", "Expense Date", "Amount"]);
+    expect(sheet.rows).toHaveLength(1);
+  });
+
+  it("keeps a first row of data when it only looks like a header", () => {
+    // "Type approval fee" contains both "type" and "date" is absent, but the
+    // amount cell settles it: this is data.
+    const sheet = splitSheet("Type approval fee,Notes on date,45000\nRent,x,100");
+    expect(sheet.header).toBeNull();
+    expect(sheet.rows).toHaveLength(2);
+  });
+
+  it("pads short rows to the widest, so a trailing empty cell is addressable", () => {
+    const sheet = splitSheet("Rent,Hasan,5/8/2026,45000,note\nInternet,Hasan,2/12/2026,7000");
+    expect(sheet.width).toBe(5);
+    expect(sheet.rows[1].cells).toHaveLength(5);
+  });
+
+  it("returns nothing for empty text", () => {
+    expect(splitSheet("   ").rows).toHaveLength(0);
+  });
+});
+
+describe("guessMapping", () => {
+  const guess = (text: string) => guessMapping(splitSheet(text));
+
+  it("reads the fields off header names in any order", () => {
+    expect(guess("Amount,Notes,Date,Category\n45000,adv,5/8/2026,Rent")).toEqual([
+      "amount", "notes", "date", "type",
+    ]);
+  });
+
+  it("does not let the amount rule claim an Expense By column", () => {
+    const mapping = guess("Expense Type,Expense By,Expense Date,Expense Amount,Notes\nRent,Hasan,5/8/2026,45000,x");
+    expect(mapping).toEqual(["type", "by", "date", "amount", "notes"]);
+  });
+
+  it("falls back to the legacy order for an unlabelled paste", () => {
+    const mapping = guess("Rent\tHasan\t5/8/2026\t45000\t2 months advance");
+    expect(mapping).toEqual(["type", "by", "date", "amount", "notes"]);
+  });
+
+  it("finds the date and amount by their values when the header is unhelpful", () => {
+    const mapping = guess(
+      ["Col1,Col2,Col3", "Rent,5/8/2026,45000", "Internet,2/12/2026,7000"].join("\n"),
+    );
+    expect(mapping[1]).toBe("date");
+    expect(mapping[2]).toBe("amount");
+  });
+});
+
+describe("parseMappedRows", () => {
+  it("reads each field from the column it is pointed at", () => {
+    const sheet = splitSheet("45000,5/8/2026,Rent\n7000,2/12/2026,Internet");
+    const rows = parseMappedRows(sheet, ["amount", "date", "type"]);
+    expect(rows[0]).toMatchObject({ type: "Rent", amount: 45000, date: "2026-05-08" });
+    expect(rows[0].errors).toHaveLength(0);
+  });
+
+  it("leaves ignored columns out entirely", () => {
+    // Column 0 is a running serial that must not become an amount.
+    const sheet = splitSheet("1,Rent,5/8/2026,45000");
+    const rows = parseMappedRows(sheet, [null, "type", "date", "amount"]);
+    expect(rows[0].amount).toBe(45000);
+  });
+
+  it("joins every column mapped to notes", () => {
+    const sheet = splitSheet("Rent,5/8/2026,45000,two months,advance");
+    const rows = parseMappedRows(sheet, ["type", "date", "amount", "notes", "notes"]);
+    expect(rows[0].notes).toBe("two months advance");
+  });
+
+  it("reports a required field that no column supplies", () => {
+    const sheet = splitSheet("Rent,5/8/2026,45000");
+    const rows = parseMappedRows(sheet, ["type", "date", null]);
+    expect(rows[0].errors.join(" ")).toMatch(/amount/i);
+  });
+});
+
+/**
+ * Two ways an amount column and a date column could be confused for each other.
+ * Both were live: the importer accepted an amount as a date, and the guesser
+ * read a date as money. Either one files the wrong number against the wrong
+ * month without ever looking like an error.
+ */
+describe("amounts are not dates", () => {
+  it("refuses a bare number as a date", () => {
+    // Date() reads this as the first of January in the year 45000.
+    expect(parseExpenseDate("45000").date).toBeNull();
+    expect(parseExpenseDate("45000").error).toBeTruthy();
+  });
+
+  it("refuses a year outside any plausible range", () => {
+    expect(parseExpenseDate("1 Jan 1200").date).toBeNull();
+  });
+
+  it("does not read a date column as the amount", () => {
+    // parseAmount strips the slashes out of 5/8/2026 and returns 582026.
+    const mapping = guessMapping(splitSheet("Col1,Col2,Col3\nRent,5/8/2026,45000\nInternet,2/12/2026,7000"));
+    expect(mapping).toEqual(["type", "date", "amount"]);
+  });
+
+  it("ignores a serial column and finds the type by its values", () => {
+    const mapping = guessMapping(
+      splitSheet("S.No\tDate\tParticulars\tDebit\n1\t5/8/2026\tRent\t45000\n2\t2/12/2026\tInternet\t7000"),
+    );
+    expect(mapping).toEqual([null, "date", "type", "amount"]);
+  });
+});
+
+/**
+ * Quoting comes free from parseDelimited, and it is worth pinning: a sheet
+ * exports "Rs 45,000" and a note containing a comma as quoted cells, and
+ * splitting on every comma would shred both.
+ */
+describe("quoted cells", () => {
+  it("keeps a quoted amount and a quoted note in one cell each", () => {
+    const sheet = splitSheet(
+      'Expense Type,Expense Date,Expense Amount,Notes\nRent,5/8/2026,"Rs 45,000","Two months, paid early"',
+    );
+    const [row] = parseMappedRows(sheet, guessMapping(sheet));
+    expect(row.amount).toBe(45000);
+    expect(row.notes).toBe("Two months, paid early");
+    expect(row.errors).toHaveLength(0);
+  });
+});
+
+/**
+ * A workbook hands back typed cells, which is strictly better than a CSV of
+ * the same sheet: a real Date carries no "is 5/8 May or August" question. The
+ * conversion has to preserve that rather than flatten it back into an
+ * ambiguous string.
+ */
+describe("sheetFromWorkbookRows", () => {
+  it("writes a Date cell as ISO, so no reading has to be guessed", () => {
+    const s = sheetFromWorkbookRows([
+      ["Expense Type", "Date", "Amount"],
+      ["Rent", new Date(2026, 7, 5), 45000],
+    ]);
+    const [row] = parseMappedRows(s, guessMapping(s));
+    expect(row.date).toBe("2026-08-05");
+    // The CSV of this sheet would have said "read as 5/8 month-first".
+    expect(row.dateNote).toBeNull();
+    expect(row.amount).toBe(45000);
+  });
+
+  it("drops the trailing empty rows a scrolled spreadsheet carries", () => {
+    const s = sheetFromWorkbookRows([
+      ["Expense Type", "Date", "Amount"],
+      ["Rent", new Date(2026, 7, 5), 45000],
+      [null, null, null],
+      ["", "", ""],
+    ]);
+    expect(s.rows).toHaveLength(1);
+  });
+
+  it("ignores columns that are formatted but empty", () => {
+    const s = sheetFromWorkbookRows([
+      ["Expense Type", "Date", "Amount", null, null],
+      ["Rent", new Date(2026, 7, 5), 45000, null, null],
+    ]);
+    expect(s.width).toBe(3);
+  });
+
+  it("keeps a numeric amount exact rather than formatting it", () => {
+    const s = sheetFromWorkbookRows([
+      ["Expense Type", "Date", "Amount"],
+      ["Rent", new Date(2026, 7, 5), 45000.5],
+    ]);
+    const [row] = parseMappedRows(s, guessMapping(s));
+    expect(row.amount).toBe(45000.5);
+  });
+
+  it("returns nothing for an empty sheet", () => {
+    expect(sheetFromWorkbookRows([[null, null], ["", ""]]).rows).toHaveLength(0);
   });
 });

@@ -58,7 +58,7 @@ export function QuoteActions({
         {EDITABLE.includes(status) && (
           <>
             <p className="text-sm text-muted-foreground">
-              Still a draft — nothing has gone to the customer. Sending it freezes the numbers.
+              Still a draft - nothing has gone to the customer. Sending it freezes the numbers.
             </p>
             <Button
               className="w-full"
@@ -69,7 +69,7 @@ export function QuoteActions({
             </Button>
             {expired && (
               <p className="text-xs text-destructive">
-                The expiry date has passed — extend it before sending.
+                The expiry date has passed - extend it before sending.
               </p>
             )}
           </>
@@ -79,7 +79,7 @@ export function QuoteActions({
           <>
             <p className="text-sm text-muted-foreground">
               With the customer. Accepting sets the deal amount to the quote total and moves it to
-              Verbal Confirmation — and it is what lets the deal be marked Closed Won.
+              Verbal Confirmation - and it is what lets the deal be marked Closed Won.
             </p>
             <div className="flex gap-2">
               <Button
@@ -103,7 +103,7 @@ export function QuoteActions({
 
         {status === "ACCEPTED" && (
           <p className="text-sm text-emerald-600 dark:text-emerald-400">
-            Accepted — this is the binding version and the deal can now be won.
+            Accepted - this is the binding version and the deal can now be won.
           </p>
         )}
 
@@ -115,7 +115,7 @@ export function QuoteActions({
             that died months ago and still look live.
 
             So the two routes are named rather than left implied. Neither is
-            performed automatically — which one applies is a judgement about the
+            performed automatically - which one applies is a judgement about the
             customer, not a fact the system holds. */}
         {status === "REJECTED" && (
           <div className="space-y-3 rounded-md border border-dashed p-3">
@@ -126,7 +126,7 @@ export function QuoteActions({
             <ul className="space-y-1.5 text-sm text-muted-foreground">
               <li>
                 <span className="font-medium text-foreground">Re-quoting?</span>{" "}
-                Create a revision below — it supersedes this version and keeps
+                Create a revision below - it supersedes this version and keeps
                 the history of what was offered.
               </li>
               <li>

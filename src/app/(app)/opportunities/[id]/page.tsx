@@ -84,7 +84,7 @@ export default async function OpportunityDetailPage({
           column means the reader scrolls past everything to reach anything, and
           nothing on screen says which parts matter.
 
-          The header, badges and figures stay outside — they answer "is this deal
+          The header, badges and figures stay outside - they answer "is this deal
           healthy?", which is the question someone opens the page with. */}
       <RecordTabs
         tabs={[
@@ -268,7 +268,7 @@ export default async function OpportunityDetailPage({
               )}
               {acceptedQuote && (
                 <p className="pt-1 text-xs text-emerald-600 dark:text-emerald-400">
-                  {acceptedQuote.quoteNumber} accepted — this deal can be won.
+                  {acceptedQuote.quoteNumber} accepted - this deal can be won.
                 </p>
               )}
             </CardContent>

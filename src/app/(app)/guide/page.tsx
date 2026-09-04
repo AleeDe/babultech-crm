@@ -129,7 +129,7 @@ const REFERENCE: Reference[] = [
       PERMISSIONS.TIME_APPROVE,
       PERMISSIONS.COMMISSION_APPROVE,
     ],
-    body: "Everything waiting on a decision from you, gathered from quotations, expenses, timesheets, vendor bills and commission — oldest first. Each one opens where the decision is actually made, because that screen has the context.",
+    body: "Everything waiting on a decision from you, gathered from quotations, expenses, timesheets, vendor bills and commission - oldest first. Each one opens where the decision is actually made, because that screen has the context.",
   },
   {
     icon: CheckSquare,
@@ -163,7 +163,7 @@ const REFERENCE: Reference[] = [
     title: "Support cases",
     href: "/cases",
     needs: PERMISSIONS.CASE_READ,
-    body: "Raised against an account, optionally against a project. Every case has a conversation — customer messages, your replies and internal notes — and posting can move the case at the same time. The SLA clock pauses while you are waiting on the customer, and the deadline can be extended by exactly that time.",
+    body: "Raised against an account, optionally against a project. Every case has a conversation - customer messages, your replies and internal notes - and posting can move the case at the same time. The SLA clock pauses while you are waiting on the customer, and the deadline can be extended by exactly that time.",
   },
   {
     icon: Clock,
@@ -177,7 +177,7 @@ const REFERENCE: Reference[] = [
     title: "Resources",
     href: "/resources",
     needs: PERMISSIONS.PROJECT_READ,
-    body: "Utilisation across the delivery team — who is booked, who is billable, and who has capacity. A report, not a place to assign work.",
+    body: "Utilisation across the delivery team - who is booked, who is billable, and who has capacity. A report, not a place to assign work.",
   },
   {
     icon: CalendarCheck,
@@ -197,7 +197,7 @@ const REFERENCE: Reference[] = [
     title: "Vendor bills",
     href: "/vendor-bills",
     needs: PERMISSIONS.INVOICE_READ,
-    body: "What suppliers invoice you. A bill is entered, approved, then paid — approval is what makes it payable, and a payment against it updates the balance automatically.",
+    body: "What suppliers invoice you. A bill is entered, approved, then paid - approval is what makes it payable, and a payment against it updates the balance automatically.",
   },
   {
     icon: Wallet,
@@ -211,7 +211,7 @@ const REFERENCE: Reference[] = [
     title: "Users",
     href: "/users",
     needs: PERMISSIONS.ADMIN,
-    body: "Everyone with access. The role decides what they can do; the data scope decides how much of it they see. Partner logins are marked separately — they reach the portal, not this app.",
+    body: "Everyone with access. The role decides what they can do; the data scope decides how much of it they see. Partner logins are marked separately - they reach the portal, not this app.",
   },
   {
     icon: Settings,
@@ -228,7 +228,7 @@ function openingFor(me: SessionUser): string {
     return "You have full access. This covers every module, in the order records are normally created.";
   }
   if (can(me, PERMISSIONS.PROJECT_WRITE) && !can(me, PERMISSIONS.OPPORTUNITY_WRITE)) {
-    return "You are on the delivery side. Start at My work — it gathers your tasks, projects and cases in one place.";
+    return "You are on the delivery side. Start at My work - it gathers your tasks, projects and cases in one place.";
   }
   if (can(me, PERMISSIONS.INVOICE_WRITE) && !can(me, PERMISSIONS.OPPORTUNITY_WRITE)) {
     return "You handle invoicing and payments. The sections below cover where an invoice comes from and what happens after it is paid.";
@@ -355,7 +355,7 @@ export default async function GuidePage() {
             Your <strong className="text-foreground">role</strong> decides which screens and
             buttons you get. Your <strong className="text-foreground">data scope</strong> decides
             whose records appear on those screens. You have exactly one role, and it carries
-            exactly one scope — there is no way to hold two at once, which is deliberate: a second
+            exactly one scope - there is no way to hold two at once, which is deliberate: a second
             role would quietly widen what you can see rather than adding to what you can do.
           </p>
 
@@ -372,7 +372,7 @@ export default async function GuidePage() {
                 {[
                   ["Own", "Only records you own or are assigned.", "Consultants, sales executives"],
                   ["Team", "Everyone you share a team with.", "Managers of a working team"],
-                  ["Department", "Yourself, plus everyone who reports to you — however far down.", "Heads of department"],
+                  ["Department", "Yourself, plus everyone who reports to you - however far down.", "Heads of department"],
                   ["All", "Every record in the system.", "Administrators only"],
                 ].map(([scope, sees, who]) => {
                   const mine = scope.toUpperCase() === me.dataScope;
@@ -436,7 +436,7 @@ export default async function GuidePage() {
             </ul>
             <p className="mt-2 text-muted-foreground">
               So a department head sees the whole department because the department reports to
-              them — not because they share a label. Reporting lines are set per person under
+              them - not because they share a label. Reporting lines are set per person under
               Users, on the <strong className="text-foreground">Reports to</strong> field.
             </p>
           </div>
@@ -462,12 +462,12 @@ export default async function GuidePage() {
           <p>
             <strong className="text-foreground">Quotations and invoices email out.</strong>{" "}
             Open one and use Send to customer. The number, dates and totals are appended for you,
-            and sending moves the record to Sent. Every attempt is logged on the record — including
-            failures — so &quot;did anyone send this?&quot; has an answer.
+            and sending moves the record to Sent. Every attempt is logged on the record - including
+            failures - so &quot;did anyone send this?&quot; has an answer.
           </p>
           <p>
             <strong className="text-foreground">Every list exports to CSV.</strong>{" "}
-            The Export button sends what you are currently looking at, filters and all — not the
+            The Export button sends what you are currently looking at, filters and all - not the
             whole table. Amounts and dates come out as raw values so a spreadsheet can sum and sort
             them, and the file only ever contains rows your role can already see.
           </p>
@@ -475,13 +475,13 @@ export default async function GuidePage() {
             <strong className="text-foreground">Notes and documents sit on every record.</strong>{" "}
             Open an account, deal, project or case and you will find both at the bottom. A note can
             be private to you, shared with your team, or open to everyone. Attachments are stored
-            privately — links are generated when you open one and expire shortly after, so nothing
+            privately - links are generated when you open one and expire shortly after, so nothing
             is left permanently reachable.
           </p>
           <p>
             <strong className="text-foreground">What you see depends on your role.</strong>{" "}
             Yours shows {scopeExplainer[me.dataScope] ?? me.dataScope.toLowerCase()}. If a list
-            looks emptier than you expect, that is usually why — the rows exist, they are just not
+            looks emptier than you expect, that is usually why - the rows exist, they are just not
             yours to see.
           </p>
 
@@ -490,7 +490,7 @@ export default async function GuidePage() {
               <strong className="text-foreground">
                 Projects have a board, and tasks have pages.
               </strong>{" "}
-              Drag a card between columns to move a task. Click its name to open the task itself —
+              Drag a card between columns to move a task. Click its name to open the task itself,
               acceptance criteria, booked time, subtasks, notes and documents. Further down sit
               risks (something that might happen, scored by probability × impact), issues
               (something that already has), and change requests, where scope added after kickoff
@@ -513,7 +513,7 @@ export default async function GuidePage() {
             <p>
               <strong className="text-foreground">Partners sign in somewhere else.</strong>{" "}
               An external partner logs in to the partner portal rather than this app, and sees only
-              their own deals, referrals and commission — never another partner&apos;s, and never
+              their own deals, referrals and commission - never another partner&apos;s, and never
               your customer list. Customers have no login at all; they exist here as account
               records.
             </p>
@@ -522,8 +522,8 @@ export default async function GuidePage() {
           {can(me, PERMISSIONS.ADMIN) && (
             <p>
               <strong className="text-foreground">Dropdowns come from Settings.</strong>{" "}
-              Currencies, tax rates, departments, categories — and the email branding and wording
-              customers see — are all editable under{" "}
+              Currencies, tax rates, departments, categories - and the email branding and wording
+              customers see - are all editable under{" "}
               <Link href="/settings" className="text-primary hover:underline">Settings</Link>, and
               every form picks the change up. Roles and data scopes are set per user under{" "}
               <Link href="/users" className="text-primary hover:underline">Users</Link>.

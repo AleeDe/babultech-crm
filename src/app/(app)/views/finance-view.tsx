@@ -54,7 +54,7 @@ export function FinanceView({
       id: "over90",
       count: over90?.count ?? 0,
       title: "Invoices over 90 days past due",
-      detail: `${formatCompactMoney(over90?.value ?? 0)} — the least likely to ever arrive`,
+      detail: `${formatCompactMoney(over90?.value ?? 0)} - the least likely to ever arrive`,
       href: "/invoices",
       tone: "critical" as const,
     },

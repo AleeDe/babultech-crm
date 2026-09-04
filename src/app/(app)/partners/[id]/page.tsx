@@ -51,7 +51,7 @@ export default async function PartnerDetailPage({
         <div className="mb-5">
           <Alert tone="warning">
             The partner agreement expired on {formatDate(partner.agreementExpiryDate)}. New commission
-            accruals will still be created — renew or terminate the agreement to stop them.
+            accruals will still be created - renew or terminate the agreement to stop them.
           </Alert>
         </div>
       )}
@@ -89,7 +89,7 @@ export default async function PartnerDetailPage({
                   {partner.contact?.firstName} {partner.contact?.lastName}
                 </span>
                 {!partner.contact?.accountId && (
-                  <p className="text-xs text-muted-foreground">Not linked to any company — by design.</p>
+                  <p className="text-xs text-muted-foreground">Not linked to any company - by design.</p>
                 )}
               </Row>
             )}
@@ -280,7 +280,7 @@ export default async function PartnerDetailPage({
             <div className="px-5">
               <EmptyState
                 title="Nothing earned yet"
-                description="Commission is created automatically when the plan's trigger fires — a deal is won, an invoice is sent, or a payment clears."
+                description="Commission is created automatically when the plan's trigger fires - a deal is won, an invoice is sent, or a payment clears."
               />
             </div>
           ) : (
