@@ -23,7 +23,10 @@ export default async function EditQuotationPage({
   if (!EDITABLE.includes(quote.status)) {
     return (
       <div className="mx-auto max-w-3xl">
-        <PageHeader title={quote.quoteNumber} description={`Version ${quote.versionNumber}`} />
+        <PageHeader
+        backTo={`/quotations/${id}`}
+        backLabel="Back to the quotation"
+        title={quote.quoteNumber} description={`Version ${quote.versionNumber}`} />
         <Alert tone="info">
           This quote is {humanize(quote.status).toLowerCase()} and has already been put in front of
           the customer, so it cannot be edited. Create a revision instead - the original stays on
@@ -62,6 +65,8 @@ export default async function EditQuotationPage({
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader
+        backTo={`/quotations/${id}`}
+        backLabel="Back to the quotation"
         title={`Edit ${quote.quoteNumber}`}
         description={`Version ${quote.versionNumber} · ${humanize(quote.status)}`}
       />

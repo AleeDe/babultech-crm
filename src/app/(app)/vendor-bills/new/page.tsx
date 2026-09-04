@@ -14,6 +14,8 @@ export default async function NewVendorBillPage() {
   return (
     <>
       <PageHeader
+        backTo="/vendor-bills"
+        backLabel="Back to vendor bills"
         title="New vendor bill"
         description="What a supplier has invoiced you. It becomes payable once approved."
       />

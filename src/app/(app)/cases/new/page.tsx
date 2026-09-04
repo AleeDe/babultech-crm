@@ -16,6 +16,8 @@ export default async function NewCasePage({
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
+        backTo="/cases"
+        backLabel="Back to cases"
         title="New case"
         description="Raised against a customer and always for one of that customer's contacts. SLA deadlines are set from the priority."
       />

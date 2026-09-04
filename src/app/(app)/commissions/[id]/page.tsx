@@ -27,6 +27,8 @@ export default async function CommissionDetailPage({
   return (
     <>
       <PageHeader
+        backTo="/commissions"
+        backLabel="Back to commissions"
         title={commission.commissionNumber}
         description={`${commission.partner?.displayName ?? "Unknown partner"} · earned ${formatDate(commission.earnedDate)}`}
       >

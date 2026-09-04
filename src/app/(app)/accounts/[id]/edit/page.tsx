@@ -36,7 +36,10 @@ export default async function EditAccountPage({
 
   return (
     <div className="mx-auto max-w-4xl">
-      <PageHeader title={`Edit ${account.name}`} description={account.accountNumber} />
+      <PageHeader
+        backTo={`/accounts/${id}`}
+        backLabel="Back to the account"
+        title={`Edit ${account.name}`} description={account.accountNumber} />
       <AccountForm
         options={serialize({ users: options.users, accounts: options.accounts })}
         defaults={defaults}

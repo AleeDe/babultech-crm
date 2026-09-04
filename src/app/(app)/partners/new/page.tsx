@@ -67,6 +67,8 @@ export default async function NewPartnerPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
+        backTo="/partners"
+        backLabel="Back to partners"
         title="Add partner"
         description="A partner can be a company or a single person. Individuals are stored as a contact with no account, so nothing fake ends up in your customer list."
       />

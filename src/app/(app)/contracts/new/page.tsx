@@ -18,6 +18,8 @@ export default async function NewContractPage({
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
+        backTo="/contracts"
+        backLabel="Back to contracts"
         title="New contract"
         description="Usually the accepted quote turned into a term. Linking it back to the deal is what lets partner commission find its way home."
       />

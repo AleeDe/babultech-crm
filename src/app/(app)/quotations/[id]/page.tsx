@@ -102,6 +102,8 @@ export default async function QuotationDetailPage({
   return (
     <>
       <PageHeader
+        backTo="/quotations"
+        backLabel="Back to quotations"
         title={`${quote.quoteNumber} - v${quote.versionNumber}`}
         description={`${quote.account?.name} · ${quote.opportunity?.name}`}
       >

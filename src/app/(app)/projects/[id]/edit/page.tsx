@@ -36,7 +36,10 @@ export default async function EditProjectPage({
 
   return (
     <div className="mx-auto max-w-4xl">
-      <PageHeader title={`Edit ${project.name}`} description={project.projectNumber} />
+      <PageHeader
+        backTo={`/projects/${id}`}
+        backLabel="Back to the project"
+        title={`Edit ${project.name}`} description={project.projectNumber} />
       <ProjectForm
         options={serialize(options) as unknown as ProjectFormOptions}
         defaults={defaults}

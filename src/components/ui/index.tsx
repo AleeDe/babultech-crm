@@ -5,6 +5,7 @@ import { Inbox, Info, AlertTriangle, AlertCircle, CheckCircle2 } from "lucide-re
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "@/components/field-help";
+import { BackLink } from "@/components/back-link";
 import { priorityClass, type ColumnPriority } from "@/components/responsive-table";
 
 // ---------------------------------------------------------------------------
@@ -301,14 +302,21 @@ export function TD({
 export function PageHeader({
   title,
   description,
+  backTo,
+  backLabel,
   children,
 }: {
   title: string;
   description?: string;
+  /** Where the way out leads. Omit on a top-level list, which has no parent. */
+  backTo?: string;
+  backLabel?: string;
   children?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b pb-5">
+    <div className="mb-6 border-b pb-5">
+      {backTo && <BackLink href={backTo} label={backLabel ?? "Back"} />}
+      <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0">
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         {description && (
@@ -318,6 +326,7 @@ export function PageHeader({
         )}
       </div>
       {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
+      </div>
     </div>
   );
 }

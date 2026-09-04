@@ -30,7 +30,10 @@ export default async function EditActivityPage({
 
   return (
     <>
-      <PageHeader title={`Edit ${activity.subject}`} description="Update, complete or reassign it." />
+      <PageHeader
+        backTo={`/activities/${id}`}
+        backLabel="Back to the activity"
+        title={`Edit ${activity.subject}`} description="Update, complete or reassign it." />
 
       <div className="max-w-2xl">
         <RecordForm action={save} redirectTo={`/activities/${id}`} submitLabel="Save changes">

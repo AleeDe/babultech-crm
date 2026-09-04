@@ -16,6 +16,8 @@ export default async function NewOpportunityPage({
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader
+        backTo="/opportunities"
+        backLabel="Back to opportunities"
         title="New opportunity"
         description="Attach partners and their revenue split from the deal page once it exists."
       />

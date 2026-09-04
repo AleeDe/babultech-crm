@@ -16,6 +16,8 @@ export default async function NewContactPage({
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader
+        backTo="/contacts"
+        backLabel="Back to contacts"
         title="New contact"
         description="A person. Attach them to a company, or leave the company blank if they stand alone."
       />

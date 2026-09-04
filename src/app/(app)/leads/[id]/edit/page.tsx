@@ -21,7 +21,10 @@ export default async function EditLeadPage({
   if (lead.status === "CONVERTED") {
     return (
       <div className="mx-auto max-w-3xl">
-        <PageHeader title={`${lead.firstName} ${lead.lastName}`} description={lead.leadNumber} />
+        <PageHeader
+        backTo={`/leads/${id}`}
+        backLabel="Back to the lead"
+        title={`${lead.firstName} ${lead.lastName}`} description={lead.leadNumber} />
         <Alert tone="info">
           This lead was converted on {lead.convertedAt?.toLocaleDateString("en-GB")} and is now
           read-only. Edit the records it became instead.
@@ -71,7 +74,12 @@ export default async function EditLeadPage({
 
   return (
     <div className="mx-auto max-w-4xl">
-      <PageHeader title={`${lead.firstName} ${lead.lastName}`} description={lead.leadNumber}>
+      <PageHeader
+        backTo={`/leads/${id}`}
+        backLabel="Back to the lead"
+        title={`${lead.firstName} ${lead.lastName}`}
+        description={lead.leadNumber}
+      >
         <Button asChild variant="secondary">
           <Link href={`/leads/${lead.id}/convert`}>Convert…</Link>
         </Button>

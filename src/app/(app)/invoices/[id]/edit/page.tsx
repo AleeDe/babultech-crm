@@ -22,7 +22,10 @@ export default async function EditInvoicePage({
   if (!EDITABLE.includes(invoice.status)) {
     return (
       <div className="mx-auto max-w-3xl">
-        <PageHeader title={invoice.invoiceNumber} description={humanize(invoice.status)} />
+        <PageHeader
+        backTo={`/invoices/${id}`}
+        backLabel="Back to the invoice"
+        title={invoice.invoiceNumber} description={humanize(invoice.status)} />
         <Alert tone="info">
           This invoice has been issued to the customer, so it is no longer editable - an issued
           invoice is an accounting document. Write off the balance if it will not be collected.
@@ -61,7 +64,12 @@ export default async function EditInvoicePage({
 
   return (
     <div className="mx-auto max-w-5xl">
-      <PageHeader title={`Edit ${invoice.invoiceNumber}`} description="Draft" />
+      <PageHeader
+        backTo={`/invoices/${id}`}
+        backLabel="Back to the invoice"
+        title={`Edit ${invoice.invoiceNumber}`}
+        description="Draft"
+      />
       <InvoiceForm options={serialize(options) as unknown as InvoiceFormOptions} defaults={defaults} />
     </div>
   );

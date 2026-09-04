@@ -41,6 +41,8 @@ export default async function NewActivityPage({
   return (
     <>
       <PageHeader
+        backTo="/activities"
+        backLabel="Back to activities"
         title="Log a touch"
         description="A call, meeting, message, task or reminder - and who it belongs to."
       />

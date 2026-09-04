@@ -80,7 +80,10 @@ export default async function ProductDetailPage({
 
   return (
     <>
-      <PageHeader title={product.name} description={`${product.productCode} · ${humanize(product.productType)}`}>
+      <PageHeader
+        backTo="/products"
+        backLabel="Back to products"
+        title={product.name} description={`${product.productCode} · ${humanize(product.productType)}`}>
         <Badge tone={product.active ? "success" : "neutral"}>{product.active ? "Active" : "Inactive"}</Badge>
         {!product.commissionable && <Badge tone="warning">Not commissionable</Badge>}
         {can(_me, PERMISSIONS.OPPORTUNITY_WRITE) && (

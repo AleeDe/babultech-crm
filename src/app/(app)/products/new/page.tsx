@@ -13,6 +13,8 @@ export default async function NewProductPage() {
   return (
     <>
       <PageHeader
+        backTo="/products"
+        backLabel="Back to products"
         title="New product"
         description="Quote and invoice lines price from this catalogue."
       />

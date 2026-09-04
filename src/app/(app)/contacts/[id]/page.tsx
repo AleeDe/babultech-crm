@@ -35,7 +35,10 @@ export default async function ContactDetailPage({
 
   return (
     <>
-      <PageHeader title={name} description={contact.jobTitle ?? "No job title recorded"}>
+      <PageHeader
+        backTo="/contacts"
+        backLabel="Back to contacts"
+        title={name} description={contact.jobTitle ?? "No job title recorded"}>
         {contact.isPrimary && (
           <Badge tone="info">
             <Star className="h-3 w-3" /> Primary

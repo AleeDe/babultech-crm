@@ -50,6 +50,8 @@ export default async function EditOpportunityPage({
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader
+        backTo={`/opportunities/${id}`}
+        backLabel="Back to the opportunity"
         title={`Edit ${opp.name}`}
         description={`${opp.opportunityNumber} · ${opp.account?.name}`}
       />

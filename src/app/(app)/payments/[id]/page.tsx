@@ -26,6 +26,8 @@ export default async function PaymentDetailPage({
   return (
     <>
       <PageHeader
+        backTo="/payments"
+        backLabel="Back to payments"
         title={payment.paymentNumber}
         description={`${humanize(payment.paymentMethod)} · received ${formatDate(payment.paymentDate)}`}
       >

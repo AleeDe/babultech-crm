@@ -42,6 +42,8 @@ export default async function ExpenseDetailPage({
   return (
     <>
       <PageHeader
+        backTo="/expenses"
+        backLabel="Back to expenses"
         title={expense.expenseNumber}
         description={expense.description ?? expense.category?.name ?? "Expense"}
       >

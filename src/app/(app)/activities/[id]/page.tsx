@@ -29,7 +29,10 @@ export default async function ActivityDetailPage({
 
   return (
     <>
-      <PageHeader title={activity.subject} description={humanize(activity.activityType)}>
+      <PageHeader
+        backTo="/activities"
+        backLabel="Back to activities"
+        title={activity.subject} description={humanize(activity.activityType)}>
         <Badge tone={statusTone(activity.status)}>{humanize(activity.status)}</Badge>
         <Badge tone={statusTone(activity.priority)}>{humanize(activity.priority)}</Badge>
         {activity.isMine && (

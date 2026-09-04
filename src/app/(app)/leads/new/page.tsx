@@ -12,6 +12,8 @@ export default async function NewLeadPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
+        backTo="/leads"
+        backLabel="Back to leads"
         title="New lead"
         description="An unqualified prospect. Nothing else is created until you convert it."
       />

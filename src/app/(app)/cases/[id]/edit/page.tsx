@@ -38,6 +38,8 @@ export default async function EditCasePage({
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
+        backTo={`/cases/${id}`}
+        backLabel="Back to the case"
         title={`Edit ${supportCase.caseNumber}`}
         description={`${supportCase.subject} · ${supportCase.account?.name}`}
       />

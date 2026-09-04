@@ -14,6 +14,8 @@ export default async function NewExpensePage() {
   return (
     <>
       <PageHeader
+        backTo="/expenses"
+        backLabel="Back to expenses"
         title="Record expense"
         description="Something the business paid for. On a project it can be billed on to the customer."
       />

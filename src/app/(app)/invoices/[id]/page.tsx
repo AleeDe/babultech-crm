@@ -112,6 +112,8 @@ export default async function InvoiceDetailPage({
   return (
     <>
       <PageHeader
+        backTo="/invoices"
+        backLabel="Back to invoices"
         title={invoice.invoiceNumber}
         description={`${invoice.account?.name} · issued ${formatDate(invoice.invoiceDate)}`}
       >

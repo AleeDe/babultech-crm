@@ -37,6 +37,8 @@ export default async function EditContactPage({
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader
+        backTo={`/contacts/${id}`}
+        backLabel="Back to the contact"
         title={`Edit ${contact.firstName} ${contact.lastName}`}
         description={contact.account?.name ?? "Independent contact"}
       />

@@ -39,6 +39,8 @@ export default async function VendorBillDetailPage({
   return (
     <>
       <PageHeader
+        backTo="/vendor-bills"
+        backLabel="Back to vendor bills"
         title={bill.billNumber}
         description={`${bill.vendor?.name ?? "Unknown supplier"}${bill.vendorInvoiceNumber ? ` · their ref ${bill.vendorInvoiceNumber}` : ""}`}
       >

@@ -16,6 +16,8 @@ export default async function NewInvoicePage({
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader
+        backTo="/invoices"
+        backLabel="Back to invoices"
         title="New invoice"
         description="Saved as a draft. Issuing it stamps any linked milestone as billed and is not reversible by editing."
       />

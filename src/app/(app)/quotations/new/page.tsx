@@ -19,6 +19,8 @@ export default async function NewQuotationPage({
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader
+        backTo="/quotations"
+        backLabel="Back to quotations"
         title="New quote"
         description="Saved as a draft. Sending it locks the numbers - after that you revise rather than edit."
       />

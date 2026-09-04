@@ -25,6 +25,8 @@ export default async function ConvertLeadPage({
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader
+        backTo={`/leads/${id}`}
+        backLabel="Back to the lead"
         title={`Convert ${lead.firstName} ${lead.lastName}`}
         description={lead.leadNumber}
       />

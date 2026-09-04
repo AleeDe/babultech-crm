@@ -22,7 +22,10 @@ export default async function EditProductPage({
 
   return (
     <>
-      <PageHeader title={`Edit ${product.name}`} description={product.productCode} />
+      <PageHeader
+        backTo={`/products/${id}`}
+        backLabel="Back to the product"
+        title={`Edit ${product.name}`} description={product.productCode} />
 
       <div className="max-w-2xl">
         <RecordForm action={save} redirectTo={`/products/${id}`} submitLabel="Save changes">

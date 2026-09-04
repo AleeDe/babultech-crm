@@ -48,6 +48,8 @@ export default async function NewPaymentPage() {
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader
+        backTo="/payments"
+        backLabel="Back to payments"
         title="Record a payment"
         description="Apply it against open invoices as you record it. Cleared cash is what settles a balance and what most commission plans pay on."
       />

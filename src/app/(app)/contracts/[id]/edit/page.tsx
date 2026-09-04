@@ -38,7 +38,10 @@ export default async function EditContractPage({
 
   return (
     <div className="mx-auto max-w-4xl">
-      <PageHeader title={`Edit ${contract.name}`} description={contract.contractNumber} />
+      <PageHeader
+        backTo={`/contracts/${id}`}
+        backLabel="Back to the contract"
+        title={`Edit ${contract.name}`} description={contract.contractNumber} />
       <ContractForm
         options={serialize(options) as unknown as ContractFormOptions}
         defaults={defaults}

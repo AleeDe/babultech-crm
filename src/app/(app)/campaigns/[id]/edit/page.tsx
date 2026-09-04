@@ -26,7 +26,10 @@ export default async function EditCampaignPage({
 
   return (
     <>
-      <PageHeader title={`Edit ${campaign.name}`} description={campaign.campaignNumber} />
+      <PageHeader
+        backTo={`/campaigns/${id}`}
+        backLabel="Back to the campaign"
+        title={`Edit ${campaign.name}`} description={campaign.campaignNumber} />
 
       <div className="max-w-2xl">
         <RecordForm action={save} redirectTo={`/campaigns/${id}`} submitLabel="Save changes">

@@ -12,6 +12,8 @@ export default async function NewAccountPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
+        backTo="/accounts"
+        backLabel="Back to accounts"
         title="New account"
         description="One organisation record. Its type decides what it can do - only a Partner account can carry a partner profile."
       />

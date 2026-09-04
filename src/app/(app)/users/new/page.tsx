@@ -13,6 +13,8 @@ export default async function NewUserPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
+        backTo="/users"
+        backLabel="Back to users"
         title="New user"
         description="A login, a profile and a role. Pick the role first - it changes what the rest of the form asks for."
       />

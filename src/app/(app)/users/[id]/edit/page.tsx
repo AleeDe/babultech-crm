@@ -49,7 +49,10 @@ export default async function EditUserPage({
 
   return (
     <div className="mx-auto max-w-4xl">
-      <PageHeader title={`Edit ${user.fullName}`} description={user.email} />
+      <PageHeader
+        backTo={`/users/${id}`}
+        backLabel="Back to the user"
+        title={`Edit ${user.fullName}`} description={user.email} />
       <UserForm
         options={serialize({ ...options, partners }) as unknown as UserFormOptions}
         defaults={defaults}

@@ -39,7 +39,10 @@ export default async function AccountDetailPage({
 
   return (
     <>
-      <PageHeader title={account.name} description={`${account.accountNumber} · ${humanize(account.accountType)}`}>
+      <PageHeader
+        backTo="/accounts"
+        backLabel="Back to accounts"
+        title={account.name} description={`${account.accountNumber} · ${humanize(account.accountType)}`}>
         {account.customerHealth && (
           <Badge tone={statusTone(account.customerHealth)}>{humanize(account.customerHealth)}</Badge>
         )}

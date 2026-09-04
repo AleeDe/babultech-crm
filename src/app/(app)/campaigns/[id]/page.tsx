@@ -79,6 +79,8 @@ export default async function CampaignDetailPage({
   return (
     <>
       <PageHeader
+        backTo="/campaigns"
+        backLabel="Back to campaigns"
         title={campaign.name}
         description={`${campaign.campaignNumber} · ${campaign.campaignType?.name}`}
       >

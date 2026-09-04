@@ -63,7 +63,10 @@ export default async function LeadDetailPage({
 
   return (
     <>
-      <PageHeader title={name} description={lead.companyName ?? lead.leadNumber}>
+      <PageHeader
+        backTo="/leads"
+        backLabel="Back to leads"
+        title={name} description={lead.companyName ?? lead.leadNumber}>
         {/* A plain title rather than a FieldHelp button: a badge has no room
             for a marker beside it, and these two are labels rather than fields
             someone fills in. */}

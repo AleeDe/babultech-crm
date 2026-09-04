@@ -82,6 +82,8 @@ export default async function ContractDetailPage({
   return (
     <>
       <PageHeader
+        backTo="/contracts"
+        backLabel="Back to contracts"
         title={contract.name}
         description={`${contract.contractNumber} · ${contract.account?.name}`}
       >

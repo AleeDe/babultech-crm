@@ -15,6 +15,8 @@ export default async function NewCampaignPage() {
   return (
     <>
       <PageHeader
+        backTo="/campaigns"
+        backLabel="Back to campaigns"
         title="New campaign"
         description="A marketing push you want to attribute leads and revenue to."
       />

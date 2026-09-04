@@ -41,6 +41,8 @@ export default async function PartnerDetailPage({
   return (
     <>
       <PageHeader
+        backTo="/partners"
+        backLabel="Back to partners"
         title={partner.displayName}
         description={`${partner.partnerNumber} · ${humanize(partner.partnerType)} partner · ${humanize(partner.tier)} tier`}
       >

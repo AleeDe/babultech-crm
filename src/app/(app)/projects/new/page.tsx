@@ -16,6 +16,8 @@ export default async function NewProjectPage({
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
+        backTo="/projects"
+        backLabel="Back to projects"
         title="New project"
         description="Phases, milestones, tasks and the team are set up on the workspace once the project exists."
       />

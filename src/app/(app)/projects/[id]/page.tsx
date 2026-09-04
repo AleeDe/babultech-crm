@@ -94,6 +94,8 @@ export default async function ProjectWorkspacePage({
   return (
     <>
       <PageHeader
+        backTo="/projects"
+        backLabel="Back to projects"
         title={project.name}
         description={`${project.projectNumber} · ${project.account?.name}`}
       >

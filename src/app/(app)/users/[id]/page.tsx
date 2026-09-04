@@ -38,6 +38,8 @@ export default async function UserDetailPage({
   return (
     <>
       <PageHeader
+        backTo="/users"
+        backLabel="Back to users"
         title={user.fullName}
         description={`${user.email}${user.jobTitle ? ` · ${user.jobTitle}` : ""}`}
       >

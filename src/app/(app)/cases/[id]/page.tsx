@@ -41,7 +41,10 @@ export default async function CaseDetailPage({
 
   return (
     <>
-      <PageHeader title={c.subject} description={`${c.caseNumber} · ${humanize(c.caseType)}`}>
+      <PageHeader
+        backTo="/cases"
+        backLabel="Back to cases"
+        title={c.subject} description={`${c.caseNumber} · ${humanize(c.caseType)}`}>
         <Badge tone={statusTone(c.priority)}>{humanize(c.priority)}</Badge>
         <Badge tone={statusTone(c.status)}>{humanize(c.status)}</Badge>
         <Button asChild variant="outline">

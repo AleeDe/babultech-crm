@@ -50,7 +50,10 @@ export default async function OpportunityDetailPage({
 
   return (
     <>
-      <PageHeader title={opp.name} description={`${opp.opportunityNumber} · ${opp.account?.name}`}>
+      <PageHeader
+        backTo="/opportunities"
+        backLabel="Back to opportunities"
+        title={opp.name} description={`${opp.opportunityNumber} · ${opp.account?.name}`}>
         <Badge tone={statusTone(opp.stage)}>{humanize(opp.stage)}</Badge>
         <Button asChild variant="outline">
           <Link href={`/opportunities/${opp.id}/edit`}>Edit</Link>
