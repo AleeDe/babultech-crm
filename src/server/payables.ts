@@ -5,7 +5,7 @@ import { z } from "zod";
 import Decimal from "decimal.js";
 import { randomUUID } from "node:crypto";
 import { toDecimal, one } from "@/lib/decimal";
-import { supabaseServer } from "@/lib/supabase";
+import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { createRecord, updateRecord, applySearch, LIST_LIMIT, EXPENSE_PAGE_SIZE } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, can, requirePermission } from "@/lib/authz";
@@ -168,6 +168,82 @@ export async function getExpenseTotals(filters?: {
     billableTotal: sum(billable),
     billableCount: billable.length,
   };
+}
+
+const expenseCategorySchema = z.object({
+  name: z.string().min(1, "Give it a name.").max(100, "That name is too long."),
+});
+
+/**
+ * Creates an expense category from inside the expense form.
+ *
+ * A fresh database has no categories, Category is required, and the notice on
+ * the form sends people to Settings — which only an administrator can reach.
+ * So anyone else was left with a form they could not complete. The category is
+ * added where it is needed instead, and selected on return.
+ *
+ * Gated on expense:write, the same permission the form itself requires: if
+ * someone may record the cost, they may name the kind of cost it is. The row
+ * security on expense_category is admin-only, so the insert goes through the
+ * service role — the permission check above is what actually guards it.
+ */
+export async function createExpenseCategory(
+  input: z.infer<typeof expenseCategorySchema>,
+): Promise<ActionResult<{ id: string; name: string }>> {
+  const _auth = await authorize(PERMISSIONS.EXPENSE_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  const parsed = expenseCategorySchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const name = parsed.data.name.trim();
+
+  const db = supabaseAdmin();
+
+  // Case-insensitive, because "Travel" and "travel" sitting in the same
+  // dropdown splits a year of spend across two lines of the accounts.
+  const { data: clash } = await db
+    .from("expense_category")
+    .select("id, name, active")
+    .ilike("name", name)
+    .maybeSingle();
+
+  if (clash) {
+    // A category that was retired rather than deleted should come back rather
+    // than refuse a name nobody can see in the list.
+    if (!clash.active) {
+      const { error } = await db
+        .from("expense_category")
+        .update({ active: true, updatedAt: new Date().toISOString() })
+        .eq("id", clash.id);
+      if (error) return { ok: false, error: error.message };
+      revalidatePath("/expenses");
+      revalidatePath("/settings");
+      return { ok: true, data: { id: clash.id, name: clash.name } };
+    }
+    return {
+      ok: false,
+      error: `"${clash.name}" already exists.`,
+      fieldErrors: { name: ["This category is already on the list."] },
+    };
+  }
+
+  const { data: created, error } = await db
+    .from("expense_category")
+    .insert({ id: randomUUID(), name, active: true, updatedAt: new Date().toISOString() })
+    .select("id, name")
+    .single();
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/expenses");
+  revalidatePath("/settings");
+  return { ok: true, data: { id: created.id, name: created.name } };
 }
 
 export async function createExpense(
