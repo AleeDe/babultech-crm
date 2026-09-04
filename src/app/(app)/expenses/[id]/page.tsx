@@ -74,9 +74,13 @@ export default async function ExpenseDetailPage({
         />
         <StatTile label="Incurred" value={formatDate(expense.expenseDate)} />
         <StatTile
-          label="Owed to"
-          value={expense.employee?.fullName ?? expense.vendor?.name ?? "—"}
-          sublabel={expense.reimbursable ? "Reimbursable" : "Paid directly"}
+          label={expense.reimbursable ? "Owed to" : "Paid to"}
+          value={
+            expense.employee?.fullName ??
+            expense.vendor?.name ??
+            (expense.reimbursable ? "Nobody named" : "A supplier, not recorded")
+          }
+          sublabel={expense.reimbursable ? "Reimbursable" : "The company paid directly"}
         />
       </div>
 
@@ -109,7 +113,12 @@ export default async function ExpenseDetailPage({
               )}
             </DetailRow>
             <DetailRow label="Paid by">
-              {expense.employee?.fullName ?? expense.vendor?.name ?? "—"}
+              {expense.employee?.fullName ??
+                expense.vendor?.name ?? (
+                  <span className="text-muted-foreground">
+                    The company, no supplier recorded
+                  </span>
+                )}
             </DetailRow>
             <DetailRow label="Project">
               {expense.project ? (

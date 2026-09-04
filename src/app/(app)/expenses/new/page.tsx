@@ -107,7 +107,7 @@ export default async function NewExpensePage() {
               label="Who paid from their own pocket"
               name="employeeUserId"
               hint="They get this money back."
-              help="The person who spent their own money and is owed it back. If the company paid the shop or supplier itself, set this to Nobody and fill in the field beside it instead."
+              help="The person who spent their own money and is owed it back. Set this to Nobody if the company paid directly, and untick paying it back below."
             >
               <Select name="employeeUserId" defaultValue={me.id}>
                 <option value="">Nobody - the company paid directly</option>
@@ -122,8 +122,8 @@ export default async function NewExpensePage() {
             <FormField
               label="Or the company paid this supplier"
               name="vendorAccountId"
-              hint="Nobody to pay back."
-              help="The shop or supplier the company paid directly, when no one is out of pocket. Fill in one of these two fields, not both - whose money went out is what decides who gets paid later."
+              hint="Optional."
+              help="Name the supplier only if it is one you keep records for. Petty cash, a rickshaw or tea for a meeting is a real cost with no supplier worth recording, so leaving this blank is fine."
             >
               <Select name="vendorAccountId" defaultValue="">
                 <option value="">None</option>

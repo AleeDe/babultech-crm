@@ -162,10 +162,11 @@ export function ExpenseImportForm({
     resolved.some((r) => r.dateNote?.includes("day-first")) &&
     resolved.some((r) => r.dateNote?.includes("month-first"));
   const total = resolved.reduce((sum, r) => sum + (r.amount ?? 0), 0);
+  // A company-paid row owes nobody, so it needs no supplier to be importable.
   const canImport =
     resolved.length > 0 &&
     badRows.length === 0 &&
-    (paidByCompany ? Boolean(vendorAccountId) : Boolean(employeeUserId));
+    (paidByCompany || Boolean(employeeUserId));
 
   /**
    * Reads a dropped or chosen file.
@@ -348,14 +349,13 @@ export function ExpenseImportForm({
             {paidByCompany ? (
               <Field
                 label="Paid to"
-                required
-                hint="The shop or supplier the money went to."
+                hint="Only if it was a supplier you keep records for. Leave it blank for petty cash, a rickshaw, tea for a meeting."
               >
                 <Select
                   value={vendorAccountId}
                   onChange={(e) => setVendorAccountId(e.target.value)}
                 >
-                  <option value="">Choose a supplier…</option>
+                  <option value="">Not a recorded supplier</option>
                   {vendors.map((v) => (
                     <option key={v.id} value={v.id}>{v.name}</option>
                   ))}

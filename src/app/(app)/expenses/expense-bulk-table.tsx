@@ -286,7 +286,12 @@ export function ExpenseBulkTable({
                 )}
               </TD>
               <TD priority="secondary" className="text-sm">
-                {e.employee?.fullName ?? e.vendor?.name ?? "—"}
+                {/* Neither is set when the company paid out of petty cash and
+                    the supplier was not worth recording. A bare dash there
+                    reads as missing data rather than as the answer. */}
+                {e.employee?.fullName ?? e.vendor?.name ?? (
+                  <span className="text-muted-foreground">The company</span>
+                )}
                 {e.reimbursable && e.employee && (
                   <p className="text-xs text-muted-foreground">Reimbursable</p>
                 )}

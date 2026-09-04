@@ -262,13 +262,19 @@ export async function createExpense(
   }
   const d = parsed.data;
 
-  // Someone has to be owed the money, or it has to be owed to a supplier.
-  // Neither makes the expense unattributable at reimbursement time.
-  if (!d.employeeUserId && !d.vendorAccountId) {
+  // A claim that is owed back has to say who to. Without that, nothing at
+  // settlement time can work out whose money to return, and the expense sits
+  // there reimbursable to nobody.
+  //
+  // A cost the company paid itself is under no such obligation. Petty cash out
+  // of the office tin, a rickshaw, tea for a meeting: real spending with no
+  // supplier worth keeping a record of, and demanding one only teaches people
+  // to invent a vendor called "Misc".
+  if (d.reimbursable && !d.employeeUserId) {
     return {
       ok: false,
-      error: "Record who paid: an employee to reimburse, or the supplier it was paid to.",
-      fieldErrors: { employeeUserId: ["Choose an employee or a vendor."] },
+      error: "Say who to pay back, or untick paying it back if the company paid directly.",
+      fieldErrors: { employeeUserId: ["Choose who is owed this money."] },
     };
   }
 
@@ -577,8 +583,9 @@ export async function createExpensesBulk(
     }
     const d = parsed.data;
 
-    if (!d.employeeUserId && !d.vendorAccountId) {
-      rowErrors.push(`Row ${i + 1}: needs an employee to reimburse or a vendor.`);
+    // Same rule as the single form: only money owed back needs an owner.
+    if (d.reimbursable && !d.employeeUserId) {
+      rowErrors.push(`Row ${i + 1}: needs someone to pay back.`);
       return;
     }
     if (d.billableToCustomer && !d.projectId) {
