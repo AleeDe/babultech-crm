@@ -1,10 +1,11 @@
 /**
  * Splits pasted or uploaded spreadsheet text into a header row and data rows.
  *
- * Deliberately generic: unlike parse-expense-rows.ts, which knows its five
- * columns by position, this returns whatever columns the file has and lets the
+ * Deliberately generic: it returns whatever columns the file has and lets the
  * caller map them. That is what an import from someone else's Google Sheet
- * needs — the column order is theirs, not ours.
+ * needs — the column order is theirs, not ours. Both importers build on this;
+ * parse-expense-rows.ts adds an optional header on top, since an expense paste
+ * often has no headings at all.
  *
  * Kept out of the component so the quoting rules, which are the part most
  * likely to be wrong, can be tested directly.
