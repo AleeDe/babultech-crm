@@ -43,11 +43,13 @@ Internet\tHasan\t2/12/2026\t7000\tInternet plus router`;
  */
 export function ExpenseImportForm({
   categories,
+  vendors,
   users,
   projects,
   currencies,
 }: {
   categories: Option[];
+  vendors: Option[];
   users: { id: string; fullName: string }[];
   projects: Option[];
   currencies: { code: string; name: string }[];
@@ -62,6 +64,12 @@ export function ExpenseImportForm({
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [sheetIndex, setSheetIndex] = useState(0);
   const [employeeUserId, setEmployeeUserId] = useState(users[0]?.id ?? "");
+  // Whose money went out. The old form asked this three separate ways - an
+  // employee dropdown, a supplier dropdown, and a Reimbursable tick - and the
+  // import asked it not at all, quietly marking every row reimbursable. It is
+  // one question, so it is one control.
+  const [paidByCompany, setPaidByCompany] = useState(false);
+  const [vendorAccountId, setVendorAccountId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [currencyCode, setCurrencyCode] = useState("PKR");
   const [fallbackCategoryId, setFallbackCategoryId] = useState("");
@@ -154,7 +162,10 @@ export function ExpenseImportForm({
     resolved.some((r) => r.dateNote?.includes("day-first")) &&
     resolved.some((r) => r.dateNote?.includes("month-first"));
   const total = resolved.reduce((sum, r) => sum + (r.amount ?? 0), 0);
-  const canImport = resolved.length > 0 && badRows.length === 0 && Boolean(employeeUserId);
+  const canImport =
+    resolved.length > 0 &&
+    badRows.length === 0 &&
+    (paidByCompany ? Boolean(vendorAccountId) : Boolean(employeeUserId));
 
   /**
    * Reads a dropped or chosen file.
@@ -258,10 +269,12 @@ export function ExpenseImportForm({
           amount: r.amount!,
           currencyCode,
           description: r.notes || r.type,
-          employeeUserId: r.userId,
+          employeeUserId: paidByCompany ? null : r.userId,
           projectId: projectId || null,
           billableToCustomer: false,
-          reimbursable: true,
+          // The company paying its own supplier owes nobody anything back.
+          reimbursable: !paidByCompany,
+          vendorAccountId: paidByCompany ? vendorAccountId || null : null,
         })),
       );
 
@@ -279,22 +292,99 @@ export function ExpenseImportForm({
       {error && <Alert tone="danger"><span className="whitespace-pre-line">{error}</span></Alert>}
 
       <Card className="p-5">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field
-            label="Paid by"
-            required
-            hint={
-              namedInSheet > 0
-                ? `${namedInSheet} of ${resolved.length} rows name their own person. This covers the rest.`
-                : "Used for every row. Map a Paid by column to take it from the sheet instead."
-            }
-          >
-            <Select value={employeeUserId} onChange={(e) => setEmployeeUserId(e.target.value)}>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>{u.fullName}</option>
-              ))}
-            </Select>
-          </Field>
+        {/* Asked first, and in the words people actually use. Whose money went
+            out decides everything downstream - whether anyone is owed a
+            reimbursement, and which settled state the row ends in - and it was
+            previously spread across three controls that each told half of it. */}
+        <fieldset className="mb-5">
+          <legend className="text-sm font-medium">Whose money paid for these?</legend>
+          <p className="mt-1 text-xs text-muted-foreground">
+            This decides who gets the money back when the expenses are settled.
+          </p>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <label
+              className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${
+                !paidByCompany ? "border-primary bg-primary/5" : "hover:border-primary/40"
+              }`}
+            >
+              <input
+                type="radio"
+                name="whopaid"
+                className="mt-1"
+                checked={!paidByCompany}
+                onChange={() => setPaidByCompany(false)}
+              />
+              <span className="text-sm">
+                <span className="font-medium">Someone paid from their own pocket</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  The company owes them the money back.
+                </span>
+              </span>
+            </label>
+
+            <label
+              className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${
+                paidByCompany ? "border-primary bg-primary/5" : "hover:border-primary/40"
+              }`}
+            >
+              <input
+                type="radio"
+                name="whopaid"
+                className="mt-1"
+                checked={paidByCompany}
+                onChange={() => setPaidByCompany(true)}
+              />
+              <span className="text-sm">
+                <span className="font-medium">The company paid directly</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  Straight to the shop or supplier. Nobody is owed anything.
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <div className="mt-3 max-w-md">
+            {paidByCompany ? (
+              <Field
+                label="Paid to"
+                required
+                hint="The shop or supplier the money went to."
+              >
+                <Select
+                  value={vendorAccountId}
+                  onChange={(e) => setVendorAccountId(e.target.value)}
+                >
+                  <option value="">Choose a supplier…</option>
+                  {vendors.map((v) => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </Select>
+              </Field>
+            ) : (
+              <Field
+                label="Who to pay back"
+                required
+                hint={
+                  namedInSheet > 0
+                    ? `${namedInSheet} of ${resolved.length} rows name their own person in the sheet. This covers the rest.`
+                    : "Used for every row. Map a Paid by column to take the name from the sheet instead."
+                }
+              >
+                <Select
+                  value={employeeUserId}
+                  onChange={(e) => setEmployeeUserId(e.target.value)}
+                >
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>{u.fullName}</option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+          </div>
+        </fieldset>
+
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Currency">
             <Select value={currencyCode} onChange={(e) => setCurrencyCode(e.target.value)}>
               {currencies.map((c) => (
@@ -578,7 +668,7 @@ export function ExpenseImportForm({
                 <TH>Type → Category</TH>
                 <TH>Date</TH>
                 <TH className="text-right">Amount</TH>
-                <TH>Paid by</TH>
+                <TH>{paidByCompany ? "Paid to" : "Pay back"}</TH>
                 <TH>Notes</TH>
               </TR>
             </THead>
@@ -604,10 +694,16 @@ export function ExpenseImportForm({
                     {row.amount !== null ? formatMoney(row.amount, currencyCode) : "—"}
                   </TD>
                   <TD className="whitespace-nowrap text-sm">
-                    {users.find((u) => u.id === row.userId)?.fullName ?? "—"}
+                    {paidByCompany ? (
+                      <span className="text-muted-foreground">
+                        {vendors.find((v) => v.id === vendorAccountId)?.name ?? "the company"}
+                      </span>
+                    ) : (
+                      users.find((u) => u.id === row.userId)?.fullName ?? "—"
+                    )}
                     {/* Only worth saying when the sheet named someone and this
                         is not them: silence otherwise reads as agreement. */}
-                    {row.by && !row.userMatched && (
+                    {!paidByCompany && row.by && !row.userMatched && (
                       <p className="text-xs text-amber-600 dark:text-amber-500">
                         &quot;{row.by}&quot; not matched
                       </p>

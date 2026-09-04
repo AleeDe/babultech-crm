@@ -102,13 +102,13 @@ export default async function NewExpensePage() {
 
           <div className="grid gap-5 sm:grid-cols-2">
             <FormField
-              label="Paid by employee"
+              label="Who paid from their own pocket"
               name="employeeUserId"
-              hint="Who to reimburse."
-              help="Whoever paid out of their own pocket and is owed the money back. Set this to Nobody if the company paid a supplier directly."
+              hint="They get this money back."
+              help="The person who spent their own money and is owed it back. If the company paid the shop or supplier itself, set this to Nobody and fill in the field beside it instead."
             >
               <Select name="employeeUserId" defaultValue={me.id}>
-                <option value="">Nobody - paid to a supplier</option>
+                <option value="">Nobody - the company paid directly</option>
                 {users.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.fullName}
@@ -118,9 +118,10 @@ export default async function NewExpensePage() {
             </FormField>
 
             <FormField
-              label="Or paid to supplier"
+              label="Or the company paid this supplier"
               name="vendorAccountId"
-              help="Use this instead when the company paid a supplier directly, so nobody needs reimbursing. Fill in one of these two fields, not both."
+              hint="Nobody to pay back."
+              help="The shop or supplier the company paid directly, when no one is out of pocket. Fill in one of these two fields, not both - whose money went out is what decides who gets paid later."
             >
               <Select name="vendorAccountId" defaultValue="">
                 <option value="">None</option>
@@ -144,8 +145,8 @@ export default async function NewExpensePage() {
           <div className="flex flex-wrap gap-6">
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" name="reimbursable" value="true" defaultChecked />
-              Reimbursable to the employee
-              <FieldHelp text="Tick when the person named above paid personally and should get the money back. Untick if the company already paid it directly." />
+              Pay this money back to them
+              <FieldHelp text="Leave this ticked when someone paid from their own pocket - it is what puts the claim on the list of money the company owes. Untick it if the company already paid directly and nobody is out of pocket." />
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" name="billableToCustomer" value="true" />

@@ -17,6 +17,7 @@ export default async function ExpenseImportPage() {
       />
       <ExpenseImportForm
         categories={options.categories}
+        vendors={options.vendors}
         users={options.users}
         projects={options.projects}
         currencies={options.currencies}
