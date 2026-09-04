@@ -40,6 +40,10 @@ export function ExpenseBulkTable({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
+  // The rows an action just touched. Approving clears the selection, which
+  // used to leave the screen silent about the half of the job still to do:
+  // approved expenses are not paid expenses, and nothing said so.
+  const [justActedOn, setJustActedOn] = useState<string[]>([]);
 
   const selectedRows = useMemo(
     () => expenses.filter((e) => selected.has(e.id)),
@@ -83,6 +87,7 @@ export function ExpenseBulkTable({
       | { ok: false; error?: string }
     >,
     verb: string,
+    acted: string[] = [...selected],
   ) {
     setMessage(null);
     start(async () => {
@@ -106,6 +111,7 @@ export function ExpenseBulkTable({
         tone: updated === 0 ? "danger" : "success",
         text: parts.join(" "),
       });
+      setJustActedOn(acted);
       setSelected(new Set());
       router.refresh();
     });
@@ -113,9 +119,47 @@ export function ExpenseBulkTable({
 
   const ids = () => [...selected];
 
+  // Of the rows just acted on, which are now sitting approved and unpaid.
+  // Approving is only half the job — the money still has to go out — so the
+  // next step is offered where the last one finished rather than left to be
+  // rediscovered by selecting the same rows again.
+  const readyToSettle = useMemo(
+    () =>
+      expenses.filter(
+        (e) =>
+          justActedOn.includes(e.id) &&
+          e.approvalStatus === "APPROVED" &&
+          e.paymentStatus === "UNPAID",
+      ),
+    [expenses, justActedOn],
+  );
+
   return (
     <div className="space-y-3">
-      {message && <Alert tone={message.tone}>{message.text}</Alert>}
+      {message && (
+        <Alert tone={message.tone}>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span>{message.text}</span>
+            {canPay && readyToSettle.length > 0 && (
+              <Button
+                size="sm"
+                disabled={pending}
+                onClick={() => {
+                  const target = readyToSettle.map((e) => e.id);
+                  run(() => markExpensePaidBulk(target), "settled", target);
+                }}
+              >
+                <Banknote className="h-4 w-4" /> Settle {readyToSettle.length} now
+              </Button>
+            )}
+          </div>
+          {canPay && readyToSettle.length > 0 && (
+            <p className="mt-1 text-xs opacity-80">
+              Approving does not pay anybody. These are waiting on the money going out.
+            </p>
+          )}
+        </Alert>
+      )}
 
       {selected.size > 0 && (
         // Sticky, so the actions stay reachable while scrolling a long

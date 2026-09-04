@@ -8,6 +8,7 @@ import {
 import { requireUser, can, PERMISSIONS, type SessionUser } from "@/lib/authz";
 import { getMyReportingLine } from "@/server/users";
 import { GuideSection } from "./guide-sections";
+import { ExpenseFlowDiagram } from "./expense-flow-diagram";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, Alert,
 } from "@/components/ui";
@@ -344,6 +345,42 @@ export default async function GuidePage() {
         ))}
         </div>
       </GuideSection>
+
+      {can(me, PERMISSIONS.EXPENSE_READ) && (
+        <GuideSection
+          title="How an expense gets paid"
+          summary="Two statuses, not one — and why approving a claim does not settle it"
+        >
+          <div className="space-y-3 text-sm text-muted-foreground">
+            <p>
+              An expense carries two statuses that move independently. The first asks whether the
+              claim is allowed; the second asks whether the money has actually gone out. Reading
+              them as one sequence is what makes approved expenses look finished when they are not.
+            </p>
+
+            <ExpenseFlowDiagram />
+
+            <p>
+              <strong className="text-foreground">Approving is half the job.</strong>{" "}
+              After approving, select the rows again and use Settle - or open the expense and use
+              Mark as settled. The <strong className="text-foreground">Approved, unpaid</strong>{" "}
+              tile at the top of Expenses is the shortest way back to everything still waiting,
+              and it is the number to watch if you want to know what you owe your own people.
+            </p>
+            <p>
+              <strong className="text-foreground">Neither final state can be undone.</strong>{" "}
+              An approved claim cannot be un-approved and a settled one cannot be un-settled, on
+              purpose: a reimbursement that can be walked back is a reimbursement that can be paid
+              twice. Fix a mistake with a correcting entry rather than by editing history.
+            </p>
+            <p>
+              <strong className="text-foreground">You cannot approve your own claim.</strong>{" "}
+              The system refuses it whoever you are, administrators included, so the person who
+              spends the money is never the person who signs it off.
+            </p>
+          </div>
+        </GuideSection>
+      )}
 
       <GuideSection
         title="Who can see what"
