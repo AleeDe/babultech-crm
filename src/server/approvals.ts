@@ -166,7 +166,7 @@ export async function getPendingApprovals(): Promise<{
       // Surfaced rather than hidden: the claimant should see their own item is
       // queued, and understand why the button is not theirs to press.
       blockedReason:
-        e.employeeUserId === me.id ? "Your own claim — someone else has to approve it." : undefined,
+        e.employeeUserId === me.id ? "Your own claim - someone else has to approve it." : undefined,
     });
   }
 

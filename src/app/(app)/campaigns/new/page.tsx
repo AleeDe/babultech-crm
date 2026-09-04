@@ -28,7 +28,7 @@ export default async function NewCampaignPage() {
 
               <div className="grid gap-5 sm:grid-cols-2">
                 <FormField label="Type" name="campaignTypeId" required
-            help="The kind of activity — email, event, advertising, webinar. Add one with + if it is not listed.">
+            help="The kind of activity - email, event, advertising, webinar. Add one with + if it is not listed.">
                   <SelectWithAdd
                     name="campaignTypeId"
                     required

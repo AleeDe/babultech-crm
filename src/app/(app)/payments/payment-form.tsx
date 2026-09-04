@@ -145,7 +145,7 @@ export function PaymentForm({
               onChange={(e) => { setCurrency(e.target.value); setAllocations({}); }}
             >
               {currencies.map((c) => (
-                <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
+                <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
               ))}
             </Select>
           </Field>
@@ -154,7 +154,7 @@ export function PaymentForm({
             <Input name="paymentDate" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
           </Field>
           <Field label="Method" required
-            help="How it arrived — bank transfer, cheque, cash. Helps when reconciling the statement.">
+            help="How it arrived - bank transfer, cheque, cash. Helps when reconciling the statement.">
             <Select name="paymentMethod" required defaultValue="BANK">
               {METHODS.map((m) => (
                 <option key={m} value={m}>{humanize(m)}</option>

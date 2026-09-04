@@ -24,7 +24,7 @@ export default async function AccountsPage({
     <>
       <PageHeader
         title="Accounts"
-        description="Customers, prospects, partners and vendors — one organisation record, many roles."
+        description="Customers, prospects, partners and vendors - one organisation record, many roles."
       >
         <ExportButton entity="accounts" params={{ search: params.search, accountType: params.accountType }} />
         <Button asChild>

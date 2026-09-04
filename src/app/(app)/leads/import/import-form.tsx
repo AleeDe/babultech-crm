@@ -45,7 +45,7 @@ const FIELDS: {
     aliases: ["source", "lead source", "channel", "origin"] },
   { key: "estimatedValue", label: "Estimated value",
     aliases: ["value", "estimated value", "deal size", "amount", "budget", "potential"],
-    hint: "Numbers only — currency symbols and separators are stripped." },
+    hint: "Numbers only - currency symbols and separators are stripped." },
   { key: "rating", label: "Rating",
     aliases: ["rating", "temperature", "priority"],
     hint: "Hot, Warm or Cold. Anything else is left unrated." },
@@ -277,7 +277,7 @@ export function LeadImportForm({
           <CardContent className="space-y-4">
             <p className="text-xs text-muted-foreground">
               {parsed.headers.length} column{parsed.headers.length === 1 ? "" : "s"} found.
-              Matches are guessed from the headings — change any that are wrong.
+              Matches are guessed from the headings - change any that are wrong.
               Anything left as &ldquo;Do not import&rdquo; is ignored.
             </p>
 
@@ -395,7 +395,7 @@ export function LeadImportForm({
                 </THead>
                 <TBody>
                   {/* Capped: a 500-row preview is unreadable and slow to render.
-                      Every row is still checked — the count above is the truth. */}
+                      Every row is still checked - the count above is the truth. */}
                   {rows.slice(0, 50).map((r) => (
                     <TR key={r.line}>
                       <TD className="text-xs text-muted-foreground">{r.line}</TD>
@@ -438,7 +438,7 @@ export function LeadImportForm({
       {badRows.length > 0 && (
         <Alert tone="warning">
           <AlertTriangle className="mr-1 inline h-4 w-4" />
-          Nothing is imported while any row has a problem — fix them in the sheet and
+          Nothing is imported while any row has a problem - fix them in the sheet and
           paste again, so you never have to work out which half already landed.
         </Alert>
       )}

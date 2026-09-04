@@ -176,7 +176,7 @@ export async function deleteSlaPolicy(id: string): Promise<ActionResult> {
     revalidatePath("/settings");
     return {
       ok: false,
-      error: `${count} case(s) were raised under this policy, so it has been deactivated rather than deleted — their deadlines still refer to it.`,
+      error: `${count} case(s) were raised under this policy, so it has been deactivated rather than deleted - their deadlines still refer to it.`,
     };
   }
 

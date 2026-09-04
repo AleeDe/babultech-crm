@@ -432,7 +432,7 @@ export async function createLeadsBulk(
     if (!parsed.success) {
       const first = Object.entries(parsed.error.flatten().fieldErrors)[0];
       rowErrors.push(
-        `Row ${i + 1}: ${first ? `${first[0]} — ${first[1]?.[0]}` : "invalid"}`,
+        `Row ${i + 1}: ${first ? `${first[0]}, ${first[1]?.[0]}` : "invalid"}`,
       );
       return;
     }

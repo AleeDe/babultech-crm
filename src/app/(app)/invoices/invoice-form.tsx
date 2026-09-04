@@ -206,7 +206,7 @@ export function InvoiceForm({
             help="The currency being billed in. It must match the customer's expectation or the payment will not reconcile.">
             <Select name="currencyCode" required value={currency} onChange={(e) => setCurrency(e.target.value)}>
               {options.currencies.map((c) => (
-                <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
+                <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
               ))}
             </Select>
           </Field>
@@ -217,7 +217,7 @@ export function InvoiceForm({
 
           <Field
             label="Project"
-            hint="Links the invoice to delivery — and is how partner commission finds the deal."
+            hint="Links the invoice to delivery - and is how partner commission finds the deal."
             help="The project this invoice covers, if it is project work. Lets you see billed against budget."
           >
             <Select
@@ -228,7 +228,7 @@ export function InvoiceForm({
             >
               <option value="">None</option>
               {accountProjects.map((p) => (
-                <option key={p.id} value={p.id}>{p.projectNumber} — {p.name}</option>
+                <option key={p.id} value={p.id}>{p.projectNumber} - {p.name}</option>
               ))}
             </Select>
           </Field>
@@ -237,7 +237,7 @@ export function InvoiceForm({
             <Select name="contractId" defaultValue={defaults?.contractId ?? ""} disabled={!accountId}>
               <option value="">None</option>
               {accountContracts.map((c) => (
-                <option key={c.id} value={c.id}>{c.contractNumber} — {c.name}</option>
+                <option key={c.id} value={c.id}>{c.contractNumber} - {c.name}</option>
               ))}
             </Select>
           </Field>

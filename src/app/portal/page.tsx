@@ -35,7 +35,7 @@ export default async function PortalHomePage() {
         <div className="mb-5">
           <Alert tone="warning">
             Your partnership is currently {humanize(partner.status).toLowerCase()}. New deal
-            registrations may not earn commission — speak to your partner manager.
+            registrations may not earn commission - speak to your partner manager.
           </Alert>
         </div>
       )}
@@ -152,7 +152,7 @@ export default async function PortalHomePage() {
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Rate</p>
                   <p className="mt-0.5">
                     {partner.commissionPlan?.rateType === "TIERED_PERCENT"
-                      ? "Tiered — see below"
+                      ? "Tiered - see below"
                       : partner.commissionPlan?.rateType === "FIXED_AMOUNT"
                         ? formatMoney(partner.commissionPlan?.fixedAmount, partner.payoutCurrencyCode)
                         : formatPercent(partner.commissionPlan?.flatPercent, 2)}

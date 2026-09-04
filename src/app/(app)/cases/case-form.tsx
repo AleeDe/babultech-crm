@@ -191,7 +191,7 @@ export function CaseForm({
               {accountContacts.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.firstName} {c.lastName}
-                  {c.email ? ` — ${c.email}` : ""}
+                  {c.email ? `, ${c.email}` : ""}
                 </option>
               ))}
             </Select>
@@ -238,7 +238,7 @@ export function CaseForm({
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Type" required
-            help="The kind of issue — a fault, a question, a request. Decides how it is routed and reported.">
+            help="The kind of issue - a fault, a question, a request. Decides how it is routed and reported.">
               <Select name="caseType" required defaultValue={defaults?.caseType ?? "INCIDENT"}>
                 {TYPES.map((t) => (
                   <option key={t} value={t}>{humanize(t)}</option>
@@ -259,7 +259,7 @@ export function CaseForm({
               </Select>
             </Field>
             <Field label="Came in via" required
-            help="How the customer reported it — email, phone, the portal. Useful for knowing which channels to staff.">
+            help="How the customer reported it - email, phone, the portal. Useful for knowing which channels to staff.">
               <Select name="source" required defaultValue={defaults?.source ?? "EMAIL"}>
                 {SOURCES.map((s) => (
                   <option key={s} value={s}>{humanize(s)}</option>
@@ -282,7 +282,7 @@ export function CaseForm({
 
           {sla && !editing && (
             <Alert tone="info">
-              <strong>{sla.name}</strong> applies at {humanize(priority)} priority — first response
+              <strong>{sla.name}</strong> applies at {humanize(priority)} priority - first response
               due in {minutesLabel(sla.firstResponseMinutes)}, resolution in{" "}
               {minutesLabel(sla.resolutionMinutes)}. These are elapsed hours, not business hours.
             </Alert>

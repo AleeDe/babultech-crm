@@ -25,7 +25,7 @@ export default async function NewExpensePage() {
               label="Category"
               name="categoryId"
               required
-              help="What kind of cost this was — rent, utilities, hardware, software. It decides which line of the accounts it lands on, so pick the closest match rather than a general one. Add one with + if it is not listed."
+              help="What kind of cost this was - rent, utilities, hardware, software. It decides which line of the accounts it lands on, so pick the closest match rather than a general one. Add one with + if it is not listed."
             >
               <SelectWithAdd
                 name="categoryId"
@@ -55,7 +55,7 @@ export default async function NewExpensePage() {
               label="Amount"
               name="amount"
               required
-              help="The total paid, including any tax. Enter digits only — no commas or currency symbol."
+              help="The total paid, including any tax. Enter digits only - no commas or currency symbol."
             >
               <Input name="amount" type="number" step="0.01" min="0" required placeholder="12500" />
             </FormField>
@@ -64,7 +64,7 @@ export default async function NewExpensePage() {
               label="Tax"
               name="taxAmount"
               hint="Recoverable tax, if any."
-              help="How much of the amount above was tax you can claim back. Leave it empty if there was none or you are unsure — it does not change what gets reimbursed."
+              help="How much of the amount above was tax you can claim back. Leave it empty if there was none or you are unsure - it does not change what gets reimbursed."
             >
               <Input name="taxAmount" type="number" step="0.01" min="0" />
             </FormField>
@@ -77,7 +77,7 @@ export default async function NewExpensePage() {
               <Select name="currencyCode" defaultValue="PKR">
                 {currencies.map((c) => (
                   <option key={c.code} value={c.code}>
-                    {c.code} — {c.name}
+                    {c.code} - {c.name}
                   </option>
                 ))}
               </Select>
@@ -108,7 +108,7 @@ export default async function NewExpensePage() {
               help="Whoever paid out of their own pocket and is owed the money back. Set this to Nobody if the company paid a supplier directly."
             >
               <Select name="employeeUserId" defaultValue={me.id}>
-                <option value="">Nobody — paid to a supplier</option>
+                <option value="">Nobody - paid to a supplier</option>
                 {users.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.fullName}

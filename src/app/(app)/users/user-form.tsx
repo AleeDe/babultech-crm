@@ -169,7 +169,7 @@ export function UserForm({
                 <option value="">Select a partner…</option>
                 {options.partners.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.displayName} ({p.partnerNumber}) — {humanize(p.kind)}
+                    {p.displayName} ({p.partnerNumber}), {humanize(p.kind)}
                   </option>
                 ))}
               </Select>
@@ -201,7 +201,7 @@ export function UserForm({
             label="Send notifications to"
             error={fieldErrors.notificationEmail?.[0]}
             hint="Leave empty to use the sign-in address."
-            help="Only needed when notifications must go somewhere other than the sign-in address — for example while the mailbox behind it does not exist yet. Sign-in is unaffected either way."
+            help="Only needed when notifications must go somewhere other than the sign-in address - for example while the mailbox behind it does not exist yet. Sign-in is unaffected either way."
           >
             <Input
               name="notificationEmail"
@@ -265,14 +265,14 @@ export function UserForm({
                 </Select>
               </Field>
               <Field label="Reports to"
-            help="Their manager. This is not decoration — it decides what a manager can see. Anyone on Department scope sees their own records plus everyone beneath them in this line.">
+            help="Their manager. This is not decoration - it decides what a manager can see. Anyone on Department scope sees their own records plus everyone beneath them in this line.">
                 <Select name="managerUserId" defaultValue={defaults?.managerUserId ?? ""}>
                   <option value="">Nobody</option>
                   {options.managers
                     .filter((m) => m.id !== defaults?.id)
                     .map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.fullName}{m.jobTitle ? ` — ${m.jobTitle}` : ""}
+                        {m.fullName}{m.jobTitle ? `, ${m.jobTitle}` : ""}
                       </option>
                     ))}
                 </Select>

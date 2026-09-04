@@ -48,7 +48,7 @@ export default async function UsersPage({
           label="Administrators"
           value={String(admins.length)}
           tone={admins.length === 1 ? "warning" : "neutral"}
-          sublabel={admins.length === 1 ? "Only one — add a second" : undefined}
+          sublabel={admins.length === 1 ? "Only one - add a second" : undefined}
         />
         <StatTile label="Partner logins" value={String(partners.length)} tone="info" />
         <StatTile

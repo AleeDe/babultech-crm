@@ -57,7 +57,7 @@ export default async function ExpenseDetailPage({
       {needsReceipt && (
         <div className="mb-5">
           <Alert tone="warning">
-            {expense.category?.name} claims need a receipt. Attach one below before submitting —
+            {expense.category?.name} claims need a receipt. Attach one below before submitting,
             an approver has nothing to check against without it.
           </Alert>
         </div>
@@ -131,7 +131,7 @@ export default async function ExpenseDetailPage({
               )}
             </DetailRow>
             <DetailRow label="Billable">
-              {expense.billableToCustomer ? "Yes — recharged to the customer" : "No — absorbed"}
+              {expense.billableToCustomer ? "Yes - recharged to the customer" : "No - absorbed"}
             </DetailRow>
             <DetailRow label="Recorded">{formatDateTime(expense.createdAt)}</DetailRow>
           </CardContent>

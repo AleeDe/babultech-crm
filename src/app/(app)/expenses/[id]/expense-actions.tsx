@@ -77,7 +77,7 @@ export function ExpenseActions({
 
         {approvalStatus === "SUBMITTED" && isOwnClaim && (
           <p className="text-sm text-muted-foreground">
-            Waiting on someone else to approve — you cannot approve your own claim.
+            Waiting on someone else to approve - you cannot approve your own claim.
           </p>
         )}
 

@@ -258,7 +258,7 @@ export async function accrue(ctx: AccrualContext) {
           fieldName: "commissionSkipped",
           oldValue: null,
           newValue:
-            `${partner.displayName}: no commission — deal registration lapsed on ` +
+            `${partner.displayName}: no commission - deal registration lapsed on ` +
             `${expiresAt.toISOString().slice(0, 10)}, before this was earned on ` +
             `${ctx.earnedDate.toISOString().slice(0, 10)}.`,
           changedById: ctx.actorUserId,
@@ -277,7 +277,7 @@ export async function accrue(ctx: AccrualContext) {
           entityId: opportunity.id as string,
           fieldName: "commissionSkipped",
           oldValue: null,
-          newValue: `${partner.displayName}: no commission — partnership is ${String(
+          newValue: `${partner.displayName}: no commission - partnership is ${String(
             partner.status,
           ).toLowerCase()}.`,
           changedById: ctx.actorUserId,

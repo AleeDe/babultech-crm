@@ -416,7 +416,7 @@ export function AppShell({
               onClick={() => setOpen(false)}
               className={cn("shrink-0", !railed && "pointer-events-none")}
               tabIndex={railed ? undefined : -1}
-              title={railed ? `${user.fullName} — ${user.roleName}` : undefined}
+              title={railed ? `${user.fullName}, ${user.roleName}` : undefined}
               aria-label={railed ? "Your profile" : undefined}
               aria-hidden={!railed}
             >

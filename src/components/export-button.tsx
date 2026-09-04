@@ -28,7 +28,7 @@ export function ExportButton({
 
   return (
     <Button asChild variant="outline">
-      {/* download is advisory — the server sets Content-Disposition too, which
+      {/* download is advisory - the server sets Content-Disposition too, which
           is what actually names the file. */}
       <a href={href} download>
         <Download className="h-4 w-4" /> {label}

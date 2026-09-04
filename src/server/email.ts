@@ -197,7 +197,7 @@ export async function uploadLogo(formData: FormData): Promise<ActionResult<{ url
     return {
       ok: false,
       error:
-        "SVG will not display in email — Gmail, Outlook and Apple Mail all block it. Export the logo as PNG and upload that.",
+        "SVG will not display in email - Gmail, Outlook and Apple Mail all block it. Export the logo as PNG and upload that.",
     };
   }
 
@@ -307,7 +307,7 @@ export async function sendTestEmail(
   const { error } = await resend.emails.send({
     from: FROM,
     to: me.email,
-    subject: `[Test] ${kind === "quotation" ? "Quotation" : "Invoice"} template — ${settings.companyName}`,
+    subject: `[Test] ${kind === "quotation" ? "Quotation" : "Invoice"} template, ${settings.companyName}`,
     html,
     text: "This is a test of the email template. Open in an HTML-capable client to see it.",
   });

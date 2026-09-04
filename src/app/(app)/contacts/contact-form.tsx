@@ -97,7 +97,7 @@ export function ContactForm({
 
       {isPartnerPerson && (
         <Alert tone="info">
-          This contact is an individual partner. It stays independent of any company account —
+          This contact is an individual partner. It stays independent of any company account,
           that is what keeps a freelance referrer out of your customer list.
         </Alert>
       )}
@@ -119,11 +119,11 @@ export function ContactForm({
           {!isPartnerPerson && !lockedAccountId && (
             <Field
               label="Company"
-              hint="Leave blank for an independent person — a contact does not need an account."
+              hint="Leave blank for an independent person - a contact does not need an account."
             help="The account they work for. A contact always belongs to one."
             >
               <Select name="accountId" defaultValue={defaults?.accountId ?? ""}>
-                <option value="">Independent — no company</option>
+                <option value="">Independent - no company</option>
                 {options.accounts.map((a) => (
                   <option key={a.id} value={a.id}>{a.name}</option>
                 ))}
@@ -140,7 +140,7 @@ export function ContactForm({
             <Input name="department" defaultValue={defaults?.department ?? ""} />
           </Field>
           <Field label="Buying role" hint="Decision maker, influencer, technical evaluator…"
-            help="Their part in the purchase — decision maker, influencer, the person who signs. Worth being honest about.">
+            help="Their part in the purchase - decision maker, influencer, the person who signs. Worth being honest about.">
             <Input name="contactRole" defaultValue={defaults?.contactRole ?? ""} />
           </Field>
         </CardContent>

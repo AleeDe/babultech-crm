@@ -13,7 +13,7 @@ export default async function NewAccountPage() {
     <div className="mx-auto max-w-4xl">
       <PageHeader
         title="New account"
-        description="One organisation record. Its type decides what it can do — only a Partner account can carry a partner profile."
+        description="One organisation record. Its type decides what it can do - only a Partner account can carry a partner profile."
       />
       <AccountForm
         options={serialize({ users: options.users, accounts: options.accounts })}

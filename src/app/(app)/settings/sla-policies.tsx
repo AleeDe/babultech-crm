@@ -88,7 +88,7 @@ export function SlaPolicies({
       className="space-y-3 rounded-lg border bg-muted/30 p-3"
     >
       <div className="grid gap-3 sm:grid-cols-2">
-        <Input name="name" defaultValue={policy?.name ?? ""} placeholder="Critical — 1h / 8h" required />
+        <Input name="name" defaultValue={policy?.name ?? ""} placeholder="Critical - 1h / 8h" required />
         <Select name="priority" defaultValue={policy?.priority ?? "MEDIUM"}>
           {PRIORITIES.map((p) => (
             <option key={p} value={p}>
@@ -193,7 +193,7 @@ export function SlaPolicies({
           <Alert tone="warning">
             No active policy for{" "}
             <strong>{missing.map((p) => p.toLowerCase()).join(", ")}</strong>. Cases raised at
-            {missing.length === 1 ? " that priority" : " those priorities"} get no deadline at all —
+            {missing.length === 1 ? " that priority" : " those priorities"} get no deadline at all:
             they will never show as overdue and never appear as breaching.
           </Alert>
         )}

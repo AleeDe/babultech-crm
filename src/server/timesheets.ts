@@ -129,7 +129,7 @@ export async function logTime(
     if (hours > HOURS_PER_DAY_CEILING) {
       return {
         ok: false,
-        error: `That works out at ${hours} hours. Check the times — the most that can be logged against one date is ${HOURS_PER_DAY_CEILING}.`,
+        error: `That works out at ${hours} hours. Check the times - the most that can be logged against one date is ${HOURS_PER_DAY_CEILING}.`,
         fieldErrors: { endTime: ["Longer than a day."] },
       };
     }
@@ -262,7 +262,7 @@ export async function logProjectDay(
   if (dayTotal > HOURS_PER_DAY_CEILING) {
     return {
       ok: false,
-      error: `That is ${dayTotal} hours in one day. Check the numbers — the most that can be logged against a single date is ${HOURS_PER_DAY_CEILING}.`,
+      error: `That is ${dayTotal} hours in one day. Check the numbers - the most that can be logged against a single date is ${HOURS_PER_DAY_CEILING}.`,
     };
   }
 
@@ -429,7 +429,7 @@ export async function deleteTimeLog(id: string): Promise<ActionResult> {
       return { ok: false, error: "You can only delete your own time entries." };
     }
     if (existing.approvalStatus === "APPROVED") {
-      return { ok: false, error: "Approved time cannot be deleted — it is part of the project's cost record." };
+      return { ok: false, error: "Approved time cannot be deleted - it is part of the project's cost record." };
     }
     if (existing.invoiceLineId) {
       return { ok: false, error: "This time has already been invoiced." };

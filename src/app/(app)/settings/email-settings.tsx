@@ -154,7 +154,7 @@ export function EmailSettingsPanel({ values }: { values: EmailSettingsValues }) 
           Email branding and templates
         </CardTitle>
         <CardDescription>
-          What customers see when a quotation or invoice arrives. Preview before saving — this is
+          What customers see when a quotation or invoice arrives. Preview before saving - this is
           the same template that goes out.
         </CardDescription>
       </CardHeader>
@@ -217,18 +217,18 @@ export function EmailSettingsPanel({ values }: { values: EmailSettingsValues }) 
 
                 <p className="mt-2 text-xs text-muted-foreground">
                   PNG or JPEG, under 2 MB. Uploading stores it publicly so email clients can fetch
-                  it without a login — a private or protected URL shows as a broken image.
+                  it without a login - a private or protected URL shows as a broken image.
                 </p>
               </div>
 
               <Field label="Or paste a URL"
-            help="Link to a logo already hosted somewhere, instead of uploading one. It must be a PNG or JPEG — email clients block SVG.">
+            help="Link to a logo already hosted somewhere, instead of uploading one. It must be a PNG or JPEG - email clients block SVG.">
                 <Input name="logoUrl" defaultValue={values.logoUrl ?? ""} placeholder="https://…/logo.png" />
               </Field>
 
               <Alert tone="info">
                 <p>
-                  <strong>SVG will not work.</strong> Gmail, Outlook and Apple Mail all block it —
+                  <strong>SVG will not work.</strong> Gmail, Outlook and Apple Mail all block it,
                   export as PNG instead. Leave the logo empty and the company name is used as a
                   wordmark, which is what many recipients see anyway since images are often blocked
                   by default.
@@ -293,7 +293,7 @@ export function EmailSettingsPanel({ values }: { values: EmailSettingsValues }) 
                 <Textarea name="invoiceBody" rows={5} defaultValue={values.invoiceBody} required />
               </Field>
               <Field label="Footer"
-            help="The small print at the bottom of every outgoing email — confidentiality wording, and anything else you are required to include.">
+            help="The small print at the bottom of every outgoing email - confidentiality wording, and anything else you are required to include.">
                 <Textarea name="emailFooter" rows={2} defaultValue={values.emailFooter} />
               </Field>
             </div>

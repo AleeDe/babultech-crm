@@ -107,7 +107,7 @@ export function LiveIndicator({ className }: { className?: string }) {
             ? `Last change ${lastChange.toLocaleTimeString()}`
             : "Watching for changes"
           : status === "offline"
-            ? "Realtime disconnected — the figures below may be out of date. Reload to catch up."
+            ? "Realtime disconnected - the figures below may be out of date. Reload to catch up."
             : "Opening the realtime connection"
       }
       role="status"

@@ -188,7 +188,7 @@ export function PartnerPanel({
         {links.length > 0 && (
           <p className="text-xs text-muted-foreground">
             {formatPercent(usedShare, 0)} of the deal is credited to partners; {formatPercent(remainingShare, 0)}{" "}
-            remains unallocated. Estimates use the current rate — the ledger figure is computed against the
+            remains unallocated. Estimates use the current rate - the ledger figure is computed against the
             plan snapshotted when the partner was attached.
           </p>
         )}
@@ -207,7 +207,7 @@ export function PartnerPanel({
               </Select>
             </Field>
             <Field label="Role" required
-            help="What they are doing here — who brought it in, who is delivering it, who resells it.">
+            help="What they are doing here - who brought it in, who is delivering it, who resells it.">
               <Select name="role" required defaultValue="SOURCED">
                 {["SOURCED", "INFLUENCED", "RESOLD", "DELIVERED"].map((r) => (
                   <option key={r} value={r}>{humanize(r)}</option>

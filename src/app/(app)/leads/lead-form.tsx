@@ -165,7 +165,7 @@ export function LeadForm({
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Lead source"
-            help="How they first reached you — a referral, the website, an event. This is what tells you which channels are worth the spend.">
+            help="How they first reached you - a referral, the website, an event. This is what tells you which channels are worth the spend.">
             <Select name="leadSource" defaultValue={defaults?.leadSource ?? ""}>
               <option value="">Not stated</option>
               {SOURCES.map((s) => (
@@ -238,7 +238,7 @@ export function LeadForm({
             </Select>
           </Field>
           <Field label="Estimated value"
-            help="Roughly what the deal is worth if it lands. A guess is fine — it is for sizing the pipeline, not forecasting.">
+            help="Roughly what the deal is worth if it lands. A guess is fine - it is for sizing the pipeline, not forecasting.">
             <Input
               name="estimatedValue"
               type="number"
@@ -261,7 +261,7 @@ export function LeadForm({
               label="Disqualified because"
               required
               error={fieldErrors.disqualifiedReason?.[0]}
-              hint="Required — this is what makes lost-lead reporting worth anything."
+              hint="Required - this is what makes lost-lead reporting worth anything."
             >
               <Input name="disqualifiedReason" required defaultValue={defaults?.disqualifiedReason ?? ""} />
             </Field>

@@ -87,7 +87,7 @@ export default async function EditProductPage({
             </FormField>
 
             <FormField label="Unit" name="unitOfMeasure"
-            help="What you sell it by — each, per hour, per user, per month.">
+            help="What you sell it by - each, per hour, per user, per month.">
               <Input name="unitOfMeasure" defaultValue={product.unitOfMeasure ?? ""} />
             </FormField>
 
@@ -128,7 +128,7 @@ export default async function EditProductPage({
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" name="active" value="true" defaultChecked={product.active} />
-              Active — available to quote
+              Active - available to quote
             </label>
           </div>
         </RecordForm>

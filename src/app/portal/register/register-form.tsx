@@ -70,7 +70,7 @@ export function RegisterForm() {
           {done.contested && (
             <Alert tone="warning">
               We already hold a record for this customer, so this registration is contested. Nothing
-              is decided automatically — your partner manager will confirm who it belongs to.
+              is decided automatically - your partner manager will confirm who it belongs to.
             </Alert>
           )}
 
@@ -90,7 +90,7 @@ export function RegisterForm() {
       {error && <Alert tone="danger">{error}</Alert>}
 
       <Alert tone="info">
-        Registering tells us you are working this customer. It does not create a deal on its own —
+        Registering tells us you are working this customer. It does not create a deal on its own,
         your partner manager reviews it first. Once it is qualified and converted, you are attached
         to the resulting deal automatically and commission follows your plan.
       </Alert>
@@ -105,7 +105,7 @@ export function RegisterForm() {
               label="Company name"
               required
               error={fieldErrors.companyName?.[0]}
-              hint="Use their registered name — it is what we check for an existing registration against."
+              hint="Use their registered name - it is what we check for an existing registration against."
             help="The prospective customer's company name."
             >
               <Input name="companyName" required placeholder="Zenith Textiles (Pvt) Ltd" />

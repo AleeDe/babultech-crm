@@ -78,7 +78,7 @@ export default async function ProfilePage() {
               {me.lastLoginAt ? formatDateTime(me.lastLoginAt) : "This is your first session"}
             </DetailRow>
             <p className="pt-2 text-xs text-muted-foreground">
-              Ask an administrator to change anything above — you can only change your own password.
+              Ask an administrator to change anything above - you can only change your own password.
             </p>
           </CardContent>
         </Card>

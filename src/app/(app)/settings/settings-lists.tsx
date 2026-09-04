@@ -69,7 +69,7 @@ export function CurrencyList({ rows }: { rows: Currency[] }) {
 
         {rows.length === 0 ? (
           <p className="p-6 text-center text-sm text-muted-foreground">
-            No currencies yet. Add the one you invoice in first — make it the base.
+            No currencies yet. Add the one you invoice in first - make it the base.
           </p>
         ) : (
           <Table>

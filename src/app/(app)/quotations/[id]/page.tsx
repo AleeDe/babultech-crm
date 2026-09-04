@@ -102,7 +102,7 @@ export default async function QuotationDetailPage({
   return (
     <>
       <PageHeader
-        title={`${quote.quoteNumber} — v${quote.versionNumber}`}
+        title={`${quote.quoteNumber} - v${quote.versionNumber}`}
         description={`${quote.account?.name} · ${quote.opportunity?.name}`}
       >
         <Badge tone={statusTone(quote.status)}>{humanize(quote.status)}</Badge>
@@ -117,7 +117,7 @@ export default async function QuotationDetailPage({
         {/* The accepted quote is the natural starting point for a contract:
             it already says what was agreed, for whom, and on which deal.
             Building it from the blank contract form instead meant choosing the
-            customer first, because the quote list there is filtered by them —
+            customer first, because the quote list there is filtered by them,
             which is the wrong way round and reads as "no quotes exist".
 
             Hidden once a contract exists, so the button never invites a second
@@ -139,7 +139,7 @@ export default async function QuotationDetailPage({
         <div className="mb-5">
           <Alert tone="warning">
             This quote expired on {formatDate(quote.expiryDate)}. Issue a new version rather than
-            editing it — the customer was sent these numbers.
+            editing it - the customer was sent these numbers.
           </Alert>
         </div>
       )}
@@ -219,7 +219,7 @@ export default async function QuotationDetailPage({
 
         <div className="space-y-6">
           {/* expiryDate arrives from PostgREST as a string, not a Date, so it
-              is parsed before toISOString — calling it on a string throws. */}
+              is parsed before toISOString - calling it on a string throws. */}
           <QuoteActions
             quoteId={quote.id}
             status={quote.status}
@@ -241,7 +241,7 @@ export default async function QuotationDetailPage({
               </DetailRow>
               <DetailRow label="Opportunity">
                 <Link href={`/opportunities/${quote.opportunity?.id}`} className="text-primary hover:underline">
-                  {quote.opportunity?.opportunityNumber} — {quote.opportunity?.name}
+                  {quote.opportunity?.opportunityNumber} - {quote.opportunity?.name}
                 </Link>
               </DetailRow>
               <DetailRow label="Contact">
@@ -269,7 +269,7 @@ export default async function QuotationDetailPage({
                       href={`/quotations/${v.id}`}
                       className={v.id === quote.id ? "font-semibold" : "text-primary hover:underline"}
                     >
-                      v{v.versionNumber} — {v.quoteNumber}
+                      v{v.versionNumber} - {v.quoteNumber}
                     </Link>
                     <div className="text-right">
                       <p className="tabular text-xs">{formatMoney(v.totalAmount, quote.currencyCode)}</p>

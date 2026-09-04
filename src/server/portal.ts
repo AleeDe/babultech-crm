@@ -386,7 +386,7 @@ const registrationSchema = z.object({
   industry: z.string().max(100).optional().nullable(),
   estimatedValue: z.coerce.number().min(0).optional().nullable(),
   expectedCloseDate: z.coerce.date().optional().nullable(),
-  description: z.string().min(20, "Tell us what they need — at least a couple of sentences."),
+  description: z.string().min(20, "Tell us what they need - at least a couple of sentences."),
 });
 
 /**
@@ -511,7 +511,7 @@ export async function submitDealRegistration(
     if (alreadyMine) {
       return {
         ok: false,
-        error: `You have already registered ${company} — it is lead ${existingLead!.leadNumber}. Check your referrals page for its progress.`,
+        error: `You have already registered ${company} - it is lead ${existingLead!.leadNumber}. Check your referrals page for its progress.`,
       };
     }
 
@@ -624,7 +624,7 @@ export async function submitDealRegistration(
         leadNumber: lead.leadNumber,
         contested,
         message: contested
-          ? "Registered, but it needs review — we already have a record for this customer. Your partner manager will be in touch about who it belongs to."
+          ? "Registered, but it needs review - we already have a record for this customer. Your partner manager will be in touch about who it belongs to."
           : "Registered. Your partner manager will review it and come back to you.",
       },
     };

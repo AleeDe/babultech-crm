@@ -24,7 +24,7 @@ export default async function EditInvoicePage({
       <div className="mx-auto max-w-3xl">
         <PageHeader title={invoice.invoiceNumber} description={humanize(invoice.status)} />
         <Alert tone="info">
-          This invoice has been issued to the customer, so it is no longer editable — an issued
+          This invoice has been issued to the customer, so it is no longer editable - an issued
           invoice is an accounting document. Write off the balance if it will not be collected.
         </Alert>
         <div className="mt-4">

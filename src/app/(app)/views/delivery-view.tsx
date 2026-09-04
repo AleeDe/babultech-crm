@@ -84,7 +84,7 @@ export function DeliveryView({
       id: "at-risk",
       count: summary.delivery.atRiskProjects,
       title: "Projects flagged at risk",
-      detail: "Health is amber or red — someone has said so deliberately",
+      detail: "Health is amber or red - someone has said so deliberately",
       href: "/projects",
       tone: "critical" as const,
     },

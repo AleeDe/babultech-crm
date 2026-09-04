@@ -39,7 +39,7 @@ export default async function LeadsPage({
     <>
       <PageHeader
         title="Leads"
-        description="Unqualified prospects. Converting one creates the account, contact and deal — and carries any partner referral through."
+        description="Unqualified prospects. Converting one creates the account, contact and deal - and carries any partner referral through."
       >
         <ExportButton entity="leads" params={{ search: params.search, status: params.status, source: params.source }} />
         {can(_me, PERMISSIONS.LEAD_WRITE) && (

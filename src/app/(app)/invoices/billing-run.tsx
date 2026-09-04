@@ -44,7 +44,7 @@ export function BillingRun({
     setError(null);
     setNotice(null);
     if (!projectId) {
-      setError("Choose a project — time billing runs one engagement at a time.");
+      setError("Choose a project - time billing runs one engagement at a time.");
       return;
     }
     startTransition(async () => {
@@ -81,7 +81,7 @@ export function BillingRun({
         <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
           <option value="">All projects (milestone run only)</option>
           {projects.map((p) => (
-            <option key={p.id} value={p.id}>{p.projectNumber} — {p.name}</option>
+            <option key={p.id} value={p.id}>{p.projectNumber} - {p.name}</option>
           ))}
         </Select>
 

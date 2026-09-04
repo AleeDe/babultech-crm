@@ -257,7 +257,7 @@ export default async function DashboardPage({
       title: "Invoices past their due date",
       detail: attentionData.overdueInvoices
         .slice(0, 3)
-        .map((i: Record<string, any>) => `${i.invoiceNumber} — ${i.account?.name ?? "unknown"}`)
+        .map((i: Record<string, any>) => `${i.invoiceNumber}, ${i.account?.name ?? "unknown"}`)
         .join(" · "),
       href: "/invoices",
       tone: "danger" as const,
@@ -267,7 +267,7 @@ export default async function DashboardPage({
       title: "Cases breaching SLA or marked critical",
       detail: attentionData.breachedCases
         .slice(0, 3)
-        .map((c: Record<string, any>) => `${c.caseNumber} — ${c.subject}`)
+        .map((c: Record<string, any>) => `${c.caseNumber}, ${c.subject}`)
         .join(" · "),
       href: "/cases",
       tone: "danger" as const,
@@ -277,7 +277,7 @@ export default async function DashboardPage({
       title: "Deals past their expected close date",
       detail: attentionData.staleDeals
         .slice(0, 3)
-        .map((o: Record<string, any>) => `${o.name} — ${o.account?.name ?? "unknown"}`)
+        .map((o: Record<string, any>) => `${o.name}, ${o.account?.name ?? "unknown"}`)
         .join(" · "),
       href: "/opportunities",
       tone: "warning" as const,
@@ -287,7 +287,7 @@ export default async function DashboardPage({
       title: "Partner agreements expiring within 60 days",
       detail: attentionData.expiringAgreements
         .slice(0, 3)
-        .map((p: Record<string, any>) => `${p.displayName} — ${formatDate(p.agreementExpiryDate)}`)
+        .map((p: Record<string, any>) => `${p.displayName}, ${formatDate(p.agreementExpiryDate)}`)
         .join(" · "),
       href: "/partners",
       tone: "warning" as const,
@@ -303,7 +303,7 @@ export default async function DashboardPage({
       detail: attentionData.expiringContracts
         .filter((c: Record<string, any>) => c.autoRenews && c.inNoticeWindow)
         .slice(0, 3)
-        .map((c: Record<string, any>) => `${c.name} — ${c.daysToEnd}d left`)
+        .map((c: Record<string, any>) => `${c.name}, ${c.daysToEnd}d left`)
         .join(" · "),
       href: "/contracts",
       tone: "danger" as const,
@@ -316,7 +316,7 @@ export default async function DashboardPage({
       detail: attentionData.expiringContracts
         .filter((c: Record<string, any>) => !(c.autoRenews && c.inNoticeWindow))
         .slice(0, 3)
-        .map((c: Record<string, any>) => `${c.name} — ${formatDate(c.endDate)}`)
+        .map((c: Record<string, any>) => `${c.name}, ${formatDate(c.endDate)}`)
         .join(" · "),
       href: "/contracts",
       tone: "warning" as const,
@@ -327,7 +327,7 @@ export default async function DashboardPage({
       detail: approvals.items
         .filter((i) => !i.blockedReason)
         .slice(0, 3)
-        .map((i) => `${i.reference} — ${i.title}`)
+        .map((i) => `${i.reference}, ${i.title}`)
         .join(" · "),
       href: "/approvals",
       tone: "warning" as const,
@@ -489,7 +489,7 @@ export default async function DashboardPage({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <PageHeader
           title={`Good to see you, ${user.fullName.split(" ")[0]}`}
-          description="Pipeline, cash and delivery load — updating as it happens."
+          description="Pipeline, cash and delivery load - updating as it happens."
         />
         <div className="mb-4 flex items-center gap-3">
           <LiveClock />
@@ -736,7 +736,7 @@ export default async function DashboardPage({
       </div>
 
       {/* Hidden outright for a reader who can see no module's history, rather
-          than shown as an empty terminal — a blank log reads as "nothing is
+          than shown as an empty terminal - a blank log reads as "nothing is
           happening", which is a claim about the company and not about the
           reader's permissions. */}
       {auditTypes.length > 0 && (
@@ -748,7 +748,7 @@ export default async function DashboardPage({
               {/* Not "every edit anyone makes" any more: the stream is scoped to
                   the modules this reader can open, so promising the whole
                   company's activity would be a lie to most of them. */}
-              — edits across the modules you work in, as they land
+, edits across the modules you work in, as they land
             </span>
           </h2>
           <ActivityStream initial={recentChanges} visibleTypes={auditTypes} />

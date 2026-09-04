@@ -208,7 +208,7 @@ export function QuoteForm({
                 <option value="">Select a deal…</option>
                 {options.opportunities.map((o) => (
                   <option key={o.id} value={o.id}>
-                    {o.opportunityNumber} — {o.name} ({o.account?.name})
+                    {o.opportunityNumber} - {o.name} ({o.account?.name})
                   </option>
                 ))}
               </Select>
@@ -227,7 +227,7 @@ export function QuoteForm({
             help="The currency you are quoting in.">
             <Select name="currencyCode" required value={currency} onChange={(e) => setCurrency(e.target.value)}>
               {options.currencies.map((c) => (
-                <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
+                <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
               ))}
             </Select>
           </Field>

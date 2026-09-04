@@ -78,7 +78,7 @@ export default async function PartnersPage({
     <>
       <PageHeader
         title="Partners"
-        description="Resellers, referrers and implementation partners — companies and individuals alike."
+        description="Resellers, referrers and implementation partners - companies and individuals alike."
       >
         <ExportButton entity="partners" params={{ search: params.search, status: params.status }} />
         <Button asChild>

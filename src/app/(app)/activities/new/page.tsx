@@ -42,7 +42,7 @@ export default async function NewActivityPage({
     <>
       <PageHeader
         title="Log a touch"
-        description="A call, meeting, message, task or reminder — and who it belongs to."
+        description="A call, meeting, message, task or reminder - and who it belongs to."
       />
 
       <div className="max-w-2xl">
@@ -134,8 +134,8 @@ export default async function NewActivityPage({
           </div>
 
           <FormField label="Location" name="location"
-            help="Where it happens — an address, or a meeting link.">
-            <Input name="location" placeholder="Online — Teams, or an address" />
+            help="Where it happens - an address, or a meeting link.">
+            <Input name="location" placeholder="Online - Teams, or an address" />
           </FormField>
 
           <FormField label="Notes" name="description"

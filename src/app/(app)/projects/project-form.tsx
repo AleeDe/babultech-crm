@@ -124,7 +124,7 @@ export function ProjectForm({
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <Field label="Project name" required error={fieldErrors.name?.[0]}
             help="What the work is called. Use the name the customer would recognise.">
-            <Input name="name" required defaultValue={defaults?.name} placeholder="Acme — ERP implementation" />
+            <Input name="name" required defaultValue={defaults?.name} placeholder="Acme - ERP implementation" />
           </Field>
           <Field label="Customer" required error={fieldErrors.accountId?.[0]}
             help="The account this work is for. Internal product work can point at your own internal account.">
@@ -151,7 +151,7 @@ export function ProjectForm({
             >
               {options.users.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.fullName}{u.jobTitle ? ` — ${u.jobTitle}` : ""}
+                  {u.fullName}{u.jobTitle ? `, ${u.jobTitle}` : ""}
                 </option>
               ))}
             </Select>
@@ -161,7 +161,7 @@ export function ProjectForm({
             <Select name="opportunityId" defaultValue={defaults?.opportunityId ?? ""} disabled={!accountId}>
               <option value="">None</option>
               {accountOpportunities.map((o) => (
-                <option key={o.id} value={o.id}>{o.opportunityNumber} — {o.name}</option>
+                <option key={o.id} value={o.id}>{o.opportunityNumber} - {o.name}</option>
               ))}
             </Select>
           </Field>
@@ -191,7 +191,7 @@ export function ProjectForm({
             </Select>
           </Field>
           <Field label="Health" required hint="Your judgement, not a calculation."
-            help="A traffic light for how delivery is actually going, separate from status. A project can be Active and Red at the same time — that is the point.">
+            help="A traffic light for how delivery is actually going, separate from status. A project can be Active and Red at the same time - that is the point.">
             <Select name="health" required defaultValue={defaults?.health ?? "GREEN"}>
               {HEALTH.map((h) => (
                 <option key={h} value={h}>{humanize(h)}</option>
@@ -241,7 +241,7 @@ export function ProjectForm({
             help="The currency the project is billed in.">
             <Select name="currencyCode" required defaultValue={defaults?.currencyCode ?? "PKR"}>
               {options.currencies.map((c) => (
-                <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
+                <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
               ))}
             </Select>
           </Field>
@@ -262,7 +262,7 @@ export function ProjectForm({
           {billingType === "MILESTONE" && (
             <div className="sm:col-span-2 lg:col-span-4">
               <Alert tone="info">
-                Milestone billing — mark the milestones that trigger an invoice on the project
+                Milestone billing - mark the milestones that trigger an invoice on the project
                 workspace, and give each one an amount or a percentage of the contract value.
               </Alert>
             </div>

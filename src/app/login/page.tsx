@@ -32,7 +32,7 @@ export default async function LoginPage({
 
   return (
     <div className="relative grid min-h-screen place-items-center overflow-hidden bg-muted/40 p-4">
-      {/* Two soft washes behind the card. Decorative only — the form reads the
+      {/* Two soft washes behind the card. Decorative only - the form reads the
           same with them stripped out. */}
       <div
         className="pointer-events-none absolute -left-32 -top-32 h-96 w-96 rounded-full bg-primary/10 blur-3xl"

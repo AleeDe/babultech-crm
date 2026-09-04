@@ -114,7 +114,7 @@ export function LineEditor({
   return (
     <div className="space-y-3">
       {lines.length === 0 && (
-        <p className="text-sm text-muted-foreground">No lines yet — add the first one.</p>
+        <p className="text-sm text-muted-foreground">No lines yet - add the first one.</p>
       )}
 
       {lines.map((line) => {

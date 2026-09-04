@@ -275,7 +275,7 @@ export async function createExpense(
   if (d.billableToCustomer && !d.projectId) {
     return {
       ok: false,
-      error: "A billable expense needs a project — that is what it gets billed through.",
+      error: "A billable expense needs a project - that is what it gets billed through.",
       fieldErrors: { projectId: ["Required for a billable expense."] },
     };
   }
@@ -572,7 +572,7 @@ export async function createExpensesBulk(
     const parsed = expenseSchema.safeParse(row);
     if (!parsed.success) {
       const first = Object.entries(parsed.error.flatten().fieldErrors)[0];
-      rowErrors.push(`Row ${i + 1}: ${first ? `${first[0]} — ${first[1]?.[0]}` : "invalid"}`);
+      rowErrors.push(`Row ${i + 1}: ${first ? `${first[0]}, ${first[1]?.[0]}` : "invalid"}`);
       return;
     }
     const d = parsed.data;

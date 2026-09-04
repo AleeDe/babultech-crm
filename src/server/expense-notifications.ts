@@ -265,8 +265,8 @@ export async function notifyExpenseSubmitted(
   return send({
     to: deliverTo(approvers, overrides),
     subject: single
-      ? `Approval needed: ${single.expenseNumber} — ${formatMoney(single.amount, single.currencyCode)}`
-      : `Approval needed: ${rows.length} expenses — ${formatMoney(total, currency)}`,
+      ? `Approval needed: ${single.expenseNumber}, ${formatMoney(single.amount, single.currencyCode)}`
+      : `Approval needed: ${rows.length} expenses, ${formatMoney(total, currency)}`,
     html,
     text,
     expenseId: rows[0].id,
@@ -357,7 +357,7 @@ export async function notifyExpenseDecided(
       to: deliverTo([user], overrides),
       subject: single
         ? `Expense ${single.expenseNumber} ${verb}`
-        : `${rows.length} expenses ${verb} — ${formatMoney(total, currency)}`,
+        : `${rows.length} expenses ${verb}, ${formatMoney(total, currency)}`,
       html,
       text,
       expenseId: rows[0].id,

@@ -186,7 +186,7 @@ export function PartnerForm({ options }: { options: Options }) {
             help="The sector they specialise in.">
                   <Input name="industry" placeholder="IT Services" />
                 </Field>
-                <Field label="Primary contact first name" hint="Optional — the person you deal with there."
+                <Field label="Primary contact first name" hint="Optional - the person you deal with there."
             help="Given name of your main point of contact there.">
                   <Input name="primaryContactFirstName" />
                 </Field>
@@ -208,7 +208,7 @@ export function PartnerForm({ options }: { options: Options }) {
                 {options.contacts.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.firstName} {c.lastName}
-                    {c.email ? ` — ${c.email}` : ""}
+                    {c.email ? `, ${c.email}` : ""}
                   </option>
                 ))}
               </Select>
@@ -242,7 +242,7 @@ export function PartnerForm({ options }: { options: Options }) {
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Partner type" required
-            help="What kind of partner they are — reseller, referrer, implementation partner. Decides how commission is treated.">
+            help="What kind of partner they are - reseller, referrer, implementation partner. Decides how commission is treated.">
             <Select name="partnerType" required defaultValue="REFERRAL">
               {["REFERRAL", "RESELLER", "IMPLEMENTATION", "TECHNOLOGY", "DISTRIBUTOR"].map((t) => (
                 <option key={t} value={t}>{humanize(t)}</option>
@@ -312,7 +312,7 @@ export function PartnerForm({ options }: { options: Options }) {
             help="The plan that decides how much they earn. Set the plans up first under Commissions."
           >
             <Select name="commissionPlanId">
-              <option value="">No plan — use the default rate</option>
+              <option value="">No plan - use the default rate</option>
               {options.plans.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} ({humanize(p.rateType)})
@@ -328,7 +328,7 @@ export function PartnerForm({ options }: { options: Options }) {
             help="The currency they are paid in, which is not always the currency of the deal.">
             <Select name="payoutCurrencyCode" defaultValue="PKR">
               {options.currencies.map((c) => (
-                <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
+                <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
               ))}
             </Select>
           </Field>
@@ -342,7 +342,7 @@ export function PartnerForm({ options }: { options: Options }) {
           </Field>
           <Field
             label="Deal protection (days)"
-            hint={`Blank uses the tier default — ${TIER_PROTECTION_DAYS[tierValue] ?? DEAL_REGISTRATION_PROTECTION_DAYS} days for ${humanize(tierValue)}.`}
+            hint={`Blank uses the tier default, ${TIER_PROTECTION_DAYS[tierValue] ?? DEAL_REGISTRATION_PROTECTION_DAYS} days for ${humanize(tierValue)}.`}
             help="How long a partner keeps exclusive claim to a deal they registered. Stops a second partner or your own team registering the same customer behind them."
           >
             <Input name="registrationProtectionDays" type="number" min="1" max="365" />

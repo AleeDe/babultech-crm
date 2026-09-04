@@ -92,7 +92,7 @@ export default async function TaskDetailPage({
       {task.status === "BLOCKED" && (
         <div className="mb-5">
           <Alert tone="warning">
-            This task is blocked. Whatever is holding it up belongs in the notes below — a blocked
+            This task is blocked. Whatever is holding it up belongs in the notes below - a blocked
             task with no reason recorded stays blocked.
           </Alert>
         </div>
@@ -176,7 +176,7 @@ export default async function TaskDetailPage({
               {task.completedDate ? formatDate(task.completedDate) : "—"}
             </DetailRow>
             <DetailRow label="Billable">
-              {task.billable ? "Yes — time bills to the customer" : "No"}
+              {task.billable ? "Yes - time bills to the customer" : "No"}
             </DetailRow>
           </CardContent>
         </Card>

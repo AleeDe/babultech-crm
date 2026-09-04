@@ -252,7 +252,7 @@ export function SalesView({
           <h2 className="mb-2 text-sm font-semibold">Stalled deals</h2>
           <p className="mb-2 text-xs text-muted-foreground">
             Past their expected close date. Either they move or they should be
-            closed out — a pipeline full of these is a pipeline you cannot forecast
+            closed out - a pipeline full of these is a pipeline you cannot forecast
             from.
           </p>
           <div className="overflow-hidden rounded-xl border bg-card">

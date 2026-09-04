@@ -232,7 +232,7 @@ export function TaskBoard({
           <Select name="assignedUserId" defaultValue={task?.assignedUserId ?? ""}>
             <option value="">Unassigned</option>
             {assignable.map((m) => (
-              <option key={m.userId} value={m.userId}>{m.user?.fullName} — {m.projectRole}</option>
+              <option key={m.userId} value={m.userId}>{m.user?.fullName} - {m.projectRole}</option>
             ))}
           </Select>
         </Field>
@@ -246,7 +246,7 @@ export function TaskBoard({
           </Select>
         </Field>
         <Field label="Milestone"
-            help="A point the customer recognises — a delivery, a sign-off, a payment trigger.">
+            help="A point the customer recognises - a delivery, a sign-off, a payment trigger.">
           <Select name="milestoneId" defaultValue={task?.milestoneId ?? ""}>
             <option value="">No milestone</option>
             {milestones.map((m) => (
@@ -310,7 +310,7 @@ export function TaskBoard({
           </Field>
         </div>
         <div className="sm:col-span-2">
-          <Field label="Acceptance criteria" hint="What 'done' means — the thing arguments are avoided with."
+          <Field label="Acceptance criteria" hint="What 'done' means - the thing arguments are avoided with."
             help="What has to be true for this to count as done. Written before the work starts, it prevents the argument at the end.">
             <Textarea name="acceptanceCriteria" rows={2} defaultValue={task?.acceptanceCriteria ?? ""} />
           </Field>
@@ -497,7 +497,7 @@ export function TaskBoard({
         <div>
           <CardTitle>Tasks</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            Completing tasks rolls progress up into phases and the project — the percentage is never typed in.
+            Completing tasks rolls progress up into phases and the project - the percentage is never typed in.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -536,7 +536,7 @@ export function TaskBoard({
 
         {tasks.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No tasks yet. Add the first one — until then the project shows 0% because nothing has been planned.
+            No tasks yet. Add the first one - until then the project shows 0% because nothing has been planned.
           </p>
         ) : view === "board" ? (
           <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
@@ -656,7 +656,7 @@ export function TeamPanel({
       const result = await removeProjectMember(id);
       if (result.ok) {
         if (result.data.deactivated) {
-          setNotice("They have logged time on this project, so they were deactivated rather than removed — their hours stay attached to them.");
+          setNotice("They have logged time on this project, so they were deactivated rather than removed - their hours stay attached to them.");
         }
         router.refresh();
       } else setError(result.error);
@@ -685,13 +685,13 @@ export function TeamPanel({
                   <option value="">Select…</option>
                   {available.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.fullName}{u.jobTitle ? ` — ${u.jobTitle}` : ""}
+                      {u.fullName}{u.jobTitle ? `, ${u.jobTitle}` : ""}
                     </option>
                   ))}
                 </Select>
               </Field>
               <Field label="Role on project" required
-            help="What they do here — developer, analyst, tester. Separate from their job title.">
+            help="What they do here - developer, analyst, tester. Separate from their job title.">
                 <Input name="projectRole" required placeholder="Business Analyst" />
               </Field>
               <Field label="Allocation %" hint="Share of their week booked to this project."
@@ -912,7 +912,7 @@ export function PlanPanel({
       <CardHeader>
         <CardTitle>Plan</CardTitle>
         <p className="mt-1 text-sm text-muted-foreground">
-          Phases group the work; milestones are what the customer signs off — and, where marked, what triggers an invoice.
+          Phases group the work; milestones are what the customer signs off - and, where marked, what triggers an invoice.
         </p>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -925,7 +925,7 @@ export function PlanPanel({
               <form action={addPhase} className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <Field label="Phase name" required
-            help="A stage of the project — Discovery, Build, UAT. Tasks and milestones hang off phases.">
+            help="A stage of the project - Discovery, Build, UAT. Tasks and milestones hang off phases.">
                     <Input name="name" required placeholder="Discovery" />
                   </Field>
                   <Field label="Owner"

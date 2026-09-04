@@ -33,9 +33,9 @@ export interface PageGuide {
 export const PAGE_GUIDES: Record<string, PageGuide> = {
   "/": {
     purpose:
-      "The state of the business in one screen — pipeline, cash, delivery load and anything that needs a decision today.",
+      "The state of the business in one screen - pipeline, cash, delivery load and anything that needs a decision today.",
     needs: ["Records created anywhere else in the app"],
-    feeds: ["Nothing — this is a read-only summary"],
+    feeds: ["Nothing - this is a read-only summary"],
     watchOut:
       "Figures are scoped to what your role may see, so two people can correctly see different totals.",
   },
@@ -60,11 +60,11 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
 
   "/accounts": {
     purpose:
-      "Organisations you deal with — customers, prospects, partners and vendors, one record with many roles.",
+      "Organisations you deal with - customers, prospects, partners and vendors, one record with many roles.",
     needs: ["Usually created by converting a lead"],
     feeds: ["Opportunities, contracts, projects, invoices and support cases all hang off an account"],
     watchOut:
-      "Check whether a company already exists before converting a lead — duplicate accounts split a customer's history and are painful to merge.",
+      "Check whether a company already exists before converting a lead - duplicate accounts split a customer's history and are painful to merge.",
   },
 
   "/contacts": {
@@ -74,7 +74,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
   },
 
   "/opportunities": {
-    purpose: "Deals you are working — what might close, for how much, and when.",
+    purpose: "Deals you are working - what might close, for how much, and when.",
     needs: ["An account, usually from converting a lead"],
     feeds: [
       "Quotations are raised against a deal",
@@ -96,7 +96,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
   },
 
   "/contracts": {
-    purpose: "The agreed terms — value, dates, billing frequency and renewal.",
+    purpose: "The agreed terms - value, dates, billing frequency and renewal.",
     needs: ["Usually an accepted quotation"],
     feeds: ["Projects deliver against a contract", "Invoices reference it"],
     watchOut:
@@ -105,7 +105,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
 
   "/products": {
     purpose:
-      "Your catalogue — what you sell, at what standard price and cost.",
+      "Your catalogue - what you sell, at what standard price and cost.",
     feeds: [
       "Quotation and invoice lines pull price and tax from here",
       "Standard cost is what makes margin figures meaningful",
@@ -126,11 +126,11 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
     needs: ["A partner attached to a won deal, with a commission plan"],
     feeds: ["Payouts, once approved"],
     watchOut:
-      "When commission accrues depends on the plan's trigger — on close, on invoice, or on payment received.",
+      "When commission accrues depends on the plan's trigger - on close, on invoice, or on payment received.",
   },
 
   "/projects": {
-    purpose: "Delivery engagements — the work you actually do for a customer.",
+    purpose: "Delivery engagements - the work you actually do for a customer.",
     needs: ["An account, and usually a contract"],
     feeds: [
       "Milestones become invoices",
@@ -141,7 +141,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
   },
 
   "/timesheets": {
-    purpose: "Your week — what you worked on, for how long, and when.",
+    purpose: "Your week - what you worked on, for how long, and when.",
     needs: ["A project you are a member of, or a support case"],
     feeds: [
       "Approved billable time can be invoiced",
@@ -165,13 +165,13 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
   },
 
   "/activities": {
-    purpose: "Calls, meetings and tasks — the touches that move a deal along.",
+    purpose: "Calls, meetings and tasks - the touches that move a deal along.",
     feeds: ["Attached to a lead, deal, account or case as its history"],
   },
 
   "/invoices": {
     purpose: "What you have billed, and what is still outstanding.",
-    needs: ["Something to bill — a milestone, approved time, or a contract"],
+    needs: ["Something to bill - a milestone, approved time, or a contract"],
     feeds: ["Payments are allocated against invoices", "Commission may accrue on issue"],
     watchOut:
       "A draft invoice can be edited; once issued it cannot. Reverse it with a credit note instead.",
@@ -199,7 +199,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
 
   "/approvals": {
     purpose:
-      "Everything waiting on you — quotes, expenses, time, bills and commission, in one queue.",
+      "Everything waiting on you - quotes, expenses, time, bills and commission, in one queue.",
     needs: ["An approval permission for the kind of record"],
     feeds: ["Approving here unblocks invoicing, payment and payout elsewhere"],
   },
@@ -220,7 +220,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
 
   "/settings": {
     purpose:
-      "The lists the rest of the app chooses from — categories, tax rates, currencies, numbering and SLA policies.",
+      "The lists the rest of the app chooses from - categories, tax rates, currencies, numbering and SLA policies.",
     feeds: ["Almost every dropdown in the system reads from here"],
   },
 };

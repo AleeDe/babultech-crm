@@ -90,7 +90,7 @@ export async function createCase(
   if (!data.ownerUserId && !data.teamId) {
     return {
       ok: false,
-      error: "An open case needs an owner or a team — otherwise nobody is answering it.",
+      error: "An open case needs an owner or a team - otherwise nobody is answering it.",
       fieldErrors: { ownerUserId: ["Assign a person or a team."] },
     };
   }

@@ -110,7 +110,7 @@ export function parseExpenseDate(
     if (!month) return { date: null, note: null, error: `Unrecognised month "${monthOnly[1]}".` };
     return {
       date: iso(Number(monthOnly[2]), month, 1),
-      note: "month only — assumed the 1st",
+      note: "month only - assumed the 1st",
       error: null,
     };
   }
@@ -160,7 +160,7 @@ export function parseExpenseDate(
   if (!Number.isNaN(parsed.getTime()) && year >= 1900 && year <= 2200) {
     return {
       date: iso(year, parsed.getMonth() + 1, parsed.getDate()),
-      note: "interpreted loosely — check it",
+      note: "interpreted loosely - check it",
       error: null,
     };
   }
