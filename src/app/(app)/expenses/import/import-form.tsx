@@ -311,7 +311,6 @@ export function ExpenseImportForm({
             >
               <input
                 type="radio"
-                name="whopaid"
                 className="mt-1"
                 checked={!paidByCompany}
                 onChange={() => setPaidByCompany(false)}
@@ -331,7 +330,6 @@ export function ExpenseImportForm({
             >
               <input
                 type="radio"
-                name="whopaid"
                 className="mt-1"
                 checked={paidByCompany}
                 onChange={() => setPaidByCompany(true)}

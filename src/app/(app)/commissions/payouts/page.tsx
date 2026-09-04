@@ -32,6 +32,8 @@ export default async function PayoutsPage() {
   return (
     <>
       <PageHeader
+        backTo="/commissions"
+        backLabel="Back to commissions"
         title="Commission payouts"
         description="Batched partner payments. Approving then paying a batch posts an outgoing cash transaction."
       >

@@ -12,6 +12,8 @@ export default async function ExpenseImportPage() {
   return (
     <>
       <PageHeader
+        backTo="/expenses"
+        backLabel="Back to expenses"
         title="Import expenses"
         description="Upload a CSV from your spreadsheet, or paste the rows. Everything is previewed and checked before anything is written."
       />

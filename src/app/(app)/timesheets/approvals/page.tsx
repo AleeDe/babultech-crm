@@ -13,6 +13,8 @@ export default async function TimeApprovalsPage() {
   return (
     <>
       <PageHeader
+        backTo="/timesheets"
+        backLabel="Back to timesheets"
         title="Time approvals"
         description="Approved hours become project cost and billable value, so this is the gate before anything reaches an invoice."
       >
