@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseExpenseDate, parseAmount, parseExpenseRows,
   splitSheet, guessMapping, parseMappedRows, sheetFromWorkbookRows,
+  detectDateOrder, matchUserId,
 } from "../src/lib/parse-expense-rows";
 
 /**
@@ -78,9 +79,17 @@ describe("parseExpenseRows", () => {
     const [rent] = parseExpenseRows(sheet);
     expect(rent.type).toBe("Rent");
     expect(rent.amount).toBe(45000);
-    expect(rent.date).toBe("2026-05-08");
     expect(rent.notes).toBe("2 months advance");
     expect(rent.errors).toHaveLength(0);
+  });
+
+  it("reads an ambiguous date the way the rest of the sheet writes them", () => {
+    // The second row's 25/05 can only be day-first, so 5/8 in the first row is
+    // the 8th of August. Read in isolation it would have been the 5th of May,
+    // which is the mis-filing this whole mechanism exists to prevent.
+    const [rent] = parseExpenseRows(sheet);
+    expect(rent.date).toBe("2026-08-05");
+    expect(rent.dateNote).toBeNull();
   });
 
   it("collects errors per row instead of throwing", () => {
@@ -274,5 +283,78 @@ describe("sheetFromWorkbookRows", () => {
 
   it("returns nothing for an empty sheet", () => {
     expect(sheetFromWorkbookRows([[null, null], ["", ""]]).rows).toHaveLength(0);
+  });
+});
+
+/**
+ * One sheet keeps one convention. Reading each cell in isolation means a
+ * column holding both "25/05" and "2/7" gets read two different ways, and half
+ * the year is filed in the wrong month while looking like a clean import.
+ */
+describe("detectDateOrder", () => {
+  it("takes day-first from a cell that can only be day-first", () => {
+    expect(detectDateOrder(["25/05/2026", "2/7/2026", "5/8/2026"])).toBe("day-first");
+  });
+
+  it("takes month-first from a cell that can only be month-first", () => {
+    expect(detectDateOrder(["4/30/2026", "2/7/2026", "5/8/2026"])).toBe("month-first");
+  });
+
+  it("refuses to choose when the sheet contradicts itself", () => {
+    // 25/05 is only day-first, 4/30 is only month-first. A majority verdict
+    // would silently mis-file whichever half lost.
+    expect(detectDateOrder(["25/05/2026", "4/30/2026", "2/7/2026"])).toBe("unknown");
+  });
+
+  it("says unknown when nothing disambiguates", () => {
+    expect(detectDateOrder(["2/7/2026", "5/8/2026"])).toBe("unknown");
+  });
+
+  it("stops flagging a cell the sheet's own convention settles", () => {
+    const settled = parseExpenseDate("2/7/2026", "day-first");
+    expect(settled.date).toBe("2026-07-02");
+    expect(settled.note).toBeNull();
+
+    // With no convention to lean on it still reads month-first, and says so.
+    const guessed = parseExpenseDate("2/7/2026");
+    expect(guessed.date).toBe("2026-02-07");
+    expect(guessed.note).toMatch(/month-first/);
+  });
+});
+
+describe("matchUserId", () => {
+  const users = [
+    { id: "u1", fullName: "Hassan Shamsi" },
+    { id: "u2", fullName: "Muhammad Ali" },
+    { id: "u3", fullName: "Sami Ullah" },
+  ];
+
+  it("matches a full name", () => {
+    expect(matchUserId("Hassan Shamsi", users)).toBe("u1");
+  });
+
+  it("matches a first name on its own", () => {
+    expect(matchUserId("Sami", users)).toBe("u3");
+  });
+
+  it("matches the spelling a sheet actually uses", () => {
+    // "Hasan" for "Hassan": one 's' short, which is how people write it.
+    expect(matchUserId("Hasan", users)).toBe("u1");
+  });
+
+  it("refuses a name two people could answer to", () => {
+    const two = [...users, { id: "u4", fullName: "Hassan Iqbal" }];
+    expect(matchUserId("Hassan", two)).toBeNull();
+  });
+
+  it("does not stretch a short name to a near miss", () => {
+    // Three letters is too little to spend an edit on: "Ali" must not find
+    // "Adil", and reimbursing the wrong person is the cost of being wrong.
+    expect(matchUserId("Adi", users)).toBeNull();
+  });
+
+  it("returns null for an empty or unknown name", () => {
+    expect(matchUserId("", users)).toBeNull();
+    expect(matchUserId("Nobody", users)).toBeNull();
   });
 });

@@ -40,7 +40,7 @@ export const IMPORT_FIELDS = [
     key: "by",
     label: "Paid by",
     required: false,
-    hint: "Kept on the row for reference. Who to reimburse is chosen above.",
+    hint: "Matched to a user by name. Rows that match nobody use the person chosen above.",
   },
 ] as const;
 
@@ -71,6 +71,40 @@ export type ParsedRow = {
   errors: string[];
 };
 
+/** Which half of "5/8/2026" is the day, as far as one sheet is concerned. */
+export type DateOrder = "day-first" | "month-first" | "unknown";
+
+/**
+ * Works out how a sheet writes its dates, from the cells that can only be read
+ * one way.
+ *
+ * "25/05/2026" has to be day-first: there is no 25th month. One such cell says
+ * more about the sheet than any number of ambiguous ones, because a person
+ * filling a column does not switch convention halfway down.
+ *
+ * A sheet that contradicts itself — some cells only valid day-first, others
+ * only month-first — gets "unknown" rather than a majority verdict. That is
+ * not a sheet with a convention, and pretending otherwise would silently
+ * mis-file whichever half lost the vote.
+ */
+export function detectDateOrder(cells: string[]): DateOrder {
+  let dayFirst = 0;
+  let monthFirst = 0;
+
+  for (const cell of cells) {
+    const m = cell.trim().match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/);
+    if (!m) continue;
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    if (a > 12 && b <= 12) dayFirst++;
+    else if (b > 12 && a <= 12) monthFirst++;
+  }
+
+  if (dayFirst > 0 && monthFirst === 0) return "day-first";
+  if (monthFirst > 0 && dayFirst === 0) return "month-first";
+  return "unknown";
+}
+
 const MONTHS: Record<string, number> = {
   jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
   jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
@@ -88,17 +122,18 @@ function validDay(y: number, m: number, d: number): boolean {
 /**
  * Reads a date cell.
  *
- * Numeric dates are assumed month-first, matching the sheet these rows come
- * from. When the first number is above 12 it cannot be a month, so the cell is
- * read day-first instead and the reading is reported — that disagreement is
- * exactly what the preview needs to surface.
+ * When the first number is above 12 it cannot be a month, so that cell is
+ * day-first and says so. Anything else depends on `order`: pass the convention
+ * detectDateOrder found for the whole sheet and an otherwise ambiguous cell is
+ * read that way without being flagged, because it is no longer a guess. With
+ * no order to go on it falls back to month-first and flags it.
  *
  * A month-only cell ("Feb 2026", "Mar2026") resolves to the first of the month,
  * which is a guess and is flagged as one.
  */
 export function parseExpenseDate(
   input: string,
-  defaultYear = new Date().getFullYear(),
+  order: DateOrder = "unknown",
 ): { date: string | null; note: string | null; error: string | null } {
   const text = input.trim();
   if (!text) return { date: null, note: null, error: "No date." };
@@ -137,14 +172,23 @@ export function parseExpenseDate(
       return { date: iso(year, b, a), note: `read as ${a}/${b} day-first`, error: null };
     }
 
-    if (!validDay(year, a, b)) return { date: null, note: null, error: `"${text}" is not a real date.` };
+    // Both halves are 12 or under, so the cell could be read either way. When
+    // the sheet's other rows have already settled which way it writes dates,
+    // that answer is used and there is nothing to flag: the reading is not a
+    // guess any more. Only a sheet that never disambiguates itself falls back
+    // to month-first and says so.
+    const dayFirst = order === "day-first";
+    const [month, day] = dayFirst ? [b, a] : [a, b];
 
-    // Both halves are 12 or under, so the cell is genuinely ambiguous. Read it
-    // month-first and say so when the other reading is also a real date.
-    const alsoValid = b <= 12 && a !== b;
+    if (!validDay(year, month, day)) {
+      return { date: null, note: null, error: `"${text}" is not a real date.` };
+    }
+
+    const ambiguous = a <= 12 && b <= 12 && a !== b;
     return {
-      date: iso(year, a, b),
-      note: alsoValid ? `read as ${a}/${b} month-first` : null,
+      date: iso(year, month, day),
+      note:
+        ambiguous && order === "unknown" ? `read as ${a}/${b} month-first` : null,
       error: null,
     };
   }
@@ -438,13 +482,19 @@ export function parseMappedRows(sheet: SplitSheet, mapping: ColumnMapping): Pars
   const cellAt = (cells: string[], index: number | undefined) =>
     index === undefined ? "" : (cells[index] ?? "");
 
+  // One sheet keeps one convention, so the rows that can only be read one way
+  // settle the rows that could be read either. Without this a sheet holding
+  // "25/05" and "2/7" flags the second as ambiguous and reads it the opposite
+  // way to the first — half the year quietly filed in the wrong month.
+  const order = detectDateOrder(sheet.rows.map((r) => cellAt(r.cells, dateAt)));
+
   return sheet.rows.map(({ line, cells }) => {
     const type = cellAt(cells, typeAt);
     const dateCell = cellAt(cells, dateAt);
     const amountCell = cellAt(cells, amountAt);
 
     const errors: string[] = [];
-    const { date, note, error } = parseExpenseDate(dateCell);
+    const { date, note, error } = parseExpenseDate(dateCell, order);
     if (error) errors.push(error);
 
     const amount = parseAmount(amountCell);
@@ -494,4 +544,61 @@ export function matchCategoryId(
 
   const prefixed = categories.filter((c) => norm(c.name).startsWith(target));
   return prefixed.length === 1 ? prefixed[0].id : null;
+}
+
+/**
+ * Matches a sheet's "paid by" column to a user.
+ *
+ * A sheet writes what people call each other, not what the system does:
+ * "Hasan" for "Hassan Shamsi", one 's' short and no surname. So a full-name
+ * match is tried first, then the first name, then a spelling close enough to
+ * be the same person — one character out over a name of five or more, which
+ * covers a dropped double letter without pairing "Ali" with "Adi".
+ *
+ * Ambiguity is never resolved by guessing. Two people called Hassan means no
+ * match, and the row falls back to whoever the form has selected — being told
+ * the column was ignored beats reimbursing the wrong person.
+ */
+export function matchUserId(
+  name: string,
+  users: { id: string; fullName: string }[],
+): string | null {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");
+  const target = norm(name);
+  if (!target) return null;
+
+  const only = (matches: { id: string }[]) =>
+    matches.length === 1 ? matches[0].id : null;
+
+  const full = users.filter((u) => norm(u.fullName) === target);
+  if (full.length > 0) return only(full);
+
+  const first = users.filter((u) => norm(u.fullName.split(/\s+/)[0] ?? "") === target);
+  if (first.length > 0) return only(first);
+
+  // A near miss on the first name, for the doubled letter a sheet drops.
+  if (target.length >= 5) {
+    const close = users.filter(
+      (u) => editDistanceWithin1(norm(u.fullName.split(/\s+/)[0] ?? ""), target),
+    );
+    if (close.length > 0) return only(close);
+  }
+
+  return null;
+}
+
+/** True when two strings are one insertion, deletion or substitution apart. */
+function editDistanceWithin1(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  let i = 0, j = 0, edits = 0;
+  while (i < short.length && j < long.length) {
+    if (short[i] === long[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (short.length === long.length) i++;
+    j++;
+  }
+  return edits + (long.length - j) + (short.length - i) <= 1;
 }

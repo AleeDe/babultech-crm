@@ -9,7 +9,7 @@ import {
 } from "@/components/ui";
 import { formatMoney } from "@/lib/utils";
 import {
-  splitSheet, sheetFromWorkbookRows, guessMapping, parseMappedRows, matchCategoryId,
+  splitSheet, sheetFromWorkbookRows, guessMapping, parseMappedRows, matchCategoryId, matchUserId,
   IMPORT_FIELDS, type ColumnMapping, type ImportField, type SplitSheet,
 } from "@/lib/parse-expense-rows";
 import { createExpensesBulk, createExpenseCategory } from "@/server/payables";
@@ -112,9 +112,20 @@ export function ExpenseImportForm({
       if (!categoryId) {
         errors.push(`No category matches "${row.type}", create it or pick a fallback below.`);
       }
-      return { ...row, categoryId, matched: Boolean(matched), errors };
+      // The sheet's own "paid by" wins where it names someone recognisable,
+      // so a shared sheet reimburses the person who actually paid rather than
+      // whoever the form happens to have selected.
+      const rowUserId = matchUserId(row.by, users);
+      return {
+        ...row,
+        categoryId,
+        matched: Boolean(matched),
+        userId: rowUserId ?? employeeUserId,
+        userMatched: Boolean(rowUserId),
+        errors,
+      };
     });
-  }, [sheet, mapping, mappingReady, fallbackCategoryId, known]);
+  }, [sheet, mapping, mappingReady, fallbackCategoryId, known, users, employeeUserId]);
 
   /**
    * The types in this paste that no category covers.
@@ -132,8 +143,16 @@ export function ExpenseImportForm({
     return [...seen.values()];
   }, [resolved]);
 
+  const namedInSheet = resolved.filter((r) => r.userMatched).length;
   const badRows = resolved.filter((r) => r.errors.length > 0);
   const flagged = resolved.filter((r) => r.errors.length === 0 && r.dateNote);
+  // Some rows only make sense read day-first and others only month-first, so
+  // no single convention fits. Worth saying once at the top rather than
+  // leaving it to be inferred from a scattering of per-row notes.
+  const mixedDates =
+    resolved.length > 0 &&
+    resolved.some((r) => r.dateNote?.includes("day-first")) &&
+    resolved.some((r) => r.dateNote?.includes("month-first"));
   const total = resolved.reduce((sum, r) => sum + (r.amount ?? 0), 0);
   const canImport = resolved.length > 0 && badRows.length === 0 && Boolean(employeeUserId);
 
@@ -239,7 +258,7 @@ export function ExpenseImportForm({
           amount: r.amount!,
           currencyCode,
           description: r.notes || r.type,
-          employeeUserId,
+          employeeUserId: r.userId,
           projectId: projectId || null,
           billableToCustomer: false,
           reimbursable: true,
@@ -261,7 +280,15 @@ export function ExpenseImportForm({
 
       <Card className="p-5">
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Paid by" required>
+          <Field
+            label="Paid by"
+            required
+            hint={
+              namedInSheet > 0
+                ? `${namedInSheet} of ${resolved.length} rows name their own person. This covers the rest.`
+                : "Used for every row. Map a Paid by column to take it from the sheet instead."
+            }
+          >
             <Select value={employeeUserId} onChange={(e) => setEmployeeUserId(e.target.value)}>
               {users.map((u) => (
                 <option key={u.id} value={u.id}>{u.fullName}</option>
@@ -524,6 +551,11 @@ export function ExpenseImportForm({
                 <AlertTriangle className="h-3 w-3" /> {flagged.length} date{flagged.length === 1 ? "" : "s"} to check
               </Badge>
             )}
+            {mixedDates && (
+              <Badge tone="warning">
+                <AlertTriangle className="h-3 w-3" /> mixed date order
+              </Badge>
+            )}
             <div className="ml-auto flex gap-2">
               <Button
                 variant="outline"
@@ -546,6 +578,7 @@ export function ExpenseImportForm({
                 <TH>Type → Category</TH>
                 <TH>Date</TH>
                 <TH className="text-right">Amount</TH>
+                <TH>Paid by</TH>
                 <TH>Notes</TH>
               </TR>
             </THead>
@@ -569,6 +602,16 @@ export function ExpenseImportForm({
                   </TD>
                   <TD className="text-right tabular">
                     {row.amount !== null ? formatMoney(row.amount, currencyCode) : "—"}
+                  </TD>
+                  <TD className="whitespace-nowrap text-sm">
+                    {users.find((u) => u.id === row.userId)?.fullName ?? "—"}
+                    {/* Only worth saying when the sheet named someone and this
+                        is not them: silence otherwise reads as agreement. */}
+                    {row.by && !row.userMatched && (
+                      <p className="text-xs text-amber-600 dark:text-amber-500">
+                        &quot;{row.by}&quot; not matched
+                      </p>
+                    )}
                   </TD>
                   <TD className="max-w-[240px] text-sm">
                     <span className="block truncate text-muted-foreground">{row.notes || "—"}</span>
