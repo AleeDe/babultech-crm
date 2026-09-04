@@ -1,8 +1,9 @@
-import { createExpense, getPayableFormOptions } from "@/server/payables";
+import { createExpense, createExpenseCategory, getPayableFormOptions } from "@/server/payables";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
-import { PageHeader, Forbidden, Input, Select, Textarea, Alert } from "@/components/ui";
+import { PageHeader, Forbidden, Input, Select, Textarea } from "@/components/ui";
 import { RecordForm, FormField } from "@/components/record-form";
 import { FieldHelp } from "@/components/field-help";
+import { SelectWithAdd } from "@/components/select-with-add";
 
 export default async function NewExpensePage() {
   const me = await requireUser();
@@ -17,14 +18,6 @@ export default async function NewExpensePage() {
         description="Something the business paid for. On a project it can be billed on to the customer."
       />
 
-      {categories.length === 0 && (
-        <div className="mb-4">
-          <Alert tone="warning">
-            There are no expense categories yet. An administrator can add them under Settings.
-          </Alert>
-        </div>
-      )}
-
       <div className="max-w-2xl">
         <RecordForm action={createExpense} redirectTo="/expenses" submitLabel="Record expense">
           <div className="grid gap-5 sm:grid-cols-2">
@@ -32,18 +25,16 @@ export default async function NewExpensePage() {
               label="Category"
               name="categoryId"
               required
-              help="What kind of cost this was — rent, utilities, hardware, software. It decides which line of the accounts it lands on, so pick the closest match rather than a general one."
+              help="What kind of cost this was — rent, utilities, hardware, software. It decides which line of the accounts it lands on, so pick the closest match rather than a general one. Add one with + if it is not listed."
             >
-              <Select name="categoryId" required defaultValue="">
-                <option value="" disabled>
-                  Choose a category…
-                </option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
+              <SelectWithAdd
+                name="categoryId"
+                required
+                options={categories}
+                placeholder="Choose a category…"
+                addLabel="Add an expense category"
+                onCreate={createExpenseCategory}
+              />
             </FormField>
 
             <FormField
