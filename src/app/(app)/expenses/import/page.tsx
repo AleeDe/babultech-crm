@@ -13,7 +13,7 @@ export default async function ExpenseImportPage() {
     <>
       <PageHeader
         title="Import expenses"
-        description="Paste rows from a spreadsheet. Everything is previewed and checked before anything is written."
+        description="Upload a CSV from your spreadsheet, or paste the rows. Everything is previewed and checked before anything is written."
       />
       <ExpenseImportForm
         categories={options.categories}

@@ -21,9 +21,15 @@ Rent\tHasan\t5/8/2026\t45000\t2 months advance
 Internet\tHasan\t2/12/2026\t7000\tInternet plus router`;
 
 /**
- * Paste-to-import.
+ * File-to-import, with pasting kept as the fallback.
  *
- * Three steps on purpose. The paste is split into a table, the columns are
+ * A file is what people actually have: a CSV out of Excel or Google Sheets.
+ * The paste box was the only way in for a while, which meant the screen asked
+ * for a file's contents rather than the file, so it is still here but no longer
+ * the thing the eye lands on. Both feed the same string, so the two routes
+ * cannot disagree about what gets imported.
+ *
+ * Three steps on purpose. The rows are split into a table, the columns are
  * shown with a guess at what each one holds, and only then is anything read as
  * a date or an amount. The middle step is what makes a sheet in any order
  * importable: the guess covers the common cases, and where it is wrong the
@@ -32,8 +38,8 @@ Internet\tHasan\t2/12/2026\t7000\tInternet plus router`;
  *
  * The preview stays the last word. Dates are the reason — "06/11/2026" is a
  * real date under both readings, and the only way to catch a wrong one is to
- * show it. Nothing is written until every row is clean, so a rejected paste can
- * be fixed and re-pasted without worrying about which half already landed.
+ * show it. Nothing is written until every row is clean, so a rejected sheet can
+ * be fixed and dropped again without worrying about which half already landed.
  */
 export function ExpenseImportForm({
   categories,
@@ -49,6 +55,7 @@ export function ExpenseImportForm({
   const router = useRouter();
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [employeeUserId, setEmployeeUserId] = useState(users[0]?.id ?? "");
   const [projectId, setProjectId] = useState("");
   const [currencyCode, setCurrencyCode] = useState("PKR");
@@ -123,6 +130,24 @@ export function ExpenseImportForm({
   const flagged = resolved.filter((r) => r.errors.length === 0 && r.dateNote);
   const total = resolved.reduce((sum, r) => sum + (r.amount ?? 0), 0);
   const canImport = resolved.length > 0 && badRows.length === 0 && Boolean(employeeUserId);
+
+  /**
+   * Reads a dropped or chosen file into the same text the paste box feeds.
+   *
+   * Everything downstream — the split, the mapping, the preview — works off
+   * that one string, so a file and a paste cannot diverge in what they import.
+   */
+  function readFile(file: File) {
+    setError(null);
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => setText(String(reader.result ?? ""));
+    reader.onerror = () => {
+      setError(`Could not read "${file.name}".`);
+      setFileName(null);
+    };
+    reader.readAsText(file);
+  }
 
   function setColumn(index: number, field: ImportField | null) {
     setMapping((prev) => {
@@ -223,43 +248,76 @@ export function ExpenseImportForm({
         </div>
 
         <div className="mt-4 space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-input bg-card px-3 py-2 text-sm hover:border-primary/40">
-              <FileSpreadsheet className="h-4 w-4" />
-              {fileName ?? "Choose a CSV file"}
-              <input
-                type="file"
-                accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  setFileName(file.name);
-                  const reader = new FileReader();
-                  reader.onload = () => setText(String(reader.result ?? ""));
-                  reader.readAsText(file);
-                }}
-              />
-            </label>
-            <span className="text-xs text-muted-foreground">
-              From Google Sheets: File → Download → Comma-separated values. Or select the
-              cells there and paste them below.
-            </span>
-          </div>
-
-          <Field
-            label="Rows"
-            hint="Whatever order your columns are already in - you match them up in the next step. A header row is detected."
-            required
+          <label
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) readFile(file);
+            }}
+            className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors ${
+              dragging ? "border-primary bg-primary/5" : "border-input bg-muted/20 hover:border-primary/40"
+            }`}
           >
-            <Textarea
-              rows={10}
-              value={text}
-              onChange={(e) => { setText(e.target.value); setFileName(null); }}
-              placeholder={SAMPLE}
-              className="font-mono text-xs"
+            <FileSpreadsheet className="h-8 w-8 text-muted-foreground" />
+            {fileName ? (
+              <>
+                <span className="text-sm font-medium">{fileName}</span>
+                <span className="text-xs text-muted-foreground">
+                  {sheet.rows.length} row{sheet.rows.length === 1 ? "" : "s"} read. Choose another
+                  file to replace it.
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="text-sm font-medium">
+                  Drop a CSV here, or click to choose one
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  From Google Sheets: File → Download → Comma-separated values.
+                  From Excel: Save As → CSV.
+                </span>
+              </>
+            )}
+            <input
+              type="file"
+              accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) readFile(file);
+                // Cleared so choosing the same file twice still fires a change,
+                // which is what someone re-picking a file they have just edited
+                // expects.
+                e.target.value = "";
+              }}
             />
-          </Field>
+          </label>
+
+          {/* Pasting still works, but it is the fallback now: a file is what
+              people actually have, and a ten-row textarea sitting open invited
+              them to hand-retype what they could have handed over whole. */}
+          <details open={!fileName && text.trim() !== ""}>
+            <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+              Or paste the rows instead
+            </summary>
+            <div className="mt-2">
+              <Field
+                label="Rows"
+                hint="Whatever order your columns are already in - you match them up in the next step. A header row is detected."
+              >
+                <Textarea
+                  rows={8}
+                  value={text}
+                  onChange={(e) => { setText(e.target.value); setFileName(null); }}
+                  placeholder={SAMPLE}
+                  className="font-mono text-xs"
+                />
+              </Field>
+            </div>
+          </details>
         </div>
 
         {unmatchedTypes.length > 0 && (
@@ -403,7 +461,11 @@ export function ExpenseImportForm({
               </Badge>
             )}
             <div className="ml-auto flex gap-2">
-              <Button variant="outline" onClick={() => setText("")} disabled={pending}>
+              <Button
+                variant="outline"
+                onClick={() => { setText(""); setFileName(null); }}
+                disabled={pending}
+              >
                 <ArrowLeft className="h-4 w-4" /> Clear
               </Button>
               <Button onClick={submit} disabled={!canImport || pending}>
