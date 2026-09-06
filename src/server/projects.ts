@@ -102,28 +102,49 @@ async function rollUpProgress(db: Db, projectId: string): Promise<void> {
 // Project
 // ---------------------------------------------------------------------------
 
-const projectSchema = z.object({
-  name: z.string().min(1).max(255),
-  accountId: z.string().uuid(),
-  opportunityId: z.string().uuid().optional().nullable(),
-  contractId: z.string().uuid().optional().nullable(),
-  projectManagerId: z.string().uuid(),
-  status: z
-    .enum(["DRAFT", "PLANNING", "ACTIVE", "ON_HOLD", "AT_RISK", "COMPLETED", "CANCELLED"])
-    .default("DRAFT"),
-  health: z.enum(["GREEN", "AMBER", "RED"]).default("GREEN"),
-  billingType: z.enum(["FIXED", "HOURLY", "RETAINER", "MILESTONE", "ANNUAL"]),
-  startDate: z.coerce.date().optional().nullable(),
-  plannedEndDate: z.coerce.date().optional().nullable(),
-  actualEndDate: z.coerce.date().optional().nullable(),
-  contractValue: z.coerce.number().min(0).optional().nullable(),
-  currencyCode: z.string().length(3).default("PKR"),
-  approvedHours: z.coerce.number().min(0).optional().nullable(),
-  scope: z.string().optional().nullable(),
-});
+const projectSchema = z
+  .object({
+    name: z.string().min(1).max(255),
+    projectType: z.enum(["CUSTOMER", "INTERNAL"]).default("CUSTOMER"),
+    accountId: z.string().uuid().optional().nullable(),
+    opportunityId: z.string().uuid().optional().nullable(),
+    contractId: z.string().uuid().optional().nullable(),
+    projectManagerId: z.string().uuid(),
+    status: z
+      .enum(["DRAFT", "PLANNING", "ACTIVE", "ON_HOLD", "AT_RISK", "COMPLETED", "CANCELLED"])
+      .default("DRAFT"),
+    health: z.enum(["GREEN", "AMBER", "RED"]).default("GREEN"),
+    billingType: z.enum(["FIXED", "HOURLY", "RETAINER", "MILESTONE", "ANNUAL"]),
+    startDate: z.coerce.date().optional().nullable(),
+    plannedEndDate: z.coerce.date().optional().nullable(),
+    actualEndDate: z.coerce.date().optional().nullable(),
+    contractValue: z.coerce.number().min(0).optional().nullable(),
+    currencyCode: z.string().length(3).default("PKR"),
+    approvedHours: z.coerce.number().min(0).optional().nullable(),
+    scope: z.string().optional().nullable(),
+  })
+  // Mirrors the project_account_matches_type CHECK in the database, so the form
+  // shows the problem against the field instead of surfacing a constraint error.
+  // Internal work is cleared of its customer links rather than just refused: the
+  // deal and contract only mean something for a customer, and leaving a stale
+  // one behind is what makes internal work read as sold work later on.
+  .superRefine((v, ctx) => {
+    if (v.projectType === "CUSTOMER" && !v.accountId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["accountId"],
+        message: "Choose the customer this project is for.",
+      });
+    }
+  })
+  .transform((v) =>
+    v.projectType === "INTERNAL"
+      ? { ...v, accountId: null, opportunityId: null, contractId: null }
+      : v,
+  );
 
 export async function createProject(
-  input: z.infer<typeof projectSchema>,
+  input: z.input<typeof projectSchema>,
 ): Promise<ActionResult<{ id: string }>> {
   const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
@@ -173,7 +194,7 @@ export async function createProject(
 
 export async function updateProject(
   id: string,
-  input: z.infer<typeof projectSchema>,
+  input: z.input<typeof projectSchema>,
 ): Promise<ActionResult<{ id: string }>> {
   const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
@@ -241,7 +262,12 @@ export async function updateProject(
   }
 }
 
-export async function listProjects(filters?: { status?: string; search?: string; managerId?: string }) {
+export async function listProjects(filters?: {
+  status?: string;
+  search?: string;
+  managerId?: string;
+  projectType?: string;
+}) {
   await requirePermission(PERMISSIONS.PROJECT_READ);
 
   const db = await supabaseServer();
@@ -262,6 +288,7 @@ export async function listProjects(filters?: { status?: string; search?: string;
     .order("startDate", { ascending: false });
 
   if (filters?.status) query = query.eq("status", filters.status);
+  if (filters?.projectType) query = query.eq("projectType", filters.projectType);
   if (filters?.managerId) query = query.eq("projectManagerId", filters.managerId);
   if (filters?.search) {
     // Prisma's OR also matched the related account's name. PostgREST cannot OR

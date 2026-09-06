@@ -130,14 +130,27 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
   },
 
   "/projects": {
-    purpose: "Delivery engagements - the work you actually do for a customer.",
-    needs: ["An account, and usually a contract"],
+    purpose:
+      "Delivery engagements - work you do for a customer, and our own internal projects.",
+    needs: ["For customer work, an account and usually a contract"],
     feeds: [
       "Milestones become invoices",
       "Logged time becomes billable hours and project cost",
     ],
     watchOut:
-      "Only people on the project team can book time to it.",
+      "Only people on the project team can book time to it. Internal projects are never invoiced, and their costs cannot be recharged.",
+  },
+
+  "/vault": {
+    purpose:
+      "The keys, passwords and service logins the business runs on - one place that says who owns each and when it lapses.",
+    needs: ["SECRET_VAULT_KEY set in the environment"],
+    feeds: [
+      "Nothing automatically - this is a register people read",
+      "Every reveal is recorded against the person who did it",
+    ],
+    watchOut:
+      "Values are encrypted with a key held outside the database. Lose SECRET_VAULT_KEY and no stored value can be recovered.",
   },
 
   "/timesheets": {

@@ -14,7 +14,7 @@ const STATUSES = ["DRAFT", "PLANNING", "ACTIVE", "ON_HOLD", "AT_RISK", "COMPLETE
 export default async function ProjectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; search?: string }>;
+  searchParams: Promise<{ status?: string; search?: string; projectType?: string }>;
 }) {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.PROJECT_READ)) return <Forbidden what="projects" />;
@@ -37,7 +37,7 @@ export default async function ProjectsPage({
         title="Projects"
         description="Delivery engagements. Open one to run its plan, tasks, team and RAID log."
       >
-        <ExportButton entity="projects" params={{ search: params.search, status: params.status }} />
+        <ExportButton entity="projects" params={{ search: params.search, status: params.status, projectType: params.projectType }} />
         <Button asChild>
           <Link href="/projects/new">
             <Plus className="h-4 w-4" /> New project
@@ -51,7 +51,12 @@ export default async function ProjectsPage({
         <StatTile label="Past planned end" value={String(overdue.length)} tone={overdue.length ? "warning" : "neutral"} />
         <StatTile
           label="Contracted value"
-          value={formatMoney(active.reduce((s, p) => s + Number(p.contractValue ?? 0), 0))}
+          help="Total contract value of active customer projects. Internal work is excluded - its budget is our own cost, not revenue."
+          value={formatMoney(
+            active
+              .filter((p) => p.projectType !== "INTERNAL")
+              .reduce((s, p) => s + Number(p.contractValue ?? 0), 0),
+          )}
         />
       </div>
 
@@ -60,6 +65,11 @@ export default async function ProjectsPage({
           <div className="min-w-[220px] flex-1">
             <Input name="search" placeholder="Search project, number or customer…" defaultValue={params.search} />
           </div>
+          <Select name="projectType" defaultValue={params.projectType ?? ""} className="w-48">
+            <option value="">Customer and internal</option>
+            <option value="CUSTOMER">Customer work</option>
+            <option value="INTERNAL">Internal work</option>
+          </Select>
           <Select name="status" defaultValue={params.status ?? ""} className="w-48">
             <option value="">All statuses</option>
             {STATUSES.map((s) => (
@@ -112,9 +122,13 @@ export default async function ProjectsPage({
                       </p>
                     </TD>
                     <TD className="text-sm">
-                      <Link href={`/accounts/${p.account?.id}`} className="hover:underline">
-                        {p.account?.name}
-                      </Link>
+                      {p.account ? (
+                        <Link href={`/accounts/${p.account?.id}`} className="hover:underline">
+                          {p.account?.name}
+                        </Link>
+                      ) : (
+                        <Badge tone="neutral">Internal</Badge>
+                      )}
                     </TD>
                     <TD priority="tertiary" className="text-sm text-muted-foreground">{p.projectManager?.fullName}</TD>
                     <TD className={`whitespace-nowrap text-sm ${late ? "text-red-600 dark:text-red-400" : ""}`}>

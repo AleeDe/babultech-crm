@@ -97,7 +97,7 @@ export default async function ProjectWorkspacePage({
         backTo="/projects"
         backLabel="Back to projects"
         title={project.name}
-        description={`${project.projectNumber} · ${project.account?.name}`}
+        description={`${project.projectNumber} · ${project.account?.name ?? "Internal project"}`}
       >
         <Badge tone={statusTone(project.health)}>{humanize(project.health)}</Badge>
         <Badge tone={statusTone(project.status)}>{humanize(project.status)}</Badge>
@@ -252,10 +252,16 @@ export default async function ProjectWorkspacePage({
                   </CardHeader>
                   <CardContent className="space-y-3 text-sm">
                     <Row label="Customer">
-                      <Link href={`/accounts/${project.account?.id}`} className="text-primary hover:underline">
-                        {project.account?.name}
-                      </Link>
-                      <p className="text-xs text-muted-foreground">{project.account?.accountNumber}</p>
+                      {project.account ? (
+                        <>
+                          <Link href={`/accounts/${project.account?.id}`} className="text-primary hover:underline">
+                            {project.account?.name}
+                          </Link>
+                          <p className="text-xs text-muted-foreground">{project.account?.accountNumber}</p>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">Internal - our own work, no customer</span>
+                      )}
                     </Row>
                     <Row label="Project manager">{project.projectManager?.fullName}</Row>
                     <Row label="Sourced from">

@@ -405,12 +405,16 @@ export async function runMilestoneBilling(
       .select(
         `id, name, billingAmount, billingPercent,
          invoices:invoice ( id, status, deletedAt ),
-         project!inner ( id, name, accountId, contractId, contractValue, currencyCode, deletedAt )`,
+         project!inner ( id, name, projectType, accountId, contractId, contractValue, currencyCode, deletedAt )`,
       )
       .eq("billingTrigger", true)
       .eq("status", "COMPLETED")
       .is("invoicedAt", null)
-      .is("project.deletedAt", null);
+      .is("project.deletedAt", null)
+      // Internal work has no customer to invoice. Its milestones can be marked
+      // as billing triggers like any other, so the run has to exclude it here
+      // rather than trust that nobody ticked the box.
+      .eq("project.projectType", "CUSTOMER");
 
     if (projectId) dueQuery = dueQuery.eq("projectId", projectId);
 
@@ -523,11 +527,21 @@ export async function runTimeBilling(
 
     const { data: project } = await db
       .from("project")
-      .select("id, name, accountId, contractId, currencyCode")
+      .select("id, name, projectType, accountId, contractId, currencyCode")
       .eq("id", projectId)
       .maybeSingle();
 
     if (!project) return { ok: false, error: "That project no longer exists." };
+
+    // Internal work is booked and costed like any other project, so it can hold
+    // approved billable time. There is nobody to send it to, and an invoice
+    // without an account is not a document anyone can chase.
+    if (project.projectType === "INTERNAL") {
+      return {
+        ok: false,
+        error: "This is internal work, so it cannot be invoiced - there is no customer to bill.",
+      };
+    }
 
     // One line per person per rate — the way a T&M invoice actually reads.
     const groups = new Map<string, { name: string; rate: Decimal; hours: Decimal; ids: string[] }>();
@@ -803,6 +817,10 @@ export async function getBillingFormOptions() {
            milestones:milestone ( id, name, invoicedAt, status, billingTrigger )`,
         )
         .is("deletedAt", null)
+        // An invoice is always raised against a customer, so internal projects
+        // are not offered here - picking one could only produce a bill with no
+        // account behind it.
+        .eq("projectType", "CUSTOMER")
         .order("name"),
       db
         .from("contract")

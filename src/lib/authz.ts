@@ -300,6 +300,12 @@ export const PERMISSIONS = {
   EXPENSE_READ: "expense:read",
   EXPENSE_WRITE: "expense:write",
   EXPENSE_APPROVE: "expense:approve",
+  // Credential vault. Deliberately its own pair rather than folded into
+  // admin:*, because "can configure the system" and "can read our production
+  // keys" are different levels of trust and should be grantable separately.
+  // SECRET_READ lists and reveals; SECRET_WRITE adds, edits and revokes.
+  SECRET_READ: "secret:read",
+  SECRET_WRITE: "secret:write",
   // Admin
   ADMIN: "admin:*",
 } as const;

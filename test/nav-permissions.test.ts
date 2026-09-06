@@ -105,3 +105,42 @@ describe("what Finance keeps", () => {
     expect(holds(FINANCE, "payment:write")).toBe(true);
   });
 });
+
+/**
+ * The vault.
+ *
+ * secret:read is deliberately not implied by any existing grant. The risk being
+ * pinned here is a quiet one: if the vault were gated on a permission people
+ * already hold for unrelated reasons — or if admin:* reached it the way a bare
+ * "*" does — then everyone with that grant would silently gain the ability to
+ * read production credentials the day the feature shipped.
+ */
+describe("who can open the vault", () => {
+  it("is closed to the roles that hold no vault grant", () => {
+    expect(holdsAny(CONSULTANT, ["secret:read"])).toBe(false);
+    expect(holdsAny(FINANCE, ["secret:read"])).toBe(false);
+  });
+
+  it("is not reached by admin:*, which is an entity wildcard like any other", () => {
+    // admin:* expands to admin:<action>, never to secret:read. Someone who
+    // configures the system does not thereby hold its production keys.
+    expect(holds(["admin:*"], "secret:read")).toBe(false);
+  });
+
+  it("is reached by a bare *, which is total access by definition", () => {
+    expect(holds(["*"], "secret:read")).toBe(true);
+    expect(holds(["*"], "secret:write")).toBe(true);
+  });
+
+  it("separates reading a secret from changing one", () => {
+    expect(holds(["secret:read"], "secret:write")).toBe(false);
+    expect(holds(["secret:write"], "secret:read")).toBe(false);
+    expect(holds(["secret:*"], "secret:read")).toBe(true);
+    expect(holds(["secret:*"], "secret:write")).toBe(true);
+  });
+
+  it("does not let the vault grant reach anything else", () => {
+    expect(holds(["secret:*"], "invoice:read")).toBe(false);
+    expect(holds(["secret:*"], "account:read")).toBe(false);
+  });
+});

@@ -8,7 +8,7 @@ import {
   FileText, FileSignature, Handshake, Coins, LifeBuoy, FolderKanban,
   Receipt, Package, CalendarCheck, Menu, X, LogOut, Clock, UsersRound, Banknote,
   ShieldCheck, UserCog, Settings, BookOpen, CheckSquare, FileInput, Wallet, Stamp,
-  ChevronDown, PanelLeftClose, PanelLeftOpen,
+  ChevronDown, PanelLeftClose, PanelLeftOpen, KeyRound,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { holdsAny } from "@/lib/nav-permissions";
@@ -95,6 +95,15 @@ const NAV: NavGroup[] = [
       { href: "/payments", label: "Payments", icon: Banknote, permissions: ["invoice:read"] },
       { href: "/vendor-bills", label: "Vendor Bills", icon: FileInput, permissions: ["invoice:read"] },
       { href: "/expenses", label: "Expenses", icon: Wallet, permissions: ["expense:read"] },
+    ],
+  },
+  {
+    // Its own group rather than an item under Administration: secret:read is
+    // meant to be grantable to someone who is not an administrator, and that
+    // group is hidden wholesale by role.
+    label: "Security",
+    items: [
+      { href: "/vault", label: "Vault", icon: KeyRound, permissions: ["secret:read"] },
     ],
   },
   {

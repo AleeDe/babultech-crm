@@ -19,6 +19,7 @@ export default async function EditProjectPage({
   const defaults = serialize({
     id: project.id,
     name: project.name,
+    projectType: project.projectType,
     accountId: project.accountId,
     opportunityId: project.opportunityId,
     contractId: project.contractId,

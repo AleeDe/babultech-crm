@@ -155,7 +155,7 @@ export default async function MyWorkPage() {
                           {p.name}
                         </Link>
                         <p className="text-xs text-muted-foreground">
-                          {p.account?.name} · {p.membership?.projectRole ?? "Member"}
+                          {p.account?.name ?? "Internal"} · {p.membership?.projectRole ?? "Member"}
                           {p.membership?.allocationPercent
                             ? ` · ${Number(p.membership.allocationPercent)}% allocated`
                             : ""}

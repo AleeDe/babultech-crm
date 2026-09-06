@@ -32,6 +32,26 @@ const ZERO = toDecimal(0);
 // Expenses
 // ---------------------------------------------------------------------------
 
+/**
+ * Which of these project ids are internal work.
+ *
+ * Takes a list so the bulk import can ask once for a whole file instead of a
+ * query per row.
+ */
+async function internalProjectIds(ids: string[]): Promise<Set<string>> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return new Set();
+
+  const db = await supabaseServer();
+  const { data } = await db
+    .from("project")
+    .select("id")
+    .in("id", unique)
+    .eq("projectType", "INTERNAL");
+
+  return new Set((data ?? []).map((p) => p.id as string));
+}
+
 const expenseSchema = z.object({
   categoryId: z.string().uuid("Choose a category."),
   expenseDate: z.string().min(1, "When was it incurred?"),
@@ -283,6 +303,17 @@ export async function createExpense(
       ok: false,
       error: "A billable expense needs a project - that is what it gets billed through.",
       fieldErrors: { projectId: ["Required for a billable expense."] },
+    };
+  }
+
+  // "Billable" means recharged to a customer, and an internal project has none.
+  // Left unchecked the expense would sit flagged as recoverable forever, which
+  // overstates what is actually owed to us.
+  if (d.billableToCustomer && d.projectId && (await internalProjectIds([d.projectId])).size) {
+    return {
+      ok: false,
+      error: "That is an internal project, so its cost cannot be recharged - there is no customer to bill.",
+      fieldErrors: { billableToCustomer: ["Internal work cannot be recharged."] },
     };
   }
 
@@ -572,6 +603,7 @@ export async function createExpensesBulk(
   }
 
   const validated: z.infer<typeof expenseSchema>[] = [];
+  const validatedRowNumbers: number[] = [];
   const rowErrors: string[] = [];
 
   rows.forEach((row, i) => {
@@ -593,7 +625,25 @@ export async function createExpensesBulk(
       return;
     }
     validated.push(d);
+    validatedRowNumbers.push(i + 1);
   });
+
+  // Same rule as the single form: internal work has no customer to recharge.
+  // Resolved in one query for the whole file rather than per row. The row
+  // numbers are carried alongside, because a row rejected above leaves the
+  // validated index out of step with the line the user is looking at.
+  const internal = await internalProjectIds(
+    validated.filter((d) => d.billableToCustomer && d.projectId).map((d) => d.projectId!),
+  );
+  if (internal.size) {
+    validated.forEach((d, i) => {
+      if (d.billableToCustomer && d.projectId && internal.has(d.projectId)) {
+        rowErrors.push(
+          `Row ${validatedRowNumbers[i]}: that project is internal, so its cost cannot be recharged.`,
+        );
+      }
+    });
+  }
 
   if (rowErrors.length) {
     return { ok: false, error: rowErrors.slice(0, 10).join("\n") };

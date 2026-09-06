@@ -24,7 +24,8 @@ export interface ProjectFormOptions {
 export interface ProjectDefaults {
   id: string;
   name: string;
-  accountId: string;
+  projectType: string;
+  accountId: string | null;
   opportunityId: string | null;
   contractId: string | null;
   projectManagerId: string;
@@ -57,6 +58,8 @@ export function ProjectForm({
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [accountId, setAccountId] = useState(defaults?.accountId ?? lockedAccountId ?? "");
+  const [projectType, setProjectType] = useState(defaults?.projectType ?? "CUSTOMER");
+  const internal = projectType === "INTERNAL";
   const [billingType, setBillingType] = useState(defaults?.billingType ?? "FIXED");
 
   const editing = Boolean(defaults);
@@ -82,7 +85,8 @@ export function ProjectForm({
 
     const input = {
       name: String(formData.get("name") ?? ""),
-      accountId,
+      projectType,
+      accountId: internal ? null : accountId,
       opportunityId: get("opportunityId"),
       contractId: get("contractId"),
       projectManagerId: String(formData.get("projectManagerId") ?? ""),
@@ -122,25 +126,48 @@ export function ProjectForm({
           <CardTitle>Engagement</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field label="Project name" required error={fieldErrors.name?.[0]}
-            help="What the work is called. Use the name the customer would recognise.">
-            <Input name="name" required defaultValue={defaults?.name} placeholder="Acme - ERP implementation" />
-          </Field>
-          <Field label="Customer" required error={fieldErrors.accountId?.[0]}
-            help="The account this work is for. Internal product work can point at your own internal account.">
+          <Field label="Who is this work for?" required
+            hint={lockedAccountId ? "Started from a customer's page." : undefined}
+            help="Customer work is delivered to an account and can be billed to them. Internal work is our own - our products, tooling, R&D - so it has no customer, no deal and no contract.">
             <Select
-              name="accountId"
+              name="projectType"
               required
-              value={accountId}
+              value={projectType}
               disabled={Boolean(lockedAccountId)}
-              onChange={(e) => setAccountId(e.target.value)}
+              onChange={(e) => setProjectType(e.target.value)}
             >
-              <option value="">Select a customer…</option>
-              {options.accounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
+              <option value="CUSTOMER">A customer</option>
+              <option value="INTERNAL">BabulTech itself (internal)</option>
             </Select>
           </Field>
+          <Field label="Project name" required error={fieldErrors.name?.[0]}
+            help={internal
+              ? "What the work is called. Use the name your team would recognise."
+              : "What the work is called. Use the name the customer would recognise."}>
+            <Input
+              name="name"
+              required
+              defaultValue={defaults?.name}
+              placeholder={internal ? "BabulTech CRM - v2" : "Acme - ERP implementation"}
+            />
+          </Field>
+          {!internal && (
+            <Field label="Customer" required error={fieldErrors.accountId?.[0]}
+              help="The account this work is delivered to.">
+              <Select
+                name="accountId"
+                required
+                value={accountId}
+                disabled={Boolean(lockedAccountId)}
+                onChange={(e) => setAccountId(e.target.value)}
+              >
+                <option value="">Select a customer…</option>
+                {options.accounts.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </Select>
+            </Field>
+          )}
           <Field label="Project manager" required error={fieldErrors.projectManagerId?.[0]}
             hint="Added to the team automatically so they can book time."
             help="Who runs the project. They see it in their own list and approve time booked against it.">
@@ -156,24 +183,28 @@ export function ProjectForm({
               ))}
             </Select>
           </Field>
-          <Field label="Sourced from deal" hint={accountId ? "Won deals for this customer." : "Pick a customer first."}
-            help="The opportunity this project came out of, if it was sold. Links the delivery back to the sale.">
-            <Select name="opportunityId" defaultValue={defaults?.opportunityId ?? ""} disabled={!accountId}>
-              <option value="">None</option>
-              {accountOpportunities.map((o) => (
-                <option key={o.id} value={o.id}>{o.opportunityNumber} - {o.name}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Contract"
-            help="The signed contract this work is delivered under, if there is one.">
-            <Select name="contractId" defaultValue={defaults?.contractId ?? ""} disabled={!accountId}>
-              <option value="">None</option>
-              {accountContracts.map((c) => (
-                <option key={c.id} value={c.id}>{c.contractNumber}</option>
-              ))}
-            </Select>
-          </Field>
+          {!internal && (
+            <>
+              <Field label="Sourced from deal" hint={accountId ? "Won deals for this customer." : "Pick a customer first."}
+                help="The opportunity this project came out of, if it was sold. Links the delivery back to the sale.">
+                <Select name="opportunityId" defaultValue={defaults?.opportunityId ?? ""} disabled={!accountId}>
+                  <option value="">None</option>
+                  {accountOpportunities.map((o) => (
+                    <option key={o.id} value={o.id}>{o.opportunityNumber} - {o.name}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Contract"
+                help="The signed contract this work is delivered under, if there is one.">
+                <Select name="contractId" defaultValue={defaults?.contractId ?? ""} disabled={!accountId}>
+                  <option value="">None</option>
+                  {accountContracts.map((c) => (
+                    <option key={c.id} value={c.id}>{c.contractNumber}</option>
+                  ))}
+                </Select>
+              </Field>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -215,7 +246,10 @@ export function ProjectForm({
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Billing type" required
-            help="How the customer pays: a fixed price, by the hour, a retainer, or against milestones.">
+            hint={internal ? "Internal work is not billed; this only shapes how effort is tracked." : undefined}
+            help={internal
+              ? "Internal work raises no invoice. The choice still decides whether effort is tracked against a fixed budget, by the hour, or against milestones."
+              : "How the customer pays: a fixed price, by the hour, a retainer, or against milestones."}>
             <Select
               name="billingType"
               required
@@ -227,16 +261,30 @@ export function ProjectForm({
               ))}
             </Select>
           </Field>
-          <Field label="Contract value"
-            help="What the customer is paying in total. Leave empty for internal work that is not billed.">
-            <Input
-              name="contractValue"
-              type="number"
-              step="0.01"
-              min="0"
-              defaultValue={defaults?.contractValue ?? ""}
-            />
-          </Field>
+          {internal ? (
+            <Field label="Budget"
+              hint="Not billed to anyone."
+              help="What this work is expected to cost us in total. Recorded so internal spend can be tracked, never invoiced.">
+              <Input
+                name="contractValue"
+                type="number"
+                step="0.01"
+                min="0"
+                defaultValue={defaults?.contractValue ?? ""}
+              />
+            </Field>
+          ) : (
+            <Field label="Contract value"
+              help="What the customer is paying in total.">
+              <Input
+                name="contractValue"
+                type="number"
+                step="0.01"
+                min="0"
+                defaultValue={defaults?.contractValue ?? ""}
+              />
+            </Field>
+          )}
           <Field label="Currency" required
             help="The currency the project is billed in.">
             <Select name="currencyCode" required defaultValue={defaults?.currencyCode ?? "PKR"}>
@@ -259,7 +307,7 @@ export function ProjectForm({
             />
           </Field>
 
-          {billingType === "MILESTONE" && (
+          {billingType === "MILESTONE" && !internal && (
             <div className="sm:col-span-2 lg:col-span-4">
               <Alert tone="info">
                 Milestone billing - mark the milestones that trigger an invoice on the project
@@ -279,7 +327,9 @@ export function ProjectForm({
             name="scope"
             rows={5}
             defaultValue={defaults?.scope ?? ""}
-            placeholder="What is in scope, what is explicitly out, and what the customer is responsible for."
+            placeholder={internal
+              ? "What is in scope, what is explicitly out, and which team owns what."
+              : "What is in scope, what is explicitly out, and what the customer is responsible for."}
           />
         </CardContent>
       </Card>

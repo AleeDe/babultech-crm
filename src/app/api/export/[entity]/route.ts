@@ -183,11 +183,13 @@ const EXPORTS: Record<string, ExportDefinition> = {
       listProjects({
         search: p.get("search") ?? undefined,
         status: p.get("status") ?? undefined,
+        projectType: p.get("projectType") ?? undefined,
       }),
     columns: [
       { header: "Number", value: (r) => r.projectNumber },
       { header: "Name", value: (r) => r.name },
-      { header: "Account", value: (r) => r.account?.name },
+      { header: "Type", value: (r) => r.projectType },
+      { header: "Account", value: (r) => r.account?.name ?? "Internal" },
       { header: "Status", value: (r) => r.status },
       { header: "Health", value: (r) => r.health },
       { header: "Manager", value: (r) => r.projectManager?.fullName },
