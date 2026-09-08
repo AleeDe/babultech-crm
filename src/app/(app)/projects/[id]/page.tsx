@@ -278,8 +278,14 @@ export default async function ProjectWorkspacePage({
                         </Link>
                       ) : "—"}
                     </Row>
-                    <Row label="Billing">{humanize(project.billingType)}</Row>
-                    <Row label="Contract value">{formatMoney(project.contractValue, project.currencyCode)}</Row>
+                    {/* Billing type is a customer-payment term; internal work
+                        carries a placeholder value that would only mislead. */}
+                    {project.projectType !== "INTERNAL" && (
+                      <Row label="Billing">{humanize(project.billingType)}</Row>
+                    )}
+                    <Row label={project.projectType === "INTERNAL" ? "Budget" : "Contract value"}>
+                      {formatMoney(project.contractValue, project.currencyCode)}
+                    </Row>
                     <Row label="Schedule">
                       {formatDate(project.startDate)} → {formatDate(project.plannedEndDate)}
                       {project.actualEndDate && (

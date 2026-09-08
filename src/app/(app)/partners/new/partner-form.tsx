@@ -33,7 +33,14 @@ export function PartnerForm({ options }: { options: Options }) {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
-  function onSubmit(formData: FormData) {
+  // A submit HANDLER rather than <form action={...}>. React resets a form after
+  // an action completes, and every field here is uncontrolled (defaultValue), so
+  // with `action` a rejected submit cleared everything the user had typed and
+  // made them fill the whole form in again to correct one field.
+  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+
     setError(null);
     setFieldErrors({});
 
@@ -103,7 +110,7 @@ export function PartnerForm({ options }: { options: Options }) {
   }
 
   return (
-    <form action={onSubmit} className="space-y-6">
+    <form onSubmit={onSubmit} className="space-y-6">
       {error && <Alert tone="danger">{error}</Alert>}
 
       <Card>

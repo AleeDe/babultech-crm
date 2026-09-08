@@ -74,7 +74,14 @@ export function ProjectForm({
     [options.contracts, accountId],
   );
 
-  function onSubmit(formData: FormData) {
+  // A submit HANDLER rather than <form action={...}>. React resets a form after
+  // an action completes, and every field here is uncontrolled (defaultValue), so
+  // with `action` a rejected submit cleared everything the user had typed and
+  // made them fill the whole form in again to correct one field.
+  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+
     setError(null);
     setFieldErrors({});
 
@@ -92,7 +99,9 @@ export function ProjectForm({
       projectManagerId: String(formData.get("projectManagerId") ?? ""),
       status: get("status"),
       health: get("health"),
-      billingType,
+      // The column is NOT NULL and the field is hidden for internal work, where
+      // the answer carries no meaning. FIXED is the neutral stand-in.
+      billingType: internal ? "FIXED" : billingType,
       startDate: get("startDate"),
       plannedEndDate: get("plannedEndDate"),
       actualEndDate: null,
@@ -118,7 +127,7 @@ export function ProjectForm({
   }
 
   return (
-    <form action={onSubmit} className="space-y-6">
+    <form onSubmit={onSubmit} className="space-y-6">
       {error && <Alert tone="danger">{error}</Alert>}
 
       <Card>
@@ -242,29 +251,32 @@ export function ProjectForm({
 
       <Card>
         <CardHeader>
-          <CardTitle>Commercials</CardTitle>
+          <CardTitle>{internal ? "Budget" : "Commercials"}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Billing type" required
-            hint={internal ? "Internal work is not billed; this only shapes how effort is tracked." : undefined}
-            help={internal
-              ? "Internal work raises no invoice. The choice still decides whether effort is tracked against a fixed budget, by the hour, or against milestones."
-              : "How the customer pays: a fixed price, by the hour, a retainer, or against milestones."}>
-            <Select
-              name="billingType"
-              required
-              value={billingType}
-              onChange={(e) => setBillingType(e.target.value)}
-            >
-              {BILLING.map((b) => (
-                <option key={b} value={b}>{humanize(b)}</option>
-              ))}
-            </Select>
-          </Field>
+          {/* Billing type is how a CUSTOMER pays. Nothing in the app computes
+              from it — it is only ever displayed — so on internal work it was a
+              required question with no meaning and no consequence. It stays out
+              of the form and is sent as FIXED, which the column requires. */}
+          {!internal && (
+            <Field label="Billing type" required
+              help="How the customer pays: a fixed price, by the hour, a retainer, or against milestones.">
+              <Select
+                name="billingType"
+                required
+                value={billingType}
+                onChange={(e) => setBillingType(e.target.value)}
+              >
+                {BILLING.map((b) => (
+                  <option key={b} value={b}>{humanize(b)}</option>
+                ))}
+              </Select>
+            </Field>
+          )}
           {internal ? (
             <Field label="Budget"
-              hint="Not billed to anyone."
-              help="What this work is expected to cost us in total. Recorded so internal spend can be tracked, never invoiced.">
+              hint="What we expect to spend. Not billed to anyone."
+              help="What this work is expected to cost us in total, so internal spend can be tracked against it. It is never invoiced.">
               <Input
                 name="contractValue"
                 type="number"
@@ -286,7 +298,9 @@ export function ProjectForm({
             </Field>
           )}
           <Field label="Currency" required
-            help="The currency the project is billed in.">
+            help={internal
+              ? "The currency the budget and costs are counted in."
+              : "The currency the project is billed in."}>
             <Select name="currencyCode" required defaultValue={defaults?.currencyCode ?? "PKR"}>
               {options.currencies.map((c) => (
                 <option key={c.code} value={c.code}>{c.code} - {c.name}</option>

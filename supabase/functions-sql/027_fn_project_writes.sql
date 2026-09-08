@@ -15,6 +15,13 @@ create or replace function create_project(
 )
 returns jsonb
 language plpgsql
+-- Definer because it reads app_user."costRate"/"defaultBillingRate", which
+-- 20260902000000_hide_rate_columns.sql revoked from authenticated. It reads two
+-- columns for one already-named user and writes them straight into the
+-- project_member row it is creating; the values never reach the caller.
+-- See 20260909000000_fix_create_project_rates.sql.
+security definer
+set search_path = public
 as $$
 declare
   v_project    jsonb;
