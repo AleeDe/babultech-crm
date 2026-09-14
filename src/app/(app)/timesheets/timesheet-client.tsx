@@ -41,6 +41,8 @@ export interface EntryOptions {
     id: string;
     name: string;
     projectNumber: string;
+    /** CUSTOMER or INTERNAL. Internal work has no customer to bill. */
+    projectType: string;
     tasks: { id: string; name: string; billable: boolean; assignedUserId: string | null }[];
   }[];
   cases: { id: string; caseNumber: string; subject: string }[];
@@ -75,7 +77,11 @@ export function TimesheetClient({
     [weekStart],
   );
 
-  const tasksForProject = options.projects.find((p) => p.id === projectId)?.tasks ?? [];
+  const selectedProject = options.projects.find((p) => p.id === projectId);
+  const tasksForProject = selectedProject?.tasks ?? [];
+  // Internal work has no customer, so the billable question does not arise.
+  // The server clamps it too — see isBillableProject in src/server/timesheets.ts.
+  const isInternalProject = selectedProject?.projectType === "INTERNAL";
   const totalHours = entries.reduce((s, e) => s + Number(e.hours), 0);
   const billableHours = entries.filter((e) => e.billable).reduce((s, e) => s + Number(e.hours), 0);
   const submittable = entries.filter((e) => ["DRAFT", "REJECTED"].includes(e.approvalStatus));
@@ -119,7 +125,10 @@ export function TimesheetClient({
       startTime: get("startTime"),
       endTime: get("endTime"),
       description: String(fd.get("description") ?? ""),
-      billable: fd.get("billable") === "on",
+      // The checkbox is not rendered for internal work, so an absent field
+      // would read as false anyway — this states the intent rather than
+      // relying on the markup.
+      billable: isInternalProject ? false : fd.get("billable") === "on",
     } as never;
 
     startTransition(async () => {
@@ -288,15 +297,19 @@ export function TimesheetClient({
             <Textarea name="description" rows={2} required defaultValue={entry?.description ?? ""} />
           </Field>
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            name="billable"
-            defaultChecked={entry?.billable ?? true}
-            className="h-4 w-4 rounded border-input"
-          />
-          Billable to the customer
-        </label>
+        {/* Hidden for internal work: there is no customer to bill, and an
+            unticked box would still invite someone to tick it. */}
+        {!isInternalProject && (
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              name="billable"
+              defaultChecked={entry?.billable ?? true}
+              className="h-4 w-4 rounded border-input"
+            />
+            Billable to the customer
+          </label>
+        )}
       </div>
 
       <div className="flex justify-end gap-2">
