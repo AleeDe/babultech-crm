@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
-import { NotesPanel } from "@/components/notes-panel";
+import { NotesSection } from "@/components/notes-section";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { getCase } from "@/server/cases";
 import { getAuditTrail } from "@/lib/audit";
@@ -223,7 +223,7 @@ export default async function CaseDetailPage({
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <NotesPanel entityType="SupportCase" entityId={id} notes={notes} />
+        <NotesSection entityType="SupportCase" entityId={id} notes={notes} />
         <DocumentsPanel entityType="SupportCase" entityId={id} documents={documents} />
       </div>
     </>

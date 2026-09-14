@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
-import { NotesPanel } from "@/components/notes-panel";
+import { NotesSection } from "@/components/notes-section";
 import { AuditPanel } from "@/components/audit-panel";
 import { getAuditTrail } from "@/lib/audit";
 import { DocumentsPanel } from "@/components/documents-panel";
@@ -275,7 +275,7 @@ export default async function ContractDetailPage({
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <NotesPanel entityType="Contract" entityId={id} notes={notes} />
+        <NotesSection entityType="Contract" entityId={id} notes={notes} />
         <DocumentsPanel entityType="Contract" entityId={id} documents={documents} />
       </div>
 
