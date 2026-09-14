@@ -16,6 +16,8 @@ import {
   Select, Textarea, Alert, Badge, statusTone, Table, THead, TBody, TR, TH, TD,
 } from "@/components/ui";
 import { cn, formatDate, formatMoney, formatPercent, humanize } from "@/lib/utils";
+import { FormDialog } from "@/components/form-dialog";
+import { RichTextEditor } from "@/components/rich-text-editor";
 
 const TASK_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "UNDER_REVIEW", "COMPLETED"];
 const ALL_TASK_STATUSES = [...TASK_STATUSES, "CANCELLED"];
@@ -141,18 +143,26 @@ function AddSection({
 
 export function TaskBoard({
   projectId,
+  projectType,
   tasks,
   phases,
   milestones,
   members,
 }: {
   projectId: string;
+  /**
+   * CUSTOMER or INTERNAL. Internal work has no customer to bill, so the
+   * billable question is not asked — see the form below and
+   * billableForProject() in src/server/projects.ts, which enforces it.
+   */
+  projectType: string;
   tasks: Task[];
   phases: Phase[];
   milestones: MilestoneRow[];
   members: Member[];
 }) {
   const router = useRouter();
+  const isInternal = projectType === "INTERNAL";
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -192,7 +202,10 @@ export function TaskBoard({
       dueDate: get("dueDate"),
       estimatedHours: get("estimatedHours"),
       completionPercent: get("completionPercent"),
-      billable: formData.get("billable") === "on",
+      // The checkbox is not rendered for internal work, so an absent field
+      // would read as false anyway — this states the intent rather than
+      // relying on the markup.
+      billable: isInternal ? false : formData.get("billable") === "on",
       acceptanceCriteria: get("acceptanceCriteria"),
     } as never;
 
@@ -292,27 +305,42 @@ export function TaskBoard({
             defaultValue={task ? Number(task.completionPercent).toFixed(0) : "0"}
           />
         </Field>
-        <div className="flex items-end">
-          <label className="flex items-center gap-2 pb-2 text-sm">
-            <input
-              type="checkbox"
-              name="billable"
-              defaultChecked={task?.billable ?? true}
-              className="h-4 w-4 rounded border-input"
-            />
-            Billable
-          </label>
-        </div>
+        {/* Internal projects have no customer, so there is nothing to bill and
+            nothing to ask. Showing an unticked box would still invite someone
+            to tick it. */}
+        {!isInternal && (
+          <div className="flex items-end">
+            <label className="flex items-center gap-2 pb-2 text-sm">
+              <input
+                type="checkbox"
+                name="billable"
+                defaultChecked={task?.billable ?? true}
+                className="h-4 w-4 rounded border-input"
+              />
+              Billable
+            </label>
+          </div>
+        )}
         <div className="sm:col-span-2">
           <Field label="Description"
-            help="The detail that does not fit in the title.">
-            <Textarea name="description" rows={2} defaultValue={task?.description ?? ""} />
+            help="The detail that does not fit in the title. Paste from a document or an email and the formatting is kept.">
+            <RichTextEditor
+              name="description"
+              rows={5}
+              defaultValue={task?.description ?? ""}
+              placeholder="What needs doing, in as much detail as it takes."
+            />
           </Field>
         </div>
         <div className="sm:col-span-2">
           <Field label="Acceptance criteria" hint="What 'done' means - the thing arguments are avoided with."
             help="What has to be true for this to count as done. Written before the work starts, it prevents the argument at the end.">
-            <Textarea name="acceptanceCriteria" rows={2} defaultValue={task?.acceptanceCriteria ?? ""} />
+            <RichTextEditor
+              name="acceptanceCriteria"
+              rows={4}
+              defaultValue={task?.acceptanceCriteria ?? ""}
+              placeholder="What has to be true for this to count as done."
+            />
           </Field>
         </div>
       </div>
@@ -321,7 +349,7 @@ export function TaskBoard({
           type="button"
           variant="ghost"
           size="sm"
-          onClick={() => { setAdding(false); setEditingId(null); setParentFor(null); }}
+          onClick={closeDialog}
         >
           Cancel
         </Button>
@@ -418,7 +446,10 @@ export function TaskBoard({
             )}
           </div>
 
-          {(subtasks.length > 0 || !t.billable) && (
+          {/* On an internal project every task is non-billable, so the chip
+              would appear on every card and mark nothing. It is only news when
+              a task differs from what the project would lead you to expect. */}
+          {(subtasks.length > 0 || (!t.billable && !isInternal)) && (
             <div className="mt-1.5 flex items-center gap-2">
               {subtasks.length > 0 && (
                 <button
@@ -431,7 +462,7 @@ export function TaskBoard({
                   {doneSubtasks}/{subtasks.length} subtasks
                 </button>
               )}
-              {!t.billable && (
+              {!t.billable && !isInternal && (
                 <span className="text-xs text-muted-foreground">non-billable</span>
               )}
             </div>
@@ -448,12 +479,12 @@ export function TaskBoard({
             )}
           >
             <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs"
-              onClick={() => setEditingId(editingId === t.id ? null : t.id)}>
+              onClick={() => { setError(null); setAdding(false); setParentFor(null); setEditingId(t.id); }}>
               Edit
             </Button>
             {!isSub && (
               <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs"
-                onClick={() => setParentFor(parentFor === t.id ? null : t.id)}>
+                onClick={() => { setError(null); setAdding(false); setEditingId(null); setParentFor(t.id); }}>
                 Subtask
               </Button>
             )}
@@ -480,18 +511,30 @@ export function TaskBoard({
           </div>
         )}
 
-        {editingId === t.id && <div className="border-t p-2.5">{taskForm(t, t.parentTaskId)}</div>}
-        {parentFor === t.id && (
-          <div className="border-t p-2.5">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">New subtask of “{t.name}”</p>
-            {taskForm(null, t.id)}
-          </div>
-        )}
+        {/* The edit and subtask forms used to render here, inside the card and
+            so inside a ~250px board column. They open in a dialog now — see
+            FormDialog and the one rendered at the end of this component. */}
       </div>
     );
   };
 
+  // Which task the dialog is for, and in what mode. Editing, adding a subtask
+  // and adding a top-level task are the same form, so they share one dialog
+  // rather than three near-identical copies.
+  // `tasks` holds every task including subtasks, so one lookup covers both.
+  const dialogTask = editingId ? (tasks.find((t) => t.id === editingId) ?? null) : null;
+  const dialogParent = parentFor ? tasks.find((t) => t.id === parentFor) ?? null : null;
+  const dialogOpen = adding || editingId !== null || parentFor !== null;
+
+  const closeDialog = () => {
+    setAdding(false);
+    setEditingId(null);
+    setParentFor(null);
+    setError(null);
+  };
+
   return (
+    <>
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <div>
@@ -505,22 +548,17 @@ export function TaskBoard({
             <option value="board">Board</option>
             <option value="list">List</option>
           </Select>
-          {/* Only the toggle lives in the header. The form itself is rendered
-              in the card body below, because CardHeader is a flex row: a form
-              placed here becomes a flex child beside the title, gets squeezed
-              into the right-hand column, and stretches the header to its own
-              height - which is the tall empty gap it left across the board. */}
+          {/* The form opens in a dialog, so nothing but the toggle and this
+              button lives in the header. An earlier version rendered the form
+              inline here, which stretched the header across the whole board. */}
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => { setAdding(true); setEditingId(null); setParentFor(null); }}
-            disabled={adding}
+            onClick={() => { setError(null); setEditingId(null); setParentFor(null); setAdding(true); }}
           >
-            {/* Stays "Add task" while the form is open rather than flipping to
-                "Cancel". The form carries its own Cancel next to its submit,
-                and two Cancels on screen at once - one of them far from the
-                thing being cancelled - is the ambiguity this replaced. */}
+            {/* No disabled state and no flip to "Cancel": the dialog is modal,
+                so this button is not reachable while the form is open. */}
             <Plus className="h-4 w-4" /> Add task
           </Button>
         </div>
@@ -528,18 +566,26 @@ export function TaskBoard({
       <CardContent>
         {error && <div className="mb-4"><Alert tone="danger">{error}</Alert></div>}
 
-        {adding && (
-          <div className="mb-4 rounded-md border border-dashed bg-muted/30 p-4">
-            {taskForm(null, null)}
-          </div>
-        )}
-
         {tasks.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No tasks yet. Add the first one - until then the project shows 0% because nothing has been planned.
           </p>
         ) : view === "board" ? (
-          <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
+          // Five equal columns that scroll sideways rather than wrapping.
+          //
+          // `md:grid-cols-3 xl:grid-cols-5` wrapped the five statuses onto two
+          // rows at every width between 768px and 1280px, which breaks the one
+          // thing a board is for: left-to-right flow. NOT STARTED and COMPLETED
+          // ended up stacked above one another, and the second row's columns
+          // were a different width from the first.
+          //
+          // Columns stay equal even when empty, which is what Jira, Trello,
+          // Linear and Asana all do. An empty column is still a drop target, so
+          // collapsing it would shrink the thing you have to hit while dragging
+          // — the Fitts's Law point made below — and columns that resize as
+          // cards move make the board jump under the pointer.
+          <div className="-mx-1 overflow-x-auto px-1 pb-1">
+            <div className="grid auto-cols-[minmax(15rem,1fr)] grid-flow-col gap-3">
             {TASK_STATUSES.map((status) => {
               // Top-level only. Subtasks live inside their parent card, so a
               // parent with eight completed children is one card here rather
@@ -570,6 +616,7 @@ export function TaskBoard({
                 </div>
               );
             })}
+            </div>
           </div>
         ) : (
           <div className="space-y-2">
@@ -578,6 +625,19 @@ export function TaskBoard({
         )}
       </CardContent>
     </Card>
+
+    {/* One dialog for all three cases. A board column is ~250px, which is not
+        a place to fill in ten fields — see FormDialog for the whole argument. */}
+    <FormDialog
+      open={dialogOpen}
+      onOpenChange={(o) => { if (!o) closeDialog(); }}
+      title={dialogTask ? "Edit task" : dialogParent ? "New subtask" : "New task"}
+      description={dialogParent ? `Under “${dialogParent.name}”` : undefined}
+    >
+      {error && <div className="mb-4"><Alert tone="danger">{error}</Alert></div>}
+      {dialogOpen && taskForm(dialogTask, dialogTask ? dialogTask.parentTaskId : parentFor)}
+    </FormDialog>
+    </>
   );
 }
 

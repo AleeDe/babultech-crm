@@ -8,6 +8,7 @@ import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { createRecord, updateRecord, LIST_LIMIT } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
+import { sanitizeRichText } from "@/lib/rich-text";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionResult } from "./partners";
 
@@ -109,6 +110,9 @@ const projectSchema = z
     accountId: z.string().uuid().optional().nullable(),
     opportunityId: z.string().uuid().optional().nullable(),
     contractId: z.string().uuid().optional().nullable(),
+    // The catalogue product this work builds or delivers. Optional: plenty of
+    // projects are not about a product at all.
+    productId: z.string().uuid().optional().nullable(),
     projectManagerId: z.string().uuid(),
     status: z
       .enum(["DRAFT", "PLANNING", "ACTIVE", "ON_HOLD", "AT_RISK", "COMPLETED", "CANCELLED"])
@@ -137,6 +141,8 @@ const projectSchema = z
       });
     }
   })
+  // `productId` is deliberately NOT cleared for internal work: building your
+  // own product on an internal project is the main reason the link exists.
   .transform((v) =>
     v.projectType === "INTERNAL"
       ? { ...v, accountId: null, opportunityId: null, contractId: null }
@@ -340,6 +346,7 @@ export async function getProject(id: string) {
        account ( id, name, accountNumber ),
        opportunity ( id, opportunityNumber, name ),
        contract ( id, contractNumber ),
+       product ( id, productCode, name, productType ),
        projectManager:app_user!project_projectManagerId_fkey ( id, fullName, email ),
        phases:project_phase ( * ),
        milestones:milestone (
@@ -390,6 +397,7 @@ export async function getProject(id: string) {
     account: one(data.account as never),
     opportunity: one(data.opportunity as never),
     contract: one(data.contract as never),
+    product: one(data.product as never),
     projectManager: one(data.projectManager as never),
     phases: rows(data.phases).sort((a, b) => num(a.sequenceNumber) - num(b.sequenceNumber)),
     milestones: rows(data.milestones)
@@ -712,6 +720,36 @@ async function assertAssigneeIsOnProject(
   }
 }
 
+/**
+ * Internal work is never billable, whatever the form sent.
+ *
+ * There is no customer on an internal project — `createProject` clears the
+ * account, opportunity and contract for exactly that reason — so a task marked
+ * billable there describes an invoice that can never be raised. Left alone, its
+ * hours land in `billableValue`, in utilisation and in every margin figure, and
+ * the company reads its own internal work back as sold work.
+ *
+ * Enforced here rather than only in the form: the checkbox is hidden for
+ * internal projects, but a stale tab, a direct action call or a project later
+ * converted from customer to internal would all still arrive with billable
+ * true. The server owns the invariant.
+ */
+async function billableForProject(
+  db: Db,
+  projectId: string,
+  requested: boolean,
+): Promise<boolean> {
+  if (!requested) return false;
+
+  const { data: project } = await db
+    .from("project")
+    .select("projectType")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  return project?.projectType === "INTERNAL" ? false : requested;
+}
+
 export async function createTask(
   input: z.infer<typeof taskSchema>,
 ): Promise<ActionResult<{ id: string }>> {
@@ -742,6 +780,12 @@ export async function createTask(
       p_table: "project_task",
       p_payload: {
         ...data,
+        billable: await billableForProject(db, data.projectId, data.billable),
+        // Descriptions hold rich text now, and the point of the field is that
+        // people paste into it. Cleaned here rather than trusting the editor:
+        // the editor runs in a browser, so its output is whatever was posted.
+        description: sanitizeRichText(data.description),
+        acceptanceCriteria: sanitizeRichText(data.acceptanceCriteria),
         completionPercent: data.completionPercent ?? 0,
         startDate: data.startDate ? data.startDate.toISOString().slice(0, 10) : null,
         dueDate: data.dueDate ? data.dueDate.toISOString().slice(0, 10) : null,
@@ -818,6 +862,9 @@ export async function updateTask(
       id,
       {
         ...data,
+        billable: await billableForProject(db, data.projectId, data.billable),
+        description: sanitizeRichText(data.description),
+        acceptanceCriteria: sanitizeRichText(data.acceptanceCriteria),
         startDate: data.startDate ? data.startDate.toISOString().slice(0, 10) : null,
         dueDate: data.dueDate ? data.dueDate.toISOString().slice(0, 10) : null,
         completionPercent: completing ? 100 : (data.completionPercent ?? before.completionPercent),
@@ -910,7 +957,7 @@ export async function getTask(id: string) {
     .from("project_task")
     .select(
       `*,
-       project ( id, name, projectNumber ),
+       project ( id, name, projectNumber, projectType ),
        phase:project_phase ( id, name ),
        milestone ( id, name ),
        parentTask:parentTaskId ( id, name ),
@@ -1357,7 +1404,7 @@ export async function getProjectFormOptions() {
 
   const db = await supabaseServer();
 
-  const [accountsRes, usersRes, opportunitiesRes, contractsRes, currenciesRes] =
+  const [accountsRes, usersRes, opportunitiesRes, contractsRes, currenciesRes, productsRes] =
     await Promise.all([
       db.from("account").select("id, name").is("deletedAt", null).order("name"),
       supabaseAdmin()
@@ -1380,6 +1427,14 @@ export async function getProjectFormOptions() {
         .is("deletedAt", null)
         .order("contractNumber"),
       db.from("currency").select("*").eq("active", true).order("code"),
+      // Only products still on sale: linking new work to a retired one would
+      // be a mistake nobody catches until the P&L looks wrong.
+      db
+        .from("product")
+        .select("id, productCode, name, productType")
+        .eq("active", true)
+        .is("deletedAt", null)
+        .order("name"),
     ]);
 
   const accounts = accountsRes.data ?? [];
@@ -1387,6 +1442,7 @@ export async function getProjectFormOptions() {
   const opportunities = opportunitiesRes.data ?? [];
   const contracts = contractsRes.data ?? [];
   const currencies = currenciesRes.data ?? [];
+  const products = productsRes.data ?? [];
 
-  return { accounts, users, opportunities, contracts, currencies };
+  return { accounts, users, opportunities, contracts, currencies, products };
 }

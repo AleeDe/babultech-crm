@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { RichText } from "@/components/rich-text";
 import { ArrowLeft, ListTree, Clock } from "lucide-react";
 import { getTask } from "@/server/projects";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
 import { getAuditTrail } from "@/lib/audit";
-import { NotesPanel } from "@/components/notes-panel";
+import { NotesSection } from "@/components/notes-section";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { AuditPanel } from "@/components/audit-panel";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
@@ -80,6 +81,9 @@ export default async function TaskDetailPage({
           {humanize(task.priority as string)}
         </Badge>
         {task.billable ? <Badge tone="info">Billable</Badge> : null}
+        {task.project?.projectType === "INTERNAL" ? (
+          <Badge tone="neutral">Internal</Badge>
+        ) : null}
       </PageHeader>
 
       {task.status === "BLOCKED" && (
@@ -168,9 +172,14 @@ export default async function TaskDetailPage({
             <DetailRow label="Completed">
               {task.completedDate ? formatDate(task.completedDate) : "—"}
             </DetailRow>
-            <DetailRow label="Billable">
-              {task.billable ? "Yes - time bills to the customer" : "No"}
-            </DetailRow>
+            {/* On internal work there is no customer to bill, so "No" would be
+                restating the project type rather than telling the reader
+                anything. The Internal badge in the header already says it. */}
+            {task.project?.projectType !== "INTERNAL" && (
+              <DetailRow label="Billable">
+                {task.billable ? "Yes - time bills to the customer" : "No"}
+              </DetailRow>
+            )}
           </CardContent>
         </Card>
 
@@ -230,7 +239,10 @@ export default async function TaskDetailPage({
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Description
                 </p>
-                <p className="mt-1 whitespace-pre-line">{task.description as string}</p>
+                {/* RichText decides how to show it: markup as markup, and the
+                    plain descriptions written before this field held HTML as
+                    pre-wrapped text with their line breaks intact. */}
+                <RichText value={task.description as string} className="mt-1" />
               </div>
             ) : null}
             {task.acceptanceCriteria ? (
@@ -238,7 +250,7 @@ export default async function TaskDetailPage({
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Acceptance criteria
                 </p>
-                <p className="mt-1 whitespace-pre-line">{task.acceptanceCriteria as string}</p>
+                <RichText value={task.acceptanceCriteria as string} className="mt-1" />
               </div>
             ) : null}
           </CardContent>
@@ -291,7 +303,7 @@ export default async function TaskDetailPage({
       </Card>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <NotesPanel entityType="ProjectTask" entityId={taskId} notes={notes} />
+        <NotesSection entityType="ProjectTask" entityId={taskId} notes={notes} />
         <DocumentsPanel entityType="ProjectTask" entityId={taskId} documents={documents} />
       </div>
 
