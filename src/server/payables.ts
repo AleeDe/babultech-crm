@@ -345,6 +345,153 @@ export async function createExpense(
   }
 }
 
+/**
+ * Correct an expense that has already been recorded.
+ *
+ * Expenses were write-once: a typo in the amount, the wrong category, or a
+ * claim booked to the wrong project could only be fixed by raising a second
+ * expense and hoping someone noticed. That is how a ledger ends up with
+ * duplicates nobody can reconcile.
+ *
+ * Two rules decide who may edit what, and they are the same rules approval
+ * already implies:
+ *
+ *   * **Approved or paid money is locked.** Once an approver has agreed an
+ *     amount, changing it behind them would make the approval a lie — the
+ *     record would say "approved" over a figure nobody approved. Editing an
+ *     approved expense therefore requires it to be rejected back to draft
+ *     first, which is a deliberate, recorded act.
+ *   * **A submitted claim belongs to its approver.** While it is in the queue,
+ *     only someone holding `expense:approve` may touch it; the claimant editing
+ *     a claim out from under a reviewer is the same problem in miniature.
+ *
+ * A draft is freely editable by whoever may write expenses, because nothing
+ * downstream has acted on it yet.
+ *
+ * Every change here is recorded in audit_history by update_record(), which is
+ * why the migration that widened audited_fields() ships alongside this: without
+ * it, editing an amount or a category would have left no trace.
+ */
+export async function updateExpense(
+  id: string,
+  input: z.infer<typeof expenseSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const _auth = await authorize(PERMISSIONS.EXPENSE_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
+
+  const parsed = expenseSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const d = parsed.data;
+
+  const db = await supabaseServer();
+
+  // Read the row rather than trusting what the form said about it: the state
+  // that decides whether this edit is allowed has to come from the database.
+  const { data: before, error: readError } = await db
+    .from("expense")
+    .select("id, approvalStatus, paymentStatus, employeeUserId, deletedAt")
+    .eq("id", id)
+    .maybeSingle();
+
+  // A malformed id is a record that cannot exist, not a server fault.
+  if (readError) {
+    if (readError.code === "22P02") return { ok: false, error: "That expense no longer exists." };
+    return { ok: false, error: `Could not load the expense: ${readError.message}` };
+  }
+  if (!before || before.deletedAt) return { ok: false, error: "That expense no longer exists." };
+
+  if (before.approvalStatus === "APPROVED") {
+    return {
+      ok: false,
+      error:
+        "Approved expenses are locked. Ask an approver to reject it back to draft before changing it.",
+    };
+  }
+
+  if (before.paymentStatus === "PAID") {
+    return {
+      ok: false,
+      error: "This expense has already been paid, so its record cannot be changed.",
+    };
+  }
+
+  if (before.approvalStatus === "SUBMITTED" && !can(user, PERMISSIONS.EXPENSE_APPROVE)) {
+    return {
+      ok: false,
+      error:
+        "This claim is waiting on approval. Ask your approver to reject it back to you, or to make the change.",
+    };
+  }
+
+  // The same domain rules as createExpense. They are restated rather than
+  // shared because the messages point at form fields, and an edit that dropped
+  // them would let a correction create the state a creation cannot.
+  if (d.reimbursable && !d.employeeUserId) {
+    return {
+      ok: false,
+      error: "Say who to pay back, or untick paying it back if the company paid directly.",
+      fieldErrors: { employeeUserId: ["Choose who is owed this money."] },
+    };
+  }
+
+  if (d.billableToCustomer && !d.projectId) {
+    return {
+      ok: false,
+      error: "A billable expense needs a project - that is what it gets billed through.",
+      fieldErrors: { projectId: ["Required for a billable expense."] },
+    };
+  }
+
+  if (d.billableToCustomer && d.projectId && (await internalProjectIds([d.projectId])).size) {
+    return {
+      ok: false,
+      error:
+        "That is an internal project, so its cost cannot be recharged - there is no customer to bill.",
+      fieldErrors: { billableToCustomer: ["Internal work cannot be recharged."] },
+    };
+  }
+
+  try {
+    // update_record writes the audit rows in the same transaction as the
+    // update, so a change can never be applied without its history.
+    await updateRecord(
+      "expense",
+      id,
+      {
+        categoryId: d.categoryId,
+        expenseDate: d.expenseDate,
+        amount: d.amount,
+        taxAmount: d.taxAmount ?? null,
+        currencyCode: d.currencyCode,
+        description: d.description || null,
+        employeeUserId: d.employeeUserId || null,
+        vendorAccountId: d.vendorAccountId || null,
+        projectId: d.projectId || null,
+        billableToCustomer: d.billableToCustomer,
+        reimbursable: d.reimbursable,
+      },
+      "Expense",
+      user.id,
+    );
+
+    revalidatePath("/expenses");
+    revalidatePath(`/expenses/${id}`);
+    return { ok: true, data: { id } };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not save the changes.",
+    };
+  }
+}
+
 export async function getExpense(id: string) {
   const me = await requirePermission(PERMISSIONS.EXPENSE_READ);
   const db = await supabaseServer();

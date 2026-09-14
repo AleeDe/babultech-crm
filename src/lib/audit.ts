@@ -72,6 +72,7 @@ export async function getAuditTrail(
 
 /** Fields worth a history row. Everything else is noise. */
 const AUDITED_FIELDS = new Set([
+  // Original list: status, money and ownership.
   "status",
   "stage",
   "priority",
@@ -95,6 +96,65 @@ const AUDITED_FIELDS = new Set([
   "tier",
   "revenueSharePercent",
   "commissionPercentOverride",
+
+  // What a record is and what it says. `description` is the field most often
+  // corrected after the fact, and that correction used to leave no trace.
+  "name",
+  "description",
+  "subject",
+  "notes",
+  "scope",
+  "acceptanceCriteria",
+
+  // Expenses: re-dating, re-categorising, moving to another project or
+  // flipping billable each change who ends up paying for the money spent.
+  "expenseDate",
+  "categoryId",
+  "projectId",
+  "employeeUserId",
+  "vendorAccountId",
+  "billableToCustomer",
+  "reimbursable",
+  "taxAmount",
+  "currencyCode",
+  "paymentStatus",
+  "receiptDocumentId",
+
+  // Projects and tasks.
+  "projectType",
+  "health",
+  "billingType",
+  "approvedHours",
+  "plannedEndDate",
+  "actualEndDate",
+  "estimatedHours",
+  "billable",
+  "phaseId",
+  "milestoneId",
+
+  // People and access. A role change is the most security-relevant edit in the
+  // system and was previously invisible here.
+  "roleId",
+  "departmentId",
+  "managerUserId",
+  "jobTitle",
+  "costRate",
+  "defaultBillingRate",
+  "employeeNumber",
+  "email",
+
+  // Contact and account details people ring or invoice.
+  "phone",
+  "accountId",
+  "contactId",
+  "partnerId",
+  "contractId",
+  "opportunityId",
+  "billingAmount",
+  "invoicedAt",
+  "quantity",
+  "unitPrice",
+  "discountPercent",
 ]);
 
 function stringify(value: unknown): string | null {

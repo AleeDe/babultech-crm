@@ -1,15 +1,13 @@
 import { createExpense, createExpenseCategory, getPayableFormOptions } from "@/server/payables";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
-import { PageHeader, Forbidden, Input, Select, Textarea } from "@/components/ui";
-import { RecordForm, FormField } from "@/components/record-form";
-import { FieldHelp } from "@/components/field-help";
-import { SelectWithAdd } from "@/components/select-with-add";
+import { PageHeader, Forbidden } from "@/components/ui";
+import { ExpenseForm } from "../expense-form";
 
 export default async function NewExpensePage() {
   const me = await requireUser();
   if (!can(me, PERMISSIONS.EXPENSE_WRITE)) return <Forbidden what="recording expenses" />;
 
-  const { categories, vendors, users, projects, currencies } = await getPayableFormOptions();
+  const options = await getPayableFormOptions();
 
   return (
     <>
@@ -21,142 +19,17 @@ export default async function NewExpensePage() {
       />
 
       <div className="max-w-2xl">
-        <RecordForm action={createExpense} redirectTo="/expenses" submitLabel="Record expense">
-          <div className="grid gap-5 sm:grid-cols-2">
-            <FormField
-              label="Category"
-              name="categoryId"
-              required
-              help="What kind of cost this was - rent, utilities, hardware, software. It decides which line of the accounts it lands on, so pick the closest match rather than a general one. Add one with + if it is not listed."
-            >
-              <SelectWithAdd
-                name="categoryId"
-                required
-                options={categories}
-                placeholder="Choose a category…"
-                addLabel="Add an expense category"
-                onCreate={createExpenseCategory}
-              />
-            </FormField>
-
-            <FormField
-              label="Date"
-              name="expenseDate"
-              required
-              help="The day the money was actually spent, not the day you are entering it. This is what puts the cost in the right month."
-            >
-              <Input
-                name="expenseDate"
-                type="date"
-                required
-                defaultValue={new Date().toISOString().slice(0, 10)}
-              />
-            </FormField>
-
-            <FormField
-              label="Amount"
-              name="amount"
-              required
-              help="The total paid, including any tax. Enter digits only - no commas or currency symbol."
-            >
-              <Input name="amount" type="number" step="0.01" min="0" required placeholder="12500" />
-            </FormField>
-
-            <FormField
-              label="Tax"
-              name="taxAmount"
-              hint="Recoverable tax, if any."
-              help="How much of the amount above was tax you can claim back. Leave it empty if there was none or you are unsure - it does not change what gets reimbursed."
-            >
-              <Input name="taxAmount" type="number" step="0.01" min="0" />
-            </FormField>
-
-            <FormField
-              label="Currency"
-              name="currencyCode"
-              help="The currency the money was actually paid in. Leave it as PKR unless you paid a foreign supplier."
-            >
-              <Select name="currencyCode" defaultValue="PKR">
-                {currencies.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.code} - {c.name}
-                  </option>
-                ))}
-              </Select>
-            </FormField>
-
-            <FormField
-              label="Project"
-              name="projectId"
-              hint="Required if billing it on."
-              help="Attach the cost to a project when it was incurred for one specific customer. Leave it as None for general running costs like rent or internet."
-            >
-              <Select name="projectId" defaultValue="">
-                <option value="">None</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
-            </FormField>
-          </div>
-
-          <div className="grid gap-5 sm:grid-cols-2">
-            <FormField
-              label="Who paid from their own pocket"
-              name="employeeUserId"
-              hint="They get this money back."
-              help="The person who spent their own money and is owed it back. Set this to Nobody if the company paid directly, and untick paying it back below."
-            >
-              <Select name="employeeUserId" defaultValue={me.id}>
-                <option value="">Nobody - the company paid directly</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.fullName}
-                  </option>
-                ))}
-              </Select>
-            </FormField>
-
-            <FormField
-              label="Or the company paid this supplier"
-              name="vendorAccountId"
-              hint="Optional."
-              help="Name the supplier only if it is one you keep records for. Petty cash, a rickshaw or tea for a meeting is a real cost with no supplier worth recording, so leaving this blank is fine."
-            >
-              <Select name="vendorAccountId" defaultValue="">
-                <option value="">None</option>
-                {vendors.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name}
-                  </option>
-                ))}
-              </Select>
-            </FormField>
-          </div>
-
-          <FormField
-              label="Description"
-              name="description"
-              help="What it was actually for, in a few words. This is what the approver reads, so 'Carpet for the office floor' beats 'Misc'."
-            >
-            <Textarea name="description" rows={2} placeholder="What it was for." />
-          </FormField>
-
-          <div className="flex flex-wrap gap-6">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="reimbursable" value="true" defaultChecked />
-              Pay this money back to them
-              <FieldHelp text="Leave this ticked when someone paid from their own pocket - it is what puts the claim on the list of money the company owes. Untick it if the company already paid directly and nobody is out of pocket." />
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="billableToCustomer" value="true" />
-              Bill on to the customer
-              <FieldHelp text="Tick to charge this cost on to the customer as well as recording it. It needs a project, because that is what it gets invoiced through." />
-            </label>
-          </div>
-        </RecordForm>
+        {/* The same form the edit page uses, so a rule cannot end up enforced
+            on one and quietly missing on the other. */}
+        <ExpenseForm
+          action={createExpense}
+          onCreateCategory={createExpenseCategory}
+          options={options}
+          // Whoever is recording it is usually the one owed the money.
+          defaults={{ employeeUserId: me.id }}
+          submitLabel="Record expense"
+          redirectTo="/expenses"
+        />
       </div>
     </>
   );

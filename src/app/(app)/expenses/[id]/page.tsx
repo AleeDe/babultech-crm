@@ -4,14 +4,14 @@ import { Receipt } from "lucide-react";
 import { getExpense } from "@/server/payables";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
-import { NotesPanel } from "@/components/notes-panel";
+import { NotesSection } from "@/components/notes-section";
 import { AuditPanel } from "@/components/audit-panel";
 import { getAuditTrail } from "@/lib/audit";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
-  StatTile, DetailRow, Alert, Forbidden,
+  StatTile, DetailRow, Alert, Forbidden, Button,
 } from "@/components/ui";
 import { formatMoney, formatDate, formatDateTime, humanize } from "@/lib/utils";
 import { ExpenseActions } from "./expense-actions";
@@ -36,6 +36,16 @@ export default async function ExpenseDetailPage({
 
   const gross = Number(expense.amount ?? 0) + Number(expense.taxAmount ?? 0);
   const isOwnClaim = expense.employeeUserId === me.id;
+
+  // Mirrors the rules in updateExpense: approved or paid money is locked, and a
+  // claim already in the approval queue belongs to its approver. The server
+  // enforces it; this decides whether to offer the button at all, because
+  // sending someone to a form that turns them away is worse than not offering.
+  const canEdit =
+    can(me, PERMISSIONS.EXPENSE_WRITE) &&
+    expense.approvalStatus !== "APPROVED" &&
+    expense.paymentStatus !== "PAID" &&
+    (expense.approvalStatus !== "SUBMITTED" || can(me, PERMISSIONS.EXPENSE_APPROVE));
   const needsReceipt =
     expense.category?.requiresReceipt && documents.length === 0 && expense.approvalStatus !== "APPROVED";
 
@@ -53,6 +63,11 @@ export default async function ExpenseDetailPage({
           <Badge tone="info">
             <Receipt className="h-3 w-3" /> Billable
           </Badge>
+        )}
+        {canEdit && (
+          <Button asChild variant="outline">
+            <Link href={`/expenses/${expense.id}/edit`}>Edit</Link>
+          </Button>
         )}
       </PageHeader>
 
@@ -148,7 +163,7 @@ export default async function ExpenseDetailPage({
           </CardContent>
         </Card>
 
-        <NotesPanel entityType="Expense" entityId={id} notes={notes} />
+        <NotesSection entityType="Expense" entityId={id} notes={notes} />
       </div>
 
       <div className="mt-6">
@@ -156,7 +171,7 @@ export default async function ExpenseDetailPage({
       </div>
 
       <div className="mt-6">
-        <AuditPanel entries={audit as never} />
+        <AuditPanel entries={audit as never} title="Expense history" />
       </div>
     </>
   );
