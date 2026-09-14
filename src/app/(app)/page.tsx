@@ -20,6 +20,8 @@ import { PulseTile } from "./pulse-tile";
 import { LiveIndicator, LiveClock, PulseDot } from "@/components/live-indicator";
 import { ActivityStream } from "@/components/activity-stream";
 import { DashboardViews, type ViewKey } from "./dashboard-views";
+import { DateRangeFilter } from "./date-range-filter";
+import { resolveRange } from "@/lib/date-range";
 import { SalesView } from "./views/sales-view";
 import { FinanceView } from "./views/finance-view";
 import { DeliveryView } from "./views/delivery-view";
@@ -43,7 +45,13 @@ export default async function DashboardPage({
   // Which module view to show. Kept in the URL so a link to the sales dashboard
   // is a link to the sales dashboard — shareable, reloadable, and survivable
   // through the back button.
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{
+    view?: string;
+    range?: string;
+    from?: string;
+    to?: string;
+    days?: string;
+  }>;
 }) {
   const user = await requireUser();
 
@@ -55,6 +63,12 @@ export default async function DashboardPage({
   // chart and the partner table were not, so a consultant opened the dashboard
   // to the company's cash position in 48-point type and found the polite
   // hiding three screens further down.
+  // Resolved before anything fetches, because the analytics take it. Comes
+  // straight from the address bar, so resolveRange treats every field as
+  // untrusted and falls back rather than throwing.
+  const rangeParams = await searchParams;
+  const range = resolveRange(rangeParams);
+
   const seeSales = can(user, PERMISSIONS.OPPORTUNITY_READ);
   const seeFinance = can(user, PERMISSIONS.INVOICE_READ);
   const seePartners = can(user, PERMISSIONS.PARTNER_READ);
@@ -223,16 +237,10 @@ export default async function DashboardPage({
       seeFinance ? getFinanceAnalytics() : Promise.resolve(null),
       seeCases ? getServiceAnalytics() : Promise.resolve(null),
       seePartners ? getPartnerAnalytics() : Promise.resolve(null),
-      seeProjects
-        ? getDeliveryAnalytics()
-        : Promise.resolve({
-            rows: [],
-            totals: {
-              hours: 0, billableHours: 0, revenue: 0, cost: 0, margin: 0,
-              marginPercent: null, billablePercent: 0, unbilledValue: 0, unapprovedHours: 0,
-            },
-            upcomingMilestones: [],
-          }),
+      // Null rather than a hand-written empty shape: the empty object had to be
+      // updated every time the analytics gained a field, and forgetting was a
+      // type error at best and a wrong zero at worst.
+      seeProjects ? getDeliveryAnalytics(range) : Promise.resolve(null),
     ]);
 
   const openStages = pipeline.filter(
@@ -469,7 +477,7 @@ export default async function DashboardPage({
    * nothing: the parameter is user-editable, and a typo in a shared link should
    * not produce a blank screen.
    */
-  const params = await searchParams;
+  const params = rangeParams;
 
   const views: { key: ViewKey; label: string }[] = [
     { key: "overview", label: "Overview" },
@@ -500,8 +508,20 @@ export default async function DashboardPage({
       {/* Only rendered when there is somewhere to switch to. A single tab is
           not a choice, and a tab strip that never changes anything is noise. */}
       {views.length > 1 && (
-        <div className="mb-6">
+        <div className="mb-4">
           <DashboardViews views={views} active={view} />
+        </div>
+      )}
+
+      {/* Below the view tabs rather than beside them: which part of the
+          business you are looking at and over what period are two separate
+          choices, and stacking them keeps either from crowding the other on a
+          narrow screen. Only the Delivery view reads the range so far, so it is
+          only offered there — a filter that changes nothing is worse than no
+          filter. */}
+      {view === "delivery" && (
+        <div className="mb-6">
+          <DateRangeFilter range={range} />
         </div>
       )}
 
@@ -520,7 +540,7 @@ export default async function DashboardPage({
           payables={payables}
           analytics={financeAnalytics}
         />
-      ) : view === "delivery" ? (
+      ) : view === "delivery" && deliveryAnalytics ? (
         <DeliveryView
           summary={summary}
           attention={{ breachedCases: attentionData.breachedCases }}

@@ -3,6 +3,10 @@
 import { supabaseServer } from "@/lib/supabase";
 import { requireUser, can, requirePermission, PERMISSIONS } from "@/lib/authz";
 import { toDecimal, one } from "@/lib/decimal";
+import {
+  resolveRange, previousRange, rangeDays, workingDays, withinRange,
+  type DateRange,
+} from "@/lib/date-range";
 
 /**
  * Live figures for the dashboard.
@@ -761,39 +765,117 @@ export async function getFinanceAnalytics() {
   };
 }
 
-export async function getDeliveryAnalytics() {
+/**
+ * Delivery analytics for the dashboard.
+ *
+ * Two kinds of figure live here and they are deliberately kept apart:
+ *
+ *   - **Period figures** answer "what happened between these dates" — hours
+ *     logged, tasks completed, revenue earned. They respect the range.
+ *   - **Point-in-time figures** answer "what is true now" — tasks open, work
+ *     overdue, people over-allocated. They ignore the range, because "tasks
+ *     open in August" is not a real quantity. Anything returned under
+ *     `current` is of this second kind, and the UI labels it as of today.
+ *
+ * Collapsing the two would produce numbers that look authoritative and mean
+ * nothing, which is worse than showing fewer of them.
+ */
+export async function getDeliveryAnalytics(range: DateRange = resolveRange({})) {
   await requirePermission(PERMISSIONS.PROJECT_READ);
 
   const db = await supabaseServer();
+  const todayDay = new Date().toISOString().slice(0, 10);
 
-  const [projectsRes, logsRes, milestonesRes] = await Promise.all([
-    db
-      .from("project")
-      .select(
-        `id, name, projectNumber, status, health, contractValue, currencyCode,
-         approvedHours, plannedEndDate,
-         account ( id, name )`,
-      )
-      .is("deletedAt", null)
-      .not("status", "in", '("COMPLETED","CANCELLED")'),
-    db
+  // Time logs are fetched for the range, and separately for the span before it,
+  // so every period figure can be shown against what it was doing previously.
+  const prev = previousRange(range);
+
+  const logSelect =
+    "projectId, projectTaskId, userId, hours, billable, billingRate, costRate, approvalStatus, workDate";
+
+  const rangedLogs = (from: string | null, to: string | null) => {
+    let q = db
       .from("time_log")
-      .select("projectId, hours, billable, billingRate, costRate, approvalStatus")
+      .select(logSelect)
       .not("projectId", "is", null)
-      .neq("approvalStatus", "REJECTED"),
-    db
-      .from("milestone")
-      .select("id, name, dueDate, billingAmount, invoicedAt, project!inner ( id, name, deletedAt )")
-      .is("invoicedAt", null)
-      .not("billingAmount", "is", null),
-  ]);
+      .neq("approvalStatus", "REJECTED");
+    if (from) q = q.gte("workDate", from);
+    if (to) q = q.lte("workDate", to);
+    return q.limit(20000);
+  };
+
+  const [projectsRes, logsRes, prevLogsRes, tasksRes, milestonesRes, membersRes, usersRes] =
+    await Promise.all([
+      db
+        .from("project")
+        .select(
+          `id, name, projectNumber, status, health, contractValue, currencyCode,
+           approvedHours, startDate, plannedEndDate, completionPercent, projectType,
+           account ( id, name )`,
+        )
+        .is("deletedAt", null)
+        .not("status", "in", '("COMPLETED","CANCELLED")'),
+
+      rangedLogs(range.from, range.to),
+      prev ? rangedLogs(prev.from, prev.to) : Promise.resolve({ data: [], error: null }),
+
+      // Every task on a live project. Both kinds of figure come from this one
+      // read: what is open now, and what was completed inside the range.
+      db
+        .from("project_task")
+        .select(
+          `id, name, projectId, assignedUserId, status, priority, dueDate,
+           completedDate, estimatedHours, completionPercent, createdAt,
+           project!inner ( id, name, projectNumber, status, deletedAt )`,
+        )
+        .is("project.deletedAt", null)
+        .not("project.status", "in", '("COMPLETED","CANCELLED")')
+        .limit(20000),
+
+      db
+        .from("milestone")
+        .select("id, name, dueDate, billingAmount, invoicedAt, project!inner ( id, name, deletedAt )")
+        .is("invoicedAt", null)
+        .not("billingAmount", "is", null),
+
+      db
+        .from("project_member")
+        .select("userId, projectId, allocationPercent, active, project!inner ( id, status, deletedAt )")
+        .eq("active", true)
+        .is("project.deletedAt", null)
+        .in("project.status", ["PLANNING", "ACTIVE", "AT_RISK"]),
+
+      db
+        .from("app_user")
+        .select("id, fullName, jobTitle")
+        .eq("status", "ACTIVE")
+        .is("deletedAt", null),
+    ]);
+
+  // A broken query and an empty result are different things: letting a failed
+  // select fall through as zero would report a healthy, idle delivery team.
+  for (const [what, res] of [
+    ["projects", projectsRes], ["time logs", logsRes], ["tasks", tasksRes],
+    ["milestones", milestonesRes], ["project members", membersRes], ["users", usersRes],
+  ] as const) {
+    if (res.error) throw new Error(`Delivery analytics could not load ${what}: ${res.error.message}`);
+  }
 
   const projects = (projectsRes.data ?? []).map((p: Record<string, any>) => ({
     ...p,
     account: one(p.account as never) as { id: string; name: string } | null,
   }));
 
-  // One pass over the time log, bucketed by project.
+  const tasks: Record<string, any>[] = ((tasksRes.data ?? []) as Record<string, any>[]).map(
+    (t) => ({ ...t, project: one(t.project as never) as Record<string, any> | null }),
+  );
+
+  const logs = (logsRes.data ?? []) as Record<string, any>[];
+  const prevLogs = (prevLogsRes.data ?? []) as Record<string, any>[];
+  const members = ((membersRes.data ?? []) as Record<string, any>[]);
+  const users = (usersRes.data ?? []) as Record<string, any>[];
+
+  // ---- Per-project money and hours, over the range -------------------------
   interface Bucket {
     hours: ReturnType<typeof toDecimal>;
     billableHours: ReturnType<typeof toDecimal>;
@@ -802,19 +884,13 @@ export async function getDeliveryAnalytics() {
     unapprovedHours: ReturnType<typeof toDecimal>;
     unbilledValue: ReturnType<typeof toDecimal>;
   }
-
   const zero = (): Bucket => ({
-    hours: toDecimal(0),
-    billableHours: toDecimal(0),
-    revenue: toDecimal(0),
-    cost: toDecimal(0),
-    unapprovedHours: toDecimal(0),
-    unbilledValue: toDecimal(0),
+    hours: toDecimal(0), billableHours: toDecimal(0), revenue: toDecimal(0),
+    cost: toDecimal(0), unapprovedHours: toDecimal(0), unbilledValue: toDecimal(0),
   });
 
   const byProject = new Map<string, Bucket>();
-
-  for (const log of (logsRes.data ?? []) as Record<string, any>[]) {
+  for (const log of logs) {
     const key = String(log.projectId);
     const b = byProject.get(key) ?? zero();
     const hours = toDecimal(log.hours);
@@ -830,16 +906,232 @@ export async function getDeliveryAnalytics() {
       if (log.approvalStatus === "APPROVED") b.revenue = b.revenue.plus(value);
       else b.unbilledValue = b.unbilledValue.plus(value);
     }
-
     if (log.approvalStatus !== "APPROVED") {
       b.unapprovedHours = b.unapprovedHours.plus(hours);
     }
-
     byProject.set(key, b);
   }
 
+  // ---- Tasks ---------------------------------------------------------------
+  const OPEN_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "UNDER_REVIEW"];
+  const isOpen = (t: Record<string, any>) => OPEN_STATUSES.includes(String(t.status));
+
+  const openTasks = tasks.filter(isOpen);
+  const overdueTasks = openTasks.filter((t) => t.dueDate && String(t.dueDate) < todayDay);
+  const blockedTasks = openTasks.filter((t) => String(t.status) === "BLOCKED");
+  const unassignedTasks = openTasks.filter((t) => !t.assignedUserId);
+  const inReviewTasks = openTasks.filter((t) => String(t.status) === "UNDER_REVIEW");
+  const notStartedTasks = openTasks.filter((t) => String(t.status) === "NOT_STARTED");
+  const inProgressTasks = openTasks.filter((t) => String(t.status) === "IN_PROGRESS");
+
+  // Created and completed inside the range — the flow figures. A backlog that
+  // grows faster than it drains is the thing a delivery lead needs to see, and
+  // neither number says it alone.
+  const createdInRange = tasks.filter((t) => withinRange(range, t.createdAt));
+  const completedInRange = tasks.filter(
+    (t) => String(t.status) === "COMPLETED" && withinRange(range, t.completedDate),
+  );
+
+  const dueSoon = openTasks.filter(
+    (t) => t.dueDate && String(t.dueDate) >= todayDay && String(t.dueDate) <= addDays(todayDay, 7),
+  );
+
+  // Hours booked per task, for estimate accuracy and remaining effort. Built
+  // from range logs only where it describes the range, and that is stated at
+  // each use rather than silently mixed.
+  const hoursByTask = new Map<string, ReturnType<typeof toDecimal>>();
+  for (const log of logs) {
+    if (!log.projectTaskId) continue;
+    const k = String(log.projectTaskId);
+    hoursByTask.set(k, (hoursByTask.get(k) ?? toDecimal(0)).plus(toDecimal(log.hours)));
+  }
+
+  // Estimate accuracy over tasks completed in the range that carry both an
+  // estimate and logged time. The sample size travels with the ratio so a
+  // figure drawn from two tasks is not mistaken for a track record.
+  const estimated = completedInRange
+    .map((t) => ({
+      estimate: toDecimal(t.estimatedHours ?? 0),
+      actual: hoursByTask.get(String(t.id)) ?? toDecimal(0),
+    }))
+    .filter((e) => e.estimate.greaterThan(0) && e.actual.greaterThan(0));
+  const totalEstimate = estimated.reduce((a, e) => a.plus(e.estimate), toDecimal(0));
+  const totalActual = estimated.reduce((a, e) => a.plus(e.actual), toDecimal(0));
+
+  // On-time delivery, judged only on tasks that carried a due date — counting
+  // every completed task would quietly reward leaving dates off.
+  const datedCompleted = completedInRange.filter((t) => t.dueDate && t.completedDate);
+  const onTime = datedCompleted.filter((t) => String(t.completedDate) <= String(t.dueDate));
+
+  // Remaining estimated effort on open work, floored at zero per task: work
+  // already past its estimate has no negative time left to give.
+  const remainingHours = openTasks.reduce((acc, t) => {
+    const est = toDecimal(t.estimatedHours ?? 0);
+    if (est.isZero()) return acc;
+    const spent = hoursByTask.get(String(t.id)) ?? toDecimal(0);
+    const left = est.minus(spent);
+    return acc.plus(left.greaterThan(0) ? left : toDecimal(0));
+  }, toDecimal(0));
+
+  // ---- Resources -----------------------------------------------------------
+  const sumBy = <T,>(rows: T[], pick: (r: T) => unknown) =>
+    rows.reduce((a, r) => a.plus(toDecimal(pick(r) as never)), toDecimal(0));
+
+  const allocationByUser = new Map<string, number>();
+  for (const m of members) {
+    const k = String(m.userId);
+    allocationByUser.set(k, (allocationByUser.get(k) ?? 0) + Number(m.allocationPercent ?? 0));
+  }
+
+  const hoursByUser = new Map<string, { hours: ReturnType<typeof toDecimal>; billable: ReturnType<typeof toDecimal> }>();
+  for (const log of logs) {
+    const k = String(log.userId);
+    const acc = hoursByUser.get(k) ?? { hours: toDecimal(0), billable: toDecimal(0) };
+    acc.hours = acc.hours.plus(toDecimal(log.hours));
+    if (log.billable) acc.billable = acc.billable.plus(toDecimal(log.hours));
+    hoursByUser.set(k, acc);
+  }
+
+  // Where each person's hours actually went, by task and by project. This is
+  // the "current allocation" question in its useful form: a percentage says
+  // someone is booked, this says what they are booked *on*.
+  const taskNameById = new Map(tasks.map((t) => [String(t.id), t]));
+  const projectNameById = new Map(projects.map((p: Record<string, any>) => [String(p.id), p]));
+
+  const userTaskHours = new Map<string, Map<string, ReturnType<typeof toDecimal>>>();
+  const userProjectHours = new Map<string, Map<string, ReturnType<typeof toDecimal>>>();
+  for (const log of logs) {
+    const u = String(log.userId);
+    if (log.projectTaskId) {
+      const m = userTaskHours.get(u) ?? new Map();
+      const k = String(log.projectTaskId);
+      m.set(k, (m.get(k) ?? toDecimal(0)).plus(toDecimal(log.hours)));
+      userTaskHours.set(u, m);
+    }
+    if (log.projectId) {
+      const m = userProjectHours.get(u) ?? new Map();
+      const k = String(log.projectId);
+      m.set(k, (m.get(k) ?? toDecimal(0)).plus(toDecimal(log.hours)));
+      userProjectHours.set(u, m);
+    }
+  }
+
+  // Open tasks per person, so someone with no logged time still shows what they
+  // are holding. Allocation without work in progress is its own signal.
+  const openTasksByUser = new Map<string, Record<string, any>[]>();
+  for (const t of openTasks) {
+    if (!t.assignedUserId) continue;
+    const k = String(t.assignedUserId);
+    openTasksByUser.set(k, [...(openTasksByUser.get(k) ?? []), t]);
+  }
+
+  const openTaskCountByUser = new Map<string, number>();
+  const overdueTaskCountByUser = new Map<string, number>();
+  for (const t of openTasks) {
+    if (!t.assignedUserId) continue;
+    const k = String(t.assignedUserId);
+    openTaskCountByUser.set(k, (openTaskCountByUser.get(k) ?? 0) + 1);
+    if (t.dueDate && String(t.dueDate) < todayDay) {
+      overdueTaskCountByUser.set(k, (overdueTaskCountByUser.get(k) ?? 0) + 1);
+    }
+  }
+
+  // Capacity is 8h per working day in the range. Public holidays are not
+  // modelled anywhere in this system, so this is a deliberate Mon–Fri count
+  // rather than a false precision.
+  const days = workingDays(range);
+  const capacityPerPerson = days === null ? null : toDecimal(days * 8);
+
+  const people = users
+    .map((u) => {
+      const k = String(u.id);
+      const h = hoursByUser.get(k) ?? { hours: toDecimal(0), billable: toDecimal(0) };
+      const allocated = allocationByUser.get(k) ?? 0;
+      const util =
+        capacityPerPerson && capacityPerPerson.greaterThan(0)
+          ? Number(h.hours.dividedBy(capacityPerPerson).times(100).toDecimalPlaces(1))
+          : null;
+      const billableUtil =
+        capacityPerPerson && capacityPerPerson.greaterThan(0)
+          ? Number(h.billable.dividedBy(capacityPerPerson).times(100).toDecimalPlaces(1))
+          : null;
+      return {
+        id: k,
+        fullName: String(u.fullName),
+        jobTitle: u.jobTitle ? String(u.jobTitle) : null,
+        allocatedPercent: allocated,
+        projects: members.filter((m) => String(m.userId) === k).length,
+        hours: Number(h.hours.toDecimalPlaces(1)),
+        billableHours: Number(h.billable.toDecimalPlaces(1)),
+        utilisationPercent: util,
+        billableUtilisationPercent: billableUtil,
+        openTasks: openTaskCountByUser.get(k) ?? 0,
+        overdueTasks: overdueTaskCountByUser.get(k) ?? 0,
+
+        /** Which tasks their logged hours went into, biggest first. */
+        taskBreakdown: [...(userTaskHours.get(k) ?? new Map()).entries()]
+          .map(([taskId, hrs]) => {
+            const t = taskNameById.get(taskId);
+            const proj = t ? projectNameById.get(String(t.projectId)) : null;
+            return {
+              id: taskId,
+              name: t ? String(t.name) : "(task no longer on a live project)",
+              status: t ? String(t.status) : null,
+              projectId: t ? String(t.projectId) : null,
+              projectName: proj ? String(proj.name) : null,
+              hours: Number((hrs as ReturnType<typeof toDecimal>).toDecimalPlaces(1)),
+            };
+          })
+          .sort((a, b) => b.hours - a.hours)
+          .slice(0, 6),
+
+        /** And which projects, for the person whose work spans several. */
+        projectBreakdown: [...(userProjectHours.get(k) ?? new Map()).entries()]
+          .map(([projectId, hrs]) => {
+            const proj = projectNameById.get(projectId);
+            return {
+              id: projectId,
+              name: proj ? String(proj.name) : "(project no longer live)",
+              hours: Number((hrs as ReturnType<typeof toDecimal>).toDecimalPlaces(1)),
+            };
+          })
+          .sort((a, b) => b.hours - a.hours),
+
+        /**
+         * What they are holding right now, for the person who is booked but has
+         * logged nothing — allocation with no work in progress is its own signal.
+         */
+        currentTasks: (openTasksByUser.get(k) ?? [])
+          .slice()
+          .sort((a, b) => String(a.dueDate ?? "9999").localeCompare(String(b.dueDate ?? "9999")))
+          .slice(0, 6)
+          .map((t) => {
+            const proj = projectNameById.get(String(t.projectId));
+            return {
+              id: String(t.id),
+              name: String(t.name),
+              status: String(t.status),
+              projectId: String(t.projectId),
+              projectName: proj ? String(proj.name) : null,
+              dueDate: t.dueDate ? String(t.dueDate) : null,
+              overdue: Boolean(t.dueDate && String(t.dueDate) < todayDay),
+              completionPercent: Number(t.completionPercent ?? 0),
+            };
+          }),
+      };
+    })
+    .sort((a, b) => b.hours - a.hours || b.allocatedPercent - a.allocatedPercent);
+
+  const overAllocated = people.filter((p) => p.allocatedPercent > 100);
+  const unallocated = people.filter((p) => p.allocatedPercent === 0);
+  const totalCapacity = capacityPerPerson ? capacityPerPerson.times(people.length) : null;
+  const loggedTotal = sumBy(logs, (l) => l.hours);
+  const billableTotal = sumBy(logs.filter((l) => l.billable), (l) => l.hours);
+
+  // ---- Per-project rows ----------------------------------------------------
   const rows = projects.map((p: Record<string, any>) => {
-    const b = byProject.get(String(p.id)) ?? zero();
+    const pid = String(p.id);
+    const b = byProject.get(pid) ?? zero();
     const margin = b.revenue.minus(b.cost);
     const marginPercent = b.revenue.greaterThan(0)
       ? Number(margin.dividedBy(b.revenue).times(100))
@@ -847,14 +1139,19 @@ export async function getDeliveryAnalytics() {
     const approved = Number(p.approvedHours ?? 0);
     const burnPercent = approved > 0 ? (Number(b.hours) / approved) * 100 : null;
 
+    const projectTasks = tasks.filter((t) => String(t.projectId) === pid);
+    const projectOpen = projectTasks.filter(isOpen);
+
     return {
-      id: String(p.id),
+      id: pid,
       name: String(p.name),
       projectNumber: String(p.projectNumber),
       accountName: p.account?.name ?? null,
+      projectType: String(p.projectType ?? "CUSTOMER"),
       status: String(p.status),
       health: String(p.health ?? "GREEN"),
       plannedEndDate: p.plannedEndDate ? String(p.plannedEndDate) : null,
+      completionPercent: Number(p.completionPercent ?? 0),
       hours: Number(b.hours),
       billableHours: Number(b.billableHours),
       revenue: Number(b.revenue),
@@ -865,6 +1162,15 @@ export async function getDeliveryAnalytics() {
       unbilledValue: Number(b.unbilledValue),
       burnPercent,
       overBudget: burnPercent !== null && burnPercent > 100,
+      // Point-in-time, like every other task count here.
+      totalTasks: projectTasks.length,
+      openTasks: projectOpen.length,
+      overdueTasks: projectOpen.filter((t) => t.dueDate && String(t.dueDate) < todayDay).length,
+      blockedTasks: projectOpen.filter((t) => String(t.status) === "BLOCKED").length,
+      completedTasks: projectTasks.filter((t) => String(t.status) === "COMPLETED").length,
+      people: new Set(members.filter((m) => String(m.projectId) === pid).map((m) => String(m.userId))).size,
+      // Past its planned end date and still not finished.
+      overdue: Boolean(p.plannedEndDate && String(p.plannedEndDate) < todayDay),
     };
   });
 
@@ -880,17 +1186,52 @@ export async function getDeliveryAnalytics() {
     { hours: 0, billableHours: 0, revenue: 0, cost: 0, unbilledValue: 0, unapprovedHours: 0 },
   );
 
-  // Milestones that are due and not yet invoiced — work that is finished, or
-  // nearly, and has not turned into money.
+  // ---- Previous period, for direction --------------------------------------
+  const prevHours = sumBy(prevLogs, (l) => l.hours);
+  const prevBillable = sumBy(prevLogs.filter((l) => l.billable), (l) => l.hours);
+  const prevRevenue = prevLogs
+    .filter((l) => l.billable && l.approvalStatus === "APPROVED")
+    .reduce((a, l) => a.plus(toDecimal(l.hours).times(toDecimal(l.billingRate))), toDecimal(0));
+  const prevCompleted = tasks.filter(
+    (t) =>
+      String(t.status) === "COMPLETED" &&
+      prev && t.completedDate &&
+      String(t.completedDate) >= prev.from && String(t.completedDate) <= prev.to,
+  ).length;
+
+  // ---- Daily hours, for the trend -----------------------------------------
+  const daily: { day: string; hours: number; billableHours: number }[] = [];
+  if (range.from && range.to) {
+    const byDay = new Map<string, { h: ReturnType<typeof toDecimal>; b: ReturnType<typeof toDecimal> }>();
+    for (const l of logs) {
+      const d = String(l.workDate).slice(0, 10);
+      const acc = byDay.get(d) ?? { h: toDecimal(0), b: toDecimal(0) };
+      acc.h = acc.h.plus(toDecimal(l.hours));
+      if (l.billable) acc.b = acc.b.plus(toDecimal(l.hours));
+      byDay.set(d, acc);
+    }
+    // Capped so a five-year range does not try to render 1,825 bars.
+    const span = rangeDays(range) ?? 0;
+    if (span > 0 && span <= 120) {
+      for (let i = 0; i < span; i++) {
+        const day = addDays(range.from, i);
+        const v = byDay.get(day);
+        daily.push({
+          day,
+          hours: Number((v?.h ?? toDecimal(0)).toDecimalPlaces(2)),
+          billableHours: Number((v?.b ?? toDecimal(0)).toDecimalPlaces(2)),
+        });
+      }
+    }
+  }
+
+  // ---- Milestones ----------------------------------------------------------
   const now = new Date();
   const in30 = new Date(now);
   in30.setDate(in30.getDate() + 30);
 
   const upcomingMilestones = ((milestonesRes.data ?? []) as Record<string, any>[])
-    .map((m) => {
-      const project = one(m.project as never) as Record<string, any> | null;
-      return { row: m, project };
-    })
+    .map((m) => ({ row: m, project: one(m.project as never) as Record<string, any> | null }))
     .filter(({ row, project }) => project && !project.deletedAt && row.dueDate)
     .filter(({ row }) => new Date(String(row.dueDate)) <= in30)
     .map(({ row, project }) => ({
@@ -904,16 +1245,141 @@ export async function getDeliveryAnalytics() {
     }))
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
+  const pct = (part: number, whole: number) => (whole > 0 ? (part / whole) * 100 : null);
+
   return {
+    range,
+
     rows,
+
     totals: {
       ...totals,
       margin: totals.revenue - totals.cost,
       marginPercent: totals.revenue > 0 ? ((totals.revenue - totals.cost) / totals.revenue) * 100 : null,
       billablePercent: totals.hours > 0 ? (totals.billableHours / totals.hours) * 100 : 0,
     },
+
+    /**
+     * What happened inside the range.
+     */
+    period: {
+      hours: Number(loggedTotal.toDecimalPlaces(1)),
+      billableHours: Number(billableTotal.toDecimalPlaces(1)),
+      nonBillableHours: Number(loggedTotal.minus(billableTotal).toDecimalPlaces(1)),
+      billablePercent: pct(Number(billableTotal), Number(loggedTotal)),
+      entries: logs.length,
+      tasksCreated: createdInRange.length,
+      tasksCompleted: completedInRange.length,
+      /** >0 means the backlog grew: more work arrived than was finished. */
+      backlogChange: createdInRange.length - completedInRange.length,
+      onTimePercent:
+        datedCompleted.length === 0
+          ? null
+          : Math.round((onTime.length / datedCompleted.length) * 100),
+      datedCompletedCount: datedCompleted.length,
+      estimateAccuracyPercent: totalEstimate.isZero()
+        ? null
+        : Number(totalActual.dividedBy(totalEstimate).times(100).toDecimalPlaces(0)),
+      estimateSampleSize: estimated.length,
+      /** Team utilisation: hours logged against everyone's capacity. */
+      utilisationPercent:
+        totalCapacity && totalCapacity.greaterThan(0)
+          ? Number(loggedTotal.dividedBy(totalCapacity).times(100).toDecimalPlaces(1))
+          : null,
+      billableUtilisationPercent:
+        totalCapacity && totalCapacity.greaterThan(0)
+          ? Number(billableTotal.dividedBy(totalCapacity).times(100).toDecimalPlaces(1))
+          : null,
+      capacityHours: totalCapacity ? Number(totalCapacity) : null,
+      workingDays: days,
+    },
+
+    /** The same figures for the span immediately before, or null for all-time. */
+    previous: prev
+      ? {
+          hours: Number(prevHours.toDecimalPlaces(1)),
+          billableHours: Number(prevBillable.toDecimalPlaces(1)),
+          revenue: Number(prevRevenue),
+          tasksCompleted: prevCompleted,
+        }
+      : null,
+
+    /**
+     * True right now, whatever the range says. "Tasks open in August" is not a
+     * real quantity, so these deliberately ignore the filter and the UI says so.
+     */
+    current: {
+      activeProjects: rows.length,
+      projectsAtRisk: rows.filter((r) => r.health === "RED" || r.status === "AT_RISK").length,
+      projectsOverdue: rows.filter((r) => r.overdue).length,
+      projectsOverBudget: rows.filter((r) => r.overBudget).length,
+      totalTasks: tasks.length,
+      openTasks: openTasks.length,
+      notStartedTasks: notStartedTasks.length,
+      inProgressTasks: inProgressTasks.length,
+      inReviewTasks: inReviewTasks.length,
+      blockedTasks: blockedTasks.length,
+      overdueTasks: overdueTasks.length,
+      unassignedTasks: unassignedTasks.length,
+      dueSoonTasks: dueSoon.length,
+      completedTasksAllTime: tasks.filter((t) => String(t.status) === "COMPLETED").length,
+      remainingHours: Number(remainingHours.toDecimalPlaces(1)),
+      peopleActive: people.length,
+      peopleOverAllocated: overAllocated.length,
+      peopleUnallocated: unallocated.length,
+      peopleBooked: people.filter((p) => p.allocatedPercent > 0).length,
+    },
+
+    people,
+
+    /** The work most likely to need a decision today. */
+    attention: {
+      overdue: openTasks
+        .filter((t) => t.dueDate && String(t.dueDate) < todayDay)
+        .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)))
+        .slice(0, 8)
+        .map((t) => ({
+          id: String(t.id),
+          name: String(t.name),
+          projectId: String(t.projectId),
+          projectName: t.project ? String(t.project.name) : null,
+          dueDate: String(t.dueDate),
+          status: String(t.status),
+          assignee: users.find((u) => String(u.id) === String(t.assignedUserId))?.fullName ?? null,
+          daysLate: Math.max(
+            0,
+            Math.round(
+              (new Date(`${todayDay}T00:00:00Z`).getTime() -
+                new Date(`${String(t.dueDate)}T00:00:00Z`).getTime()) / 86_400_000,
+            ),
+          ),
+        })),
+      blocked: blockedTasks.slice(0, 8).map((t) => ({
+        id: String(t.id),
+        name: String(t.name),
+        projectId: String(t.projectId),
+        projectName: t.project ? String(t.project.name) : null,
+        assignee: users.find((u) => String(u.id) === String(t.assignedUserId))?.fullName ?? null,
+      })),
+      unassigned: unassignedTasks.slice(0, 8).map((t) => ({
+        id: String(t.id),
+        name: String(t.name),
+        projectId: String(t.projectId),
+        projectName: t.project ? String(t.project.name) : null,
+        dueDate: t.dueDate ? String(t.dueDate) : null,
+      })),
+    },
+
+    daily,
     upcomingMilestones,
   };
+}
+
+/** `yyyy-mm-dd` plus n days, staying in date-only space. */
+function addDays(day: string, n: number): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }
 
 export async function getAttentionItems() {

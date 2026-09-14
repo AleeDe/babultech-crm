@@ -1,41 +1,23 @@
 import Link from "next/link";
 import { Kpi, AttentionList } from "@/components/dashboard-kit";
 import { formatCompactMoney, formatDate, formatNumber, cn } from "@/lib/utils";
-import type { ModuleSummary } from "@/server/dashboard";
+import type { ModuleSummary, getDeliveryAnalytics } from "@/server/dashboard";
 
-interface ProjectRow {
-  id: string;
-  name: string;
-  projectNumber: string;
-  accountName: string | null;
-  status: string;
-  health: string;
-  plannedEndDate: string | null;
-  hours: number;
-  billableHours: number;
-  revenue: number;
-  cost: number;
-  margin: number;
-  marginPercent: number | null;
-  unapprovedHours: number;
-  unbilledValue: number;
-  burnPercent: number | null;
-  overBudget: boolean;
-}
+type Analytics = NonNullable<Awaited<ReturnType<typeof getDeliveryAnalytics>>>;
 
 /**
  * The delivery portfolio, deep enough to run a week from.
  *
- * The first version had four counts and a list of projects by hours, which says
- * how busy people are and nothing about whether the work is worth doing. A
- * delivery lead opens this asking four things: are we making money, what is
- * about to slip, what have we finished but not billed, and which projects are
- * eating their budget. Each now has a section.
+ * A delivery lead opens this asking six things: is the work getting done, is
+ * the backlog growing, are we making money, what is about to slip, who is
+ * over-loaded, and what have we finished but not billed. Each has a section.
  *
- * The portfolio table is the centre of the screen rather than a footnote,
- * because the per-project row is where all four questions actually resolve — a
- * summary figure tells you there is a problem, the table tells you which project
- * it is.
+ * Two kinds of figure share the screen and the labels keep them apart. Period
+ * figures ("hours logged", "tasks completed") answer what happened inside the
+ * chosen range. Point-in-time figures ("open tasks", "overdue") answer what is
+ * true now and deliberately ignore the range — "tasks open in August" is not a
+ * real quantity, and filtering it would produce a confident, meaningless
+ * number. Anything under `current` is of the second kind and says "now".
  *
  * Margin is shown only where there is revenue to divide by. A project with
  * approved time but nothing billable has no margin percentage, and printing 0%
@@ -49,31 +31,19 @@ export function DeliveryView({
 }: {
   summary: ModuleSummary;
   attention: { breachedCases: Record<string, any>[] };
-  analytics: {
-    rows: ProjectRow[];
-    totals: {
-      hours: number;
-      billableHours: number;
-      revenue: number;
-      cost: number;
-      margin: number;
-      marginPercent: number | null;
-      billablePercent: number;
-      unbilledValue: number;
-      unapprovedHours: number;
-    };
-    upcomingMilestones: {
-      id: string;
-      name: string;
-      projectId: string;
-      projectName: string;
-      dueDate: string;
-      amount: number;
-      overdue: boolean;
-    }[];
-  };
+  analytics: Analytics;
 }) {
-  const { rows, totals, upcomingMilestones } = analytics;
+  const { rows, totals, upcomingMilestones, period, current, previous, people, daily, range } =
+    analytics;
+
+  /** Period-on-period direction. Null when there is nothing to compare against. */
+  const delta = (now: number, before: number | undefined) => {
+    if (before === undefined || before === 0) return null;
+    return Math.round(((now - before) / before) * 100);
+  };
+  const deltaHours = previous ? delta(period.hours, previous.hours) : null;
+  // Floor of 8 so a single quiet day does not scale one bar to full height.
+  const dailyPeak = daily.length ? Math.max(8, ...daily.map((d) => d.hours)) : 8;
 
   const overBudget = rows.filter((r) => r.overBudget);
   const thinMargin = rows.filter((r) => r.marginPercent !== null && r.marginPercent < 20);
@@ -131,6 +101,400 @@ export function DeliveryView({
 
   return (
     <div className="space-y-6">
+      {/* ------------------------------------------- is the work getting done? */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold">
+          Work done{" "}
+          <span className="font-normal text-muted-foreground">· {range.label}</span>
+        </h2>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Kpi
+            label="Hours logged"
+            value={formatNumber(period.hours, 1)}
+            delta={deltaHours}
+            sublabel={
+              period.utilisationPercent !== null
+                ? `${formatNumber(period.utilisationPercent, 0)}% of ${formatNumber(period.capacityHours ?? 0, 0)}h capacity`
+                : `${period.entries} entries`
+            }
+          />
+          <Kpi
+            label="Tasks completed"
+            value={String(period.tasksCompleted)}
+            sublabel={`${period.tasksCreated} created in the same period`}
+            delta={previous ? delta(period.tasksCompleted, previous.tasksCompleted) : null}
+          />
+          <Kpi
+            label="Backlog change"
+            value={`${period.backlogChange > 0 ? "+" : ""}${period.backlogChange}`}
+            sublabel={
+              period.backlogChange > 0
+                ? "more work arrived than was finished"
+                : period.backlogChange < 0
+                  ? "finished more than arrived"
+                  : "arrived and finished in balance"
+            }
+          />
+          <Kpi
+            label="Billable share"
+            value={
+              period.billablePercent === null ? "—" : `${formatNumber(period.billablePercent, 0)}%`
+            }
+            sublabel={`${formatNumber(period.billableHours, 1)}h billable · ${formatNumber(period.nonBillableHours, 1)}h not`}
+          />
+        </div>
+
+        {previous && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Against the previous period: {formatNumber(previous.hours, 1)}h logged,{" "}
+            {previous.tasksCompleted} task{previous.tasksCompleted === 1 ? "" : "s"} completed
+            {deltaHours !== null && ` · hours ${deltaHours > 0 ? "up" : deltaHours < 0 ? "down" : "level"}${deltaHours === 0 ? "" : ` ${Math.abs(deltaHours)}%`}`}
+            .
+          </p>
+        )}
+
+        {(period.onTimePercent !== null || period.estimateAccuracyPercent !== null) && (
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            {period.onTimePercent !== null && (
+              <Kpi
+                label="On-time delivery"
+                value={`${period.onTimePercent}%`}
+                sublabel={`from ${period.datedCompletedCount} completed task${period.datedCompletedCount === 1 ? "" : "s"} that carried a due date`}
+              />
+            )}
+            {period.estimateAccuracyPercent !== null && (
+              <Kpi
+                label="Estimate accuracy"
+                value={`${period.estimateAccuracyPercent}%`}
+                sublabel={`actual against estimated, over ${period.estimateSampleSize} completed task${period.estimateSampleSize === 1 ? "" : "s"}${period.estimateSampleSize < 3 ? " — too few to trust yet" : ""}`}
+              />
+            )}
+          </div>
+        )}
+
+        {daily.length > 1 && (
+          <div className="mt-4 rounded-xl border bg-card p-4">
+            <p className="text-sm font-medium">Hours per day</p>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Billable in solid, non-billable stacked above. Gaps are days nobody logged.
+            </p>
+            <div className="flex h-24 items-end gap-px">
+              {daily.map((d) => {
+                const non = Math.max(0, d.hours - d.billableHours);
+                return (
+                  <div
+                    key={d.day}
+                    className="flex flex-1 flex-col justify-end"
+                    title={`${formatDate(d.day)} — ${formatNumber(d.hours, 1)}h logged, ${formatNumber(d.billableHours, 1)}h billable`}
+                  >
+                    <div
+                      className="w-full rounded-t-sm bg-muted-foreground/25"
+                      style={{ height: `${(non / dailyPeak) * 100}%` }}
+                    />
+                    <div
+                      className="w-full bg-emerald-500"
+                      style={{ height: `${(d.billableHours / dailyPeak) * 100}%` }}
+                    />
+                    {d.hours === 0 && <div className="h-px w-full bg-border" />}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+              <span>{formatDate(daily[0].day)}</span>
+              <span>{formatDate(daily[daily.length - 1].day)}</span>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* --------------------------------------------- what is open right now? */}
+      <section>
+        <h2 className="mb-1 text-sm font-semibold">Open work</h2>
+        <p className="mb-3 text-xs text-muted-foreground">
+          As of today. These count what is open now, so they deliberately ignore
+          the date filter — tasks open last month is not a real quantity.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
+          {[
+            { label: "Open tasks", value: current.openTasks, note: `of ${current.totalTasks} ever`, tone: "" },
+            { label: "Not started", value: current.notStartedTasks, note: "", tone: "" },
+            { label: "In progress", value: current.inProgressTasks, note: "", tone: "" },
+            { label: "In review", value: current.inReviewTasks, note: "", tone: "" },
+            {
+              label: "Blocked",
+              value: current.blockedTasks,
+              note: "",
+              tone: current.blockedTasks > 0 ? "text-amber-600 dark:text-amber-400" : "",
+            },
+            {
+              label: "Overdue",
+              value: current.overdueTasks,
+              note: "",
+              tone: current.overdueTasks > 0 ? "text-red-600 dark:text-red-400" : "",
+            },
+          ].map((s) => (
+            <div key={s.label} className="rounded-xl border bg-card p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {s.label}
+              </p>
+              <p className={cn("mt-1 text-2xl font-semibold tabular-nums", s.tone)}>{s.value}</p>
+              {s.note && <p className="text-xs text-muted-foreground">{s.note}</p>}
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            { label: "Due in 7 days", value: String(current.dueSoonTasks), note: "", tone: "" },
+            {
+              label: "Unassigned",
+              value: String(current.unassignedTasks),
+              note: "nobody is doing these",
+              tone: current.unassignedTasks > 0 ? "text-amber-600 dark:text-amber-400" : "",
+            },
+            {
+              label: "Work left",
+              value: `${formatNumber(current.remainingHours, 0)}h`,
+              note: "estimated hours still to run on open tasks",
+              tone: "",
+            },
+            {
+              label: "Completed all time",
+              value: String(current.completedTasksAllTime),
+              note: "",
+              tone: "",
+            },
+          ].map((s) => (
+            <div key={s.label} className="rounded-xl border bg-card p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {s.label}
+              </p>
+              <p className={cn("mt-1 text-xl font-semibold tabular-nums", s.tone)}>{s.value}</p>
+              {s.note && <p className="text-xs text-muted-foreground">{s.note}</p>}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------- who is loaded? */}
+      {people.length > 0 && (
+        <section>
+          <h2 className="mb-1 text-sm font-semibold">Resources</h2>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Allocation is what people are booked for and is current; hours and
+            utilisation are for the selected period.
+          </p>
+          <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Kpi
+              label="People active"
+              value={String(current.peopleActive)}
+              sublabel={`${current.peopleBooked} booked on a project`}
+            />
+            <Kpi
+              label="Over-allocated"
+              value={String(current.peopleOverAllocated)}
+              sublabel="booked past 100%"
+            />
+            <Kpi
+              label="On no project"
+              value={String(current.peopleUnallocated)}
+            />
+            <Kpi
+              label="Team utilisation"
+              value={
+                period.utilisationPercent === null
+                  ? "—"
+                  : `${formatNumber(period.utilisationPercent, 0)}%`
+              }
+              sublabel={
+                period.billableUtilisationPercent === null
+                  ? undefined
+                  : `${formatNumber(period.billableUtilisationPercent, 0)}% billable · ${period.workingDays ?? 0} working days`
+              }
+            />
+          </div>
+          <div className="overflow-x-auto rounded-xl border bg-card">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-4 py-2 font-medium">Person</th>
+                  <th className="px-4 py-2 text-right font-medium">Booked</th>
+                  <th className="px-4 py-2 text-right font-medium">Hours</th>
+                  <th className="px-4 py-2 text-right font-medium">Utilisation</th>
+                  <th className="px-4 py-2 text-right font-medium">Open tasks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {people.slice(0, 12).map((p) => (
+                  <tr key={p.id} className="border-b last:border-0">
+                    <td className="px-4 py-2">
+                      <Link href={`/resources/${p.id}`} className="font-medium hover:underline">
+                        {p.fullName}
+                      </Link>
+                      <p className="text-xs text-muted-foreground">
+                        {p.jobTitle ?? "—"} · {p.projects} project{p.projects === 1 ? "" : "s"}
+                      </p>
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      <span
+                        className={
+                          p.allocatedPercent > 100
+                            ? "font-medium text-red-600 dark:text-red-400"
+                            : ""
+                        }
+                      >
+                        {formatNumber(p.allocatedPercent, 0)}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {formatNumber(p.hours, 1)}
+                      <p className="text-xs text-muted-foreground">
+                        {formatNumber(p.billableHours, 1)}h billable
+                      </p>
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {p.utilisationPercent === null
+                        ? "—"
+                        : `${formatNumber(p.utilisationPercent, 0)}%`}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {p.openTasks}
+                      {p.overdueTasks > 0 && (
+                        <p className="text-xs text-red-600 dark:text-red-400">
+                          {p.overdueTasks} overdue
+                        </p>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Who is on what, in detail. The table above says how loaded each
+              person is; this says what they are loaded *with*, which is the
+              question a delivery lead actually acts on. */}
+          <div className="mt-4 space-y-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Current allocation — what each person is working on
+            </p>
+            {people
+              .filter((p) => p.allocatedPercent > 0 || p.hours > 0 || p.openTasks > 0)
+              .slice(0, 10)
+              .map((p) => (
+                <div key={p.id} className="rounded-xl border bg-card p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <Link href={`/resources/${p.id}`} className="font-medium hover:underline">
+                        {p.fullName}
+                      </Link>
+                      <p className="text-xs text-muted-foreground">
+                        {p.jobTitle ?? "—"} · booked {formatNumber(p.allocatedPercent, 0)}% across{" "}
+                        {p.projects} project{p.projects === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    <div className="text-right text-xs text-muted-foreground">
+                      <span className="text-sm font-semibold tabular-nums text-foreground">
+                        {formatNumber(p.hours, 1)}h
+                      </span>{" "}
+                      logged
+                      {p.utilisationPercent !== null && (
+                        <p>{formatNumber(p.utilisationPercent, 0)}% utilised</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Hours by project, as a single proportional bar. */}
+                  {p.projectBreakdown.length > 0 && (
+                    <div className="mt-3">
+                      <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
+                        {p.projectBreakdown.map((proj, i) => (
+                          <div
+                            key={proj.id}
+                            title={`${proj.name} — ${formatNumber(proj.hours, 1)}h`}
+                            className={
+                              ["bg-emerald-500", "bg-blue-500", "bg-amber-500", "bg-violet-500", "bg-rose-500"][i % 5]
+                            }
+                            style={{ width: `${(proj.hours / Math.max(p.hours, 0.01)) * 100}%` }}
+                          />
+                        ))}
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        {p.projectBreakdown.map((proj, i) => (
+                          <span key={proj.id} className="inline-flex items-center gap-1">
+                            <span
+                              aria-hidden
+                              className={`h-2 w-2 rounded-full ${["bg-emerald-500", "bg-blue-500", "bg-amber-500", "bg-violet-500", "bg-rose-500"][i % 5]}`}
+                            />
+                            <Link href={`/projects/${proj.id}`} className="hover:underline">
+                              {proj.name}
+                            </Link>
+                            <span className="tabular-nums">{formatNumber(proj.hours, 1)}h</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Where the hours went, task by task. */}
+                  {p.taskBreakdown.length > 0 && (
+                    <div className="mt-3 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Time went into</p>
+                      {p.taskBreakdown.map((t) => (
+                        <div key={t.id} className="flex items-baseline justify-between gap-3 text-sm">
+                          <span className="min-w-0 truncate">
+                            {t.name}
+                            {t.projectName && (
+                              <span className="text-xs text-muted-foreground"> · {t.projectName}</span>
+                            )}
+                          </span>
+                          <span className="shrink-0 tabular-nums text-muted-foreground">
+                            {formatNumber(t.hours, 1)}h
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* What they are holding, for the person who has logged nothing. */}
+                  {p.currentTasks.length > 0 && (
+                    <div className="mt-3 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Open now ({p.openTasks})
+                      </p>
+                      {p.currentTasks.map((t) => (
+                        <div key={t.id} className="flex items-baseline justify-between gap-3 text-sm">
+                          <span className="min-w-0 truncate">
+                            {t.name}
+                            {t.projectName && (
+                              <span className="text-xs text-muted-foreground"> · {t.projectName}</span>
+                            )}
+                          </span>
+                          <span
+                            className={cn(
+                              "shrink-0 text-xs tabular-nums",
+                              t.overdue ? "font-medium text-red-600 dark:text-red-400" : "text-muted-foreground",
+                            )}
+                          >
+                            {t.completionPercent}%
+                            {t.dueDate && ` · due ${formatDate(t.dueDate)}`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {p.taskBreakdown.length === 0 && p.currentTasks.length === 0 && (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      Booked {formatNumber(p.allocatedPercent, 0)}% but holding no open tasks and
+                      logging no time in this period.
+                    </p>
+                  )}
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
+
       {/* ------------------------------------ is the portfolio making money? */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi
