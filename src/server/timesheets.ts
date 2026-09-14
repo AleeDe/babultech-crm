@@ -8,7 +8,11 @@ import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { createRecord, updateRecord } from "@/lib/db";
 import { PERMISSIONS, authorize, requirePermission, requireUser } from "@/lib/authz";
 import { hoursBetween, normaliseClock } from "@/lib/work-hours";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionResult } from "./partners";
+
+/** The slice of the Supabase client the billable guard needs. */
+type Db = Pick<SupabaseClient, "from">;
 
 /**
  * Timesheets (spec §10.4 Time Log).
@@ -23,6 +27,37 @@ import type { ActionResult } from "./partners";
  */
 
 const HOURS_PER_DAY_CEILING = 24;
+
+/**
+ * Internal work is never billable, whatever the form sent.
+ *
+ * An internal project has no customer — createProject clears its account,
+ * opportunity and contract for that reason — so time marked billable against
+ * one describes an invoice that can never be raised. Those hours feed
+ * `billableValue`, utilisation and every margin figure, which is how a company
+ * ends up reading its own overhead back as revenue.
+ *
+ * Enforced on the server rather than only in the form: the checkbox is hidden
+ * for internal work, but a stale tab, a direct action call, or a project
+ * converted from customer to internal after the fact would all still arrive
+ * with billable true.
+ */
+async function isBillableProject(
+  db: Db,
+  projectId: string,
+  requested: boolean,
+): Promise<boolean> {
+  if (!requested) return false;
+
+  const { data: project } = await db
+    .from("project")
+    .select("projectType")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  return project?.projectType === "INTERNAL" ? false : requested;
+}
+
 
 /**
  * Clock times are optional and hours are not.
@@ -134,6 +169,14 @@ export async function logTime(
       };
     }
 
+    // Internal work has no customer, so its time can never be billed whatever
+    // the form sent. This is the figure that feeds billableValue, utilisation
+    // and every margin number, so letting a stale tab mark internal time
+    // billable is how a company reads its own overhead back as revenue.
+    const billable = projectId
+      ? await isBillableProject(db, projectId, data.billable)
+      : data.billable;
+
     const base = {
       userId: user.id,
       caseId: data.caseId ?? null,
@@ -144,7 +187,7 @@ export async function logTime(
       startTime: normaliseClock(data.startTime),
       endTime: normaliseClock(data.endTime),
       description: data.description,
-      billable: data.billable,
+      billable,
       approvalStatus: "DRAFT",
     };
 
@@ -371,7 +414,7 @@ export async function updateTimeLog(
 
     const { data: existing } = await db
       .from("time_log")
-      .select("userId, approvalStatus")
+      .select("userId, approvalStatus, projectId")
       .eq("id", id)
       .maybeSingle();
 
@@ -395,7 +438,10 @@ export async function updateTimeLog(
         startTime: normaliseClock(parsed.data.startTime),
         endTime: normaliseClock(parsed.data.endTime),
         description: parsed.data.description,
-        billable: parsed.data.billable,
+        // Same rule as logTime: an edit cannot make internal time billable.
+        billable: existing.projectId
+          ? await isBillableProject(db, existing.projectId, parsed.data.billable)
+          : parsed.data.billable,
         approvalStatus: "DRAFT",
         updatedAt: new Date().toISOString(),
       })
@@ -626,7 +672,7 @@ export async function getTimeEntryOptions() {
       .from("project_member")
       .select(
         `project!inner (
-           id, name, projectNumber, status, deletedAt,
+           id, name, projectNumber, projectType, status, deletedAt,
            tasks:project_task ( id, name, billable, assignedUserId, status, sortOrder )
          )`,
       )
@@ -802,5 +848,319 @@ export async function getUtilisation(weeks = 4) {
           : Number(toDecimal(billable).dividedBy(capacityHours).times(100).toDecimalPlaces(1)),
       };
     }),
+  };
+}
+
+/**
+ * One person's delivery record, for the resource detail page.
+ *
+ * The list view answers "is this person busy". This answers the harder
+ * question a booker actually has: "can I give them the next piece of work, and
+ * will it land on time". Those need different numbers — busy and reliable are
+ * not the same property, and someone can be fully allocated while consistently
+ * overrunning their estimates.
+ *
+ * Everything here is arithmetic over recorded history. Nothing is extrapolated:
+ * a trend drawn from a handful of tasks would look authoritative and mean very
+ * little, so the page shows the counts behind each ratio and lets the reader
+ * judge whether there is enough of it to trust.
+ */
+export async function getResourceDetail(userId: string, weeks = 12) {
+  // Identical gate to getUtilisation. This page carries cost and billing rates
+  // and one person's approval history, which is more sensitive than the roster,
+  // never less — so it must not be reachable on a weaker permission.
+  await requirePermission(PERMISSIONS.TIME_APPROVE);
+
+  const to = new Date();
+  to.setHours(23, 59, 59, 999);
+  const from = new Date(to);
+  from.setDate(from.getDate() - weeks * 7);
+  const fromDay = from.toISOString().slice(0, 10);
+  const toDay = to.toISOString().slice(0, 10);
+
+  const STANDARD_WEEKLY_HOURS = 40;
+  const capacityHours = toDecimal(STANDARD_WEEKLY_HOURS * weeks);
+
+  const db = await supabaseServer();
+
+  const [userRes, membershipsRes, tasksRes, logsRes] = await Promise.all([
+    // Service role for the same reason as getUtilisation: the rate columns are
+    // revoked from the authenticated role, and the check above is what governs
+    // who gets this far.
+    supabaseAdmin()
+      .from("app_user")
+      .select(
+        `id, fullName, email, jobTitle, employeeNumber, status, costRate,
+         defaultBillingRate, createdAt,
+         department:app_user_departmentId_fkey ( id, name ),
+         manager:managerUserId ( id, fullName )`,
+      )
+      .eq("id", userId)
+      .is("deletedAt", null)
+      .maybeSingle(),
+
+    db
+      .from("project_member")
+      .select(
+        `projectId, projectRole, allocationPercent, startDate, endDate, active,
+         project!inner ( id, name, projectNumber, status, health, deletedAt )`,
+      )
+      .eq("userId", userId)
+      .is("project.deletedAt", null),
+
+    // Every task ever assigned, not just open ones: completed work is where
+    // estimate accuracy comes from, and dropping it would leave only the
+    // backlog — the half that cannot tell you how well someone delivers.
+    db
+      .from("project_task")
+      .select(
+        `id, name, status, priority, dueDate, completedDate, estimatedHours,
+         completionPercent, projectId,
+         project ( id, name, projectNumber )`,
+      )
+      .eq("assignedUserId", userId)
+      .limit(500),
+
+    db
+      .from("time_log")
+      .select(
+        "hours, billable, workDate, approvalStatus, billingRate, costRate, projectId, projectTaskId",
+      )
+      .eq("userId", userId)
+      .gte("workDate", fromDay)
+      .lte("workDate", toDay)
+      .limit(2000),
+  ]);
+
+  // A failed query and a missing person are different things, and collapsing
+  // both into null made the page render a 404 for a malformed select — which
+  // looks exactly like "no such user" and hides the real fault. Throw on error
+  // so it surfaces; return null only when the row genuinely is not there.
+  //
+  // 22P02 is the exception: Postgres raises it when the id in the URL is not a
+  // uuid at all. Someone typing /resources/banana has asked for a record that
+  // cannot exist, which is a 404 — not a server fault worth an error page.
+  if (userRes.error) {
+    if (userRes.error.code === "22P02") return null;
+    throw new Error(`Could not load resource ${userId}: ${userRes.error.message}`);
+  }
+  if (!userRes.data) return null;
+
+  const user = {
+    ...userRes.data,
+    department: one(userRes.data.department as never) as unknown as
+      { id: string; name: string } | null,
+    manager: one(userRes.data.manager as never) as unknown as
+      { id: string; fullName: string } | null,
+  };
+
+  const memberships = (membershipsRes.data ?? []).map((m) => ({
+    ...m,
+    project: one(m.project as never) as unknown as {
+      id: string; name: string; projectNumber: string; status: string; health: string | null;
+    },
+  }));
+
+  const tasks = (tasksRes.data ?? []).map((t) => ({
+    ...t,
+    project: one(t.project as never) as unknown as
+      { id: string; name: string; projectNumber: string } | null,
+  }));
+
+  const allLogs = logsRes.data ?? [];
+  // Rejected time is excluded from every hours figure, matching getUtilisation
+  // — it is work the business decided not to count. It is kept in `allLogs`
+  // purely so the rejection rate below can be measured against the full set.
+  const countedLogs = allLogs.filter((l) => l.approvalStatus !== "REJECTED");
+
+  const sum = (rows: typeof allLogs, pick: (l: (typeof allLogs)[number]) => unknown) =>
+    rows.reduce((acc, l) => acc.plus(toDecimal(pick(l) as never)), toDecimal(0));
+
+  const loggedHours = sum(countedLogs, (l) => l.hours);
+  const billableHours = sum(countedLogs.filter((l) => l.billable), (l) => l.hours);
+  const nonBillableHours = loggedHours.minus(billableHours);
+
+  // Margin is computed from the rates stamped on each entry, not the person's
+  // current rate card, so a re-rate cannot rewrite what past work earned.
+  const revenue = countedLogs
+    .filter((l) => l.billable)
+    .reduce(
+      (acc, l) => acc.plus(toDecimal(l.hours).times(toDecimal(l.billingRate ?? 0))),
+      toDecimal(0),
+    );
+  const cost = countedLogs.reduce(
+    (acc, l) => acc.plus(toDecimal(l.hours).times(toDecimal(l.costRate ?? 0))),
+    toDecimal(0),
+  );
+
+  // --- Time discipline -----------------------------------------------------
+  const rejected = allLogs.filter((l) => l.approvalStatus === "REJECTED");
+  const unsubmitted = allLogs.filter((l) => l.approvalStatus === "DRAFT");
+  const awaitingApproval = allLogs.filter((l) => l.approvalStatus === "SUBMITTED");
+
+  // --- Delivery ------------------------------------------------------------
+  const todayDay = new Date().toISOString().slice(0, 10);
+  const OPEN = ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "UNDER_REVIEW"];
+  const openTasks = tasks.filter((t) => OPEN.includes(String(t.status)));
+  const completedTasks = tasks.filter((t) => t.status === "COMPLETED");
+  const overdueTasks = openTasks.filter((t) => t.dueDate && String(t.dueDate) < todayDay);
+  const blockedTasks = openTasks.filter((t) => t.status === "BLOCKED");
+
+  // On-time delivery: only tasks that had a due date can be judged, so the
+  // denominator is those — not every completed task, which would quietly
+  // reward leaving dates off.
+  const datedCompleted = completedTasks.filter((t) => t.dueDate && t.completedDate);
+  const onTime = datedCompleted.filter((t) => String(t.completedDate) <= String(t.dueDate));
+
+  // Estimate accuracy: actual hours booked to a task against what it was
+  // estimated at. Only completed tasks that carry both an estimate and logged
+  // time can say anything, and the count is returned so a ratio drawn from two
+  // tasks is not mistaken for a pattern.
+  const hoursByTask = new Map<string, Decimal>();
+  for (const l of countedLogs) {
+    if (!l.projectTaskId) continue;
+    const key = String(l.projectTaskId);
+    hoursByTask.set(key, (hoursByTask.get(key) ?? toDecimal(0)).plus(toDecimal(l.hours)));
+  }
+  const estimated = completedTasks
+    .map((t) => ({
+      task: t,
+      estimate: toDecimal(t.estimatedHours ?? 0),
+      actual: hoursByTask.get(String(t.id)) ?? toDecimal(0),
+    }))
+    .filter((e) => e.estimate.greaterThan(0) && e.actual.greaterThan(0));
+
+  const totalEstimate = estimated.reduce((a, e) => a.plus(e.estimate), toDecimal(0));
+  const totalActual = estimated.reduce((a, e) => a.plus(e.actual), toDecimal(0));
+
+  // --- Weekly trend --------------------------------------------------------
+  // Hours per week across the window, so a flat average cannot hide someone
+  // who was flat out for a fortnight and idle since.
+  const weekly: { weekStart: string; hours: number; billableHours: number }[] = [];
+  for (let w = weeks - 1; w >= 0; w--) {
+    const start = new Date(to);
+    start.setDate(start.getDate() - w * 7 - 6);
+    const end = new Date(to);
+    end.setDate(end.getDate() - w * 7);
+    const s = start.toISOString().slice(0, 10);
+    const e = end.toISOString().slice(0, 10);
+    const inWeek = countedLogs.filter(
+      (l) => String(l.workDate) >= s && String(l.workDate) <= e,
+    );
+    weekly.push({
+      weekStart: s,
+      hours: Number(sum(inWeek, (l) => l.hours).toDecimalPlaces(1)),
+      billableHours: Number(
+        sum(inWeek.filter((l) => l.billable), (l) => l.hours).toDecimalPlaces(1),
+      ),
+    });
+  }
+
+  // --- Per project ---------------------------------------------------------
+  // Allocation is the promise; hours are what happened. Showing them together
+  // is what exposes a booking that never turned into work.
+  const activeMemberships = memberships.filter((m) => m.active);
+  const byProject = activeMemberships.map((m) => {
+    const projectLogs = countedLogs.filter((l) => String(l.projectId) === String(m.projectId));
+    const projectTasks = tasks.filter((t) => String(t.projectId) === String(m.projectId));
+    return {
+      project: m.project,
+      projectRole: m.projectRole,
+      allocationPercent: Number(m.allocationPercent ?? 0),
+      hours: Number(sum(projectLogs, (l) => l.hours).toDecimalPlaces(1)),
+      billableHours: Number(
+        sum(projectLogs.filter((l) => l.billable), (l) => l.hours).toDecimalPlaces(1),
+      ),
+      openTasks: projectTasks.filter((t) => OPEN.includes(String(t.status))).length,
+      overdueTasks: projectTasks.filter(
+        (t) => OPEN.includes(String(t.status)) && t.dueDate && String(t.dueDate) < todayDay,
+      ).length,
+    };
+  });
+
+  const pct = (part: Decimal, whole: Decimal) =>
+    whole.isZero() ? 0 : Number(part.dividedBy(whole).times(100).toDecimalPlaces(1));
+
+  const allocatedPercent = activeMemberships.reduce(
+    (s, m) => s + Number(m.allocationPercent ?? 0),
+    0,
+  );
+
+  return {
+    user,
+    from,
+    to,
+    weeks,
+    capacityHours,
+    allocatedPercent,
+    /** Capacity left on paper. Negative means booked past a full week. */
+    headroomPercent: 100 - allocatedPercent,
+
+    hours: {
+      logged: loggedHours,
+      billable: billableHours,
+      nonBillable: nonBillableHours,
+      utilisationPercent: pct(loggedHours, capacityHours),
+      billableUtilisationPercent: pct(billableHours, capacityHours),
+      billableRatioPercent: pct(billableHours, loggedHours),
+    },
+
+    margin: {
+      revenue,
+      cost,
+      profit: revenue.minus(cost),
+      marginPercent: pct(revenue.minus(cost), revenue),
+    },
+
+    delivery: {
+      openTasks: openTasks.length,
+      completedTasks: completedTasks.length,
+      overdueTasks: overdueTasks.length,
+      blockedTasks: blockedTasks.length,
+      /** Denominator is completed tasks that had a due date — see above. */
+      onTimePercent:
+        datedCompleted.length === 0
+          ? null
+          : Math.round((onTime.length / datedCompleted.length) * 100),
+      datedCompletedCount: datedCompleted.length,
+    },
+
+    estimates: {
+      /** >100 means the work ran over its estimate. Null when nothing qualifies. */
+      accuracyPercent: totalEstimate.isZero() ? null : pct(totalActual, totalEstimate),
+      estimatedHours: totalEstimate,
+      actualHours: totalActual,
+      /** How many completed tasks this is drawn from — the trust signal. */
+      sampleSize: estimated.length,
+      worst: estimated
+        .map((e) => ({
+          id: String(e.task.id),
+          name: String(e.task.name),
+          project: e.task.project,
+          estimate: Number(e.estimate.toDecimalPlaces(1)),
+          actual: Number(e.actual.toDecimalPlaces(1)),
+          overrunPercent: pct(e.actual.minus(e.estimate), e.estimate),
+        }))
+        .sort((a, b) => b.overrunPercent - a.overrunPercent)
+        .slice(0, 5),
+    },
+
+    timeQuality: {
+      entries: allLogs.length,
+      rejectedEntries: rejected.length,
+      rejectedPercent:
+        allLogs.length === 0
+          ? 0
+          : Number(((rejected.length / allLogs.length) * 100).toFixed(1)),
+      unsubmittedHours: sum(unsubmitted, (l) => l.hours),
+      awaitingApprovalHours: sum(awaitingApproval, (l) => l.hours),
+    },
+
+    weekly,
+    byProject,
+    upcomingTasks: openTasks
+      .filter((t) => t.dueDate)
+      .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)))
+      .slice(0, 8),
   };
 }
