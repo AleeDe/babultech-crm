@@ -6,6 +6,7 @@ import {
 } from "@/components/ui";
 import { formatDate, formatNumber, formatMoney } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { FilterForm } from "@/components/filter-form";
 
 /**
  * Resource utilisation. "Resources" here are the people using this system —
@@ -49,14 +50,14 @@ export default async function ResourcesPage({
         title="Resources"
         description={`Allocation is what people are booked for; logged hours are what actually happened. ${formatDate(data.from)} – ${formatDate(data.to)}.`}
       >
-        <form className="flex items-center gap-2">
+        <FilterForm className="flex items-center gap-2">
           <Select name="weeks" defaultValue={String(window)} className="w-36">
             {[1, 2, 4, 8, 13, 26].map((w) => (
               <option key={w} value={w}>Last {w} week{w > 1 ? "s" : ""}</option>
             ))}
           </Select>
-          <Button type="submit" variant="secondary">Apply</Button>
-        </form>
+          <Button type="button" variant="secondary">Apply</Button>
+        </FilterForm>
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -96,7 +97,12 @@ export default async function ResourcesPage({
                 return (
                   <TR key={r.user?.id} id={r.user?.id}>
                     <TD>
-                      <span className="font-medium">{r.user?.fullName}</span>
+                      <Link
+                        href={`/resources/${r.user?.id}`}
+                        className="font-medium hover:underline"
+                      >
+                        {r.user?.fullName}
+                      </Link>
                       <p className="text-xs text-muted-foreground">
                         {r.user?.jobTitle ?? "—"}
                         {r.user?.department && ` · ${r.user?.department?.name}`}
