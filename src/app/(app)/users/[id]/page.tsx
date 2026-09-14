@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ShieldCheck, Handshake } from "lucide-react";
-import { getUser } from "@/server/users";
+import { getUser, getUserWorkload } from "@/server/users";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { getAuditTrail } from "@/lib/audit";
 import {
@@ -10,6 +10,11 @@ import {
 } from "@/components/ui";
 import { formatMoney, formatDate, formatDateTime, humanize } from "@/lib/utils";
 import { PasswordPanel } from "./password-panel";
+import { RecordTabs } from "@/components/record-tabs";
+import {
+  TimePanel, DailyTrend, TaskPanel, UpcomingTasks, WhereHoursWent,
+  CasePanel, ContributionPanel, WorkloadTiles,
+} from "./workload-panels";
 
 const SCOPE_EXPLAINER: Record<string, string> = {
   OWN: "Only records they own",
@@ -30,10 +35,21 @@ export default async function UserDetailPage({
   const user = await getUser(id);
   if (!user) notFound();
 
-  const audit = await getAuditTrail("User", id, 15);
   const isAdmin = user.role?.permissions?.includes("*") ?? false;
   const isPartner = Boolean(user.partnerId);
   const missingRates = !isPartner && (!user.costRate || !user.defaultBillingRate);
+
+  // One wave: neither call needs the other's result, and the page cannot render
+  // until both are in.
+  //
+  // A partner login is an external account with no timesheet, no tasks and no
+  // cases of its own, so the delivery half does not merely come back empty for
+  // them — it does not apply. Skipping it keeps the page honest and saves three
+  // selects.
+  const [audit, workload] = await Promise.all([
+    getAuditTrail("User", id, 15),
+    isPartner ? Promise.resolve(null) : getUserWorkload(id),
+  ]);
 
   return (
     <>
@@ -85,6 +101,18 @@ export default async function UserDetailPage({
         </div>
       )}
 
+      {/* Delivery first, access second. Someone opening a colleague's record
+          usually wants to know what they are working on; the role and scope are
+          what you check when you are changing permissions, which is rarer. */}
+      {workload && (
+        <WorkloadTiles
+          time={workload.time}
+          utilisation={workload.utilisation}
+          tasks={workload.tasks}
+          cases={workload.cases}
+        />
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Data scope" value={humanize((user.role?.dataScope ?? ""))} sublabel={SCOPE_EXPLAINER[(user.role?.dataScope ?? "")]} />
         <StatTile
@@ -105,6 +133,58 @@ export default async function UserDetailPage({
           tone={user.lastLoginAt ? "neutral" : "warning"}
         />
       </div>
+
+      {/* The delivery record sits in tabs rather than another six stacked
+          panels: time, tasks and tickets are each a full screen of detail, and
+          a reader wants one of them at a time. The access half below stays
+          outside, because changing a role is a different job from reviewing
+          someone's work and should not be a tab click away from it. */}
+      {workload && (
+        <div className="mt-6">
+          <RecordTabs
+            param="work"
+            tabs={[
+              {
+                value: "time",
+                label: "Time",
+                content: (
+                  <div className="space-y-6">
+                    <TimePanel time={workload.time} utilisation={workload.utilisation} />
+                    <DailyTrend daily={workload.daily} />
+                    <WhereHoursWent byTask={workload.byTask} byProject={workload.byProject} />
+                  </div>
+                ),
+              },
+              {
+                value: "tasks",
+                label: "Tasks",
+                count: workload.tasks.open,
+                content: (
+                  <div className="space-y-6">
+                    <TaskPanel tasks={workload.tasks} estimates={workload.estimates} />
+                    <UpcomingTasks tasks={workload.tasks} />
+                  </div>
+                ),
+              },
+              {
+                value: "tickets",
+                label: "Tickets",
+                count: workload.cases.open,
+                content: <CasePanel cases={workload.cases} />,
+              },
+              {
+                value: "contribution",
+                label: "Contribution",
+                content: (
+                  <div className="grid gap-6 sm:grid-cols-2">
+                    <ContributionPanel money={workload.money} quality={workload.quality} />
+                  </div>
+                ),
+              },
+            ]}
+          />
+        </div>
+      )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

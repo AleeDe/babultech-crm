@@ -5,7 +5,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { supabaseServer, supabaseAdmin, supabaseAnon } from "@/lib/supabase";
 import { createRecord, updateRecord, LIST_LIMIT } from "@/lib/db";
-import { one } from "@/lib/decimal";
+import { one, toDecimal, type Decimal } from "@/lib/decimal";
 import { PERMISSIONS, authorize, requirePermission, requireUser } from "@/lib/authz";
 import { writeAudit } from "@/lib/audit";
 import type { ActionResult } from "./partners";
@@ -546,7 +546,13 @@ export async function getUser(id: string) {
     .eq("id", id)
     .maybeSingle();
 
-  if (error) throw new Error(`Could not load user: ${error.message}`);
+  // 22P02 is Postgres rejecting the id in the URL as not a uuid at all.
+  // Someone typing /users/banana has asked for a record that cannot exist,
+  // which is a 404 — not a server fault worth an error page.
+  if (error) {
+    if (error.code === "22P02") return null;
+    throw new Error(`Could not load user: ${error.message}`);
+  }
   if (!data) return null;
 
   // PostgREST cannot embed the reverse side of a self-referencing FK
@@ -682,4 +688,476 @@ export async function getMyReportingLine() {
     directReports: directReports.map((r) => r.fullName),
     totalBelow: below.size,
   };
+}
+
+/**
+ * One person's workload, for the delivery panel on their user page.
+ *
+ * The rest of the user page answers "what is this account allowed to do". This
+ * answers "what is this person actually doing" — where their hours go, what
+ * they have open, what they have finished, and whether the work lands when it
+ * was promised.
+ *
+ * The day/week/month/all-time split is the shape a manager asks in: "did they
+ * log today", "are they on track this week", "what did the month come to". The
+ * totals are deliberately unbounded rather than windowed, because a record of
+ * finished work is only useful if it does not quietly expire.
+ *
+ * Nothing here is forecast. Every figure is arithmetic over recorded rows, and
+ * the counts behind each ratio are returned alongside it so a percentage drawn
+ * from two tasks can be recognised as the noise it is rather than read as a
+ * verdict on someone. See getResourceDetail in ./timesheets.ts, which answers
+ * the same question for the staffing view and uses the same definitions.
+ */
+export async function getUserWorkload(userId: string) {
+  // The user page is ADMIN-gated and this is part of it. It exposes one
+  // person's hours, rates and delivery record, so it must not be reachable on
+  // anything weaker than the page that renders it.
+  await requirePermission(PERMISSIONS.ADMIN);
+
+  const db = supabaseAdmin();
+
+  const now = new Date();
+  const todayDay = now.toISOString().slice(0, 10);
+
+  // Monday-based, matching weekBounds() in ./timesheets.ts. Using a different
+  // week boundary here would make this panel disagree with the timesheet
+  // screens about what "this week" means.
+  const weekStart = new Date(now);
+  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+  const weekStartDay = weekStart.toISOString().slice(0, 10);
+
+  const monthStartDay = `${now.toISOString().slice(0, 7)}-01`;
+
+  // 30 days of daily bars, so the rhythm of someone's logging is visible —
+  // a steady four hours a day and one frantic Friday both average the same.
+  const trendFrom = new Date(now);
+  trendFrom.setDate(trendFrom.getDate() - 29);
+  const trendFromDay = trendFrom.toISOString().slice(0, 10);
+
+  const [logsRes, tasksRes, casesRes] = await Promise.all([
+    // Every entry this person has logged, not a window: the "total" figures and
+    // per-task actuals are only meaningful over their whole history. The cap is
+    // a safety limit, not a filter.
+    db
+      .from("time_log")
+      .select(
+        `hours, billable, workDate, approvalStatus, billingRate, costRate,
+         projectId, projectTaskId, caseId,
+         project ( id, name, projectNumber ),
+         task:project_task ( id, name )`,
+      )
+      .eq("userId", userId)
+      .order("workDate", { ascending: false })
+      .limit(5000),
+
+    db
+      .from("project_task")
+      .select(
+        `id, name, status, priority, dueDate, completedDate, estimatedHours,
+         completionPercent, projectId,
+         project ( id, name, projectNumber )`,
+      )
+      .eq("assignedUserId", userId)
+      .limit(1000),
+
+    db
+      .from("support_case")
+      .select(
+        `id, caseNumber, subject, status, priority, slaBreached, reopenCount,
+         satisfactionScore, firstResponseDueAt, firstRespondedAt,
+         resolutionDueAt, resolvedAt, closedAt, createdAt,
+         account ( id, name )`,
+      )
+      .eq("ownerUserId", userId)
+      .is("deletedAt", null)
+      .limit(1000),
+  ]);
+
+  // A broken query and an empty result are different things. Letting a failed
+  // select fall through as "no work logged" would quietly paint someone as idle.
+  for (const [what, res] of [
+    ["time logs", logsRes],
+    ["tasks", tasksRes],
+    ["cases", casesRes],
+  ] as const) {
+    if (res.error) {
+      throw new Error(`Could not load ${what} for user ${userId}: ${res.error.message}`);
+    }
+  }
+
+  const allLogs = (logsRes.data ?? []).map((l) => ({
+    ...l,
+    project: one(l.project as never) as unknown as
+      { id: string; name: string; projectNumber: string } | null,
+    task: one(l.task as never) as unknown as { id: string; name: string } | null,
+  }));
+
+  // Rejected time is excluded from every hours figure — it is work the business
+  // decided not to count — but kept in `allLogs` so the rejection rate below can
+  // be measured against everything submitted.
+  const counted = allLogs.filter((l) => l.approvalStatus !== "REJECTED");
+
+  const sumHours = (rows: typeof counted) =>
+    rows.reduce((acc, l) => acc.plus(toDecimal(l.hours)), toDecimal(0));
+
+  const period = (rows: typeof counted) => {
+    const billableRows = rows.filter((l) => l.billable);
+    const logged = sumHours(rows);
+    const billable = sumHours(billableRows);
+    return {
+      logged,
+      billable,
+      nonBillable: logged.minus(billable),
+      entries: rows.length,
+      billableRatioPercent: logged.isZero()
+        ? 0
+        : Number(billable.dividedBy(logged).times(100).toDecimalPlaces(1)),
+    };
+  };
+
+  const today = counted.filter((l) => String(l.workDate) === todayDay);
+  const thisWeek = counted.filter((l) => String(l.workDate) >= weekStartDay);
+  const thisMonth = counted.filter((l) => String(l.workDate) >= monthStartDay);
+
+  // --- Daily trend ---------------------------------------------------------
+  const byDay = new Map<string, { hours: Decimal; billable: Decimal }>();
+  for (const l of counted) {
+    const d = String(l.workDate);
+    if (d < trendFromDay) continue;
+    const acc = byDay.get(d) ?? { hours: toDecimal(0), billable: toDecimal(0) };
+    acc.hours = acc.hours.plus(toDecimal(l.hours));
+    if (l.billable) acc.billable = acc.billable.plus(toDecimal(l.hours));
+    byDay.set(d, acc);
+  }
+  const daily: { day: string; hours: number; billableHours: number }[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    const v = byDay.get(key);
+    daily.push({
+      day: key,
+      hours: Number((v?.hours ?? toDecimal(0)).toDecimalPlaces(2)),
+      billableHours: Number((v?.billable ?? toDecimal(0)).toDecimalPlaces(2)),
+    });
+  }
+
+  // --- Tasks ---------------------------------------------------------------
+  const OPEN_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "UNDER_REVIEW"];
+  const tasks = (tasksRes.data ?? []).map((t) => ({
+    ...t,
+    project: one(t.project as never) as unknown as
+      { id: string; name: string; projectNumber: string } | null,
+  }));
+
+  const openTasks = tasks.filter((t) => OPEN_STATUSES.includes(String(t.status)));
+  const completedTasks = tasks.filter((t) => t.status === "COMPLETED");
+  const cancelledTasks = tasks.filter((t) => t.status === "CANCELLED");
+  const overdueTasks = openTasks.filter((t) => t.dueDate && String(t.dueDate) < todayDay);
+  const blockedTasks = openTasks.filter((t) => t.status === "BLOCKED");
+  const dueThisWeek = openTasks.filter(
+    (t) => t.dueDate && String(t.dueDate) >= todayDay && String(t.dueDate) <= addDays(todayDay, 7),
+  );
+
+  // Hours actually booked against each task, for the "on which task" view and
+  // for estimate accuracy.
+  const hoursByTask = new Map<string, Decimal>();
+  for (const l of counted) {
+    if (!l.projectTaskId) continue;
+    const key = String(l.projectTaskId);
+    hoursByTask.set(key, (hoursByTask.get(key) ?? toDecimal(0)).plus(toDecimal(l.hours)));
+  }
+
+  // On-time delivery can only be judged on tasks that carried a due date, so
+  // that is the denominator — counting every completed task would quietly
+  // reward leaving dates off.
+  const datedCompleted = completedTasks.filter((t) => t.dueDate && t.completedDate);
+  const onTime = datedCompleted.filter((t) => String(t.completedDate) <= String(t.dueDate));
+
+  const estimated = completedTasks
+    .map((t) => ({
+      task: t,
+      estimate: toDecimal(t.estimatedHours ?? 0),
+      actual: hoursByTask.get(String(t.id)) ?? toDecimal(0),
+    }))
+    .filter((e) => e.estimate.greaterThan(0) && e.actual.greaterThan(0));
+  const totalEstimate = estimated.reduce((a, e) => a.plus(e.estimate), toDecimal(0));
+  const totalActual = estimated.reduce((a, e) => a.plus(e.actual), toDecimal(0));
+
+  // Average completion across open work: "how far through is what they hold".
+  const avgProgress =
+    openTasks.length === 0
+      ? 0
+      : Number(
+          openTasks
+            .reduce((a, t) => a.plus(toDecimal(t.completionPercent ?? 0)), toDecimal(0))
+            .dividedBy(openTasks.length)
+            .toDecimalPlaces(0),
+        );
+
+  // Remaining effort on open work, from each task's own estimate less what has
+  // already gone into it. Negative overruns are floored at zero: work already
+  // past its estimate has no negative time left to give.
+  const remainingHours = openTasks.reduce((acc, t) => {
+    const est = toDecimal(t.estimatedHours ?? 0);
+    if (est.isZero()) return acc;
+    const spent = hoursByTask.get(String(t.id)) ?? toDecimal(0);
+    const left = est.minus(spent);
+    return acc.plus(left.greaterThan(0) ? left : toDecimal(0));
+  }, toDecimal(0));
+
+  // --- Cases ---------------------------------------------------------------
+  const CLOSED_CASE_STATUSES = ["RESOLVED", "CLOSED", "CANCELLED"];
+  const cases = (casesRes.data ?? []).map((c) => ({
+    ...c,
+    account: one(c.account as never) as unknown as { id: string; name: string } | null,
+  }));
+  const openCases = cases.filter((c) => !CLOSED_CASE_STATUSES.includes(String(c.status)));
+  const closedCases = cases.filter((c) => CLOSED_CASE_STATUSES.includes(String(c.status)));
+  const breachedCases = cases.filter((c) => c.slaBreached);
+  const reopenedCases = cases.filter((c) => Number(c.reopenCount ?? 0) > 0);
+  const overdueCases = openCases.filter(
+    (c) => c.resolutionDueAt && new Date(String(c.resolutionDueAt)) < now,
+  );
+
+  const scored = cases.filter((c) => c.satisfactionScore != null);
+  const avgSatisfaction =
+    scored.length === 0
+      ? null
+      : Number(
+          scored
+            .reduce((a, c) => a.plus(toDecimal(c.satisfactionScore)), toDecimal(0))
+            .dividedBy(scored.length)
+            .toDecimalPlaces(1),
+        );
+
+  // Median, not mean: one case left open over a holiday would drag an average
+  // far enough to misrepresent every other case the person handled.
+  const resolutionHours = closedCases
+    .filter((c) => c.resolvedAt)
+    .map(
+      (c) =>
+        (new Date(String(c.resolvedAt)).getTime() - new Date(String(c.createdAt)).getTime()) /
+        3_600_000,
+    )
+    .filter((h) => h >= 0)
+    .sort((a, b) => a - b);
+  const medianResolutionHours =
+    resolutionHours.length === 0
+      ? null
+      : Number(resolutionHours[Math.floor(resolutionHours.length / 2)].toFixed(1));
+
+  // --- Money ---------------------------------------------------------------
+  // From the rates stamped on each entry, not the person's current rate card,
+  // so a re-rate cannot rewrite what past work earned.
+  const revenue = counted
+    .filter((l) => l.billable)
+    .reduce((a, l) => a.plus(toDecimal(l.hours).times(toDecimal(l.billingRate ?? 0))), toDecimal(0));
+  const cost = counted.reduce(
+    (a, l) => a.plus(toDecimal(l.hours).times(toDecimal(l.costRate ?? 0))),
+    toDecimal(0),
+  );
+
+  // --- Where the hours went ------------------------------------------------
+  const taskRows = [...hoursByTask.entries()]
+    .map(([taskId, hours]) => {
+      const t = tasks.find((x) => String(x.id) === taskId);
+      const logged = allLogs.find((l) => String(l.projectTaskId) === taskId);
+      const estimate = toDecimal(t?.estimatedHours ?? 0);
+      return {
+        id: taskId,
+        name: t?.name ?? logged?.task?.name ?? "(task no longer assigned to them)",
+        status: t?.status ?? null,
+        project: t?.project ?? logged?.project ?? null,
+        hours: Number(hours.toDecimalPlaces(1)),
+        estimatedHours: estimate.isZero() ? null : Number(estimate.toDecimalPlaces(1)),
+        overrunPercent: estimate.isZero()
+          ? null
+          : Number(hours.minus(estimate).dividedBy(estimate).times(100).toDecimalPlaces(0)),
+      };
+    })
+    .sort((a, b) => b.hours - a.hours);
+
+  const projectMap = new Map<string, { name: string; number: string; hours: Decimal }>();
+  for (const l of counted) {
+    if (!l.project) continue;
+    const acc =
+      projectMap.get(l.project.id) ??
+      { name: l.project.name, number: l.project.projectNumber, hours: toDecimal(0) };
+    acc.hours = acc.hours.plus(toDecimal(l.hours));
+    projectMap.set(l.project.id, acc);
+  }
+  const projectRows = [...projectMap.entries()]
+    .map(([id, v]) => ({ id, name: v.name, number: v.number, hours: Number(v.hours.toDecimalPlaces(1)) }))
+    .sort((a, b) => b.hours - a.hours);
+
+  const totals = period(counted);
+  const lastEntry = counted[0]?.workDate ? String(counted[0].workDate) : null;
+
+  return {
+    time: {
+      today: period(today),
+      week: period(thisWeek),
+      month: period(thisMonth),
+      total: totals,
+      /** The most recent day they logged anything — how current their timesheet is. */
+      lastEntryDay: lastEntry,
+      daysSinceLastEntry: lastEntry ? daysApart(lastEntry, todayDay) : null,
+      weekStartDay,
+      monthStartDay,
+    },
+
+    // A 40-hour week is the same yardstick the resources report uses.
+    utilisation: {
+      weekPercent: Number(
+        period(thisWeek).logged.dividedBy(40).times(100).toDecimalPlaces(1),
+      ),
+      weekBillablePercent: Number(
+        period(thisWeek).billable.dividedBy(40).times(100).toDecimalPlaces(1),
+      ),
+      monthPercent: (() => {
+        // Working days elapsed this month, so early in a month the figure is
+        // not a fiction built on days that have not happened yet.
+        const days = workingDaysBetween(monthStartDay, todayDay);
+        const capacity = toDecimal(days * 8);
+        return capacity.isZero()
+          ? 0
+          : Number(period(thisMonth).logged.dividedBy(capacity).times(100).toDecimalPlaces(1));
+      })(),
+      monthWorkingDaysElapsed: workingDaysBetween(monthStartDay, todayDay),
+    },
+
+    tasks: {
+      open: openTasks.length,
+      completed: completedTasks.length,
+      cancelled: cancelledTasks.length,
+      overdue: overdueTasks.length,
+      blocked: blockedTasks.length,
+      dueThisWeek: dueThisWeek.length,
+      total: tasks.length,
+      avgProgressPercent: avgProgress,
+      remainingHours,
+      onTimePercent:
+        datedCompleted.length === 0
+          ? null
+          : Math.round((onTime.length / datedCompleted.length) * 100),
+      datedCompletedCount: datedCompleted.length,
+      upcoming: openTasks
+        .slice()
+        .sort((a, b) => String(a.dueDate ?? "9999").localeCompare(String(b.dueDate ?? "9999")))
+        .slice(0, 10)
+        .map((t) => ({
+          id: String(t.id),
+          name: String(t.name),
+          status: String(t.status),
+          priority: String(t.priority),
+          dueDate: t.dueDate ? String(t.dueDate) : null,
+          completionPercent: Number(t.completionPercent ?? 0),
+          project: t.project,
+          hoursSpent: Number((hoursByTask.get(String(t.id)) ?? toDecimal(0)).toDecimalPlaces(1)),
+          estimatedHours: t.estimatedHours ? Number(t.estimatedHours) : null,
+          overdue: Boolean(t.dueDate && String(t.dueDate) < todayDay),
+        })),
+    },
+
+    estimates: {
+      /** >100 means the work ran over its estimate. Null when nothing qualifies. */
+      accuracyPercent: totalEstimate.isZero()
+        ? null
+        : Number(totalActual.dividedBy(totalEstimate).times(100).toDecimalPlaces(0)),
+      /** How many completed tasks this rests on — the trust signal. */
+      sampleSize: estimated.length,
+      estimatedHours: totalEstimate,
+      actualHours: totalActual,
+    },
+
+    cases: {
+      open: openCases.length,
+      closed: closedCases.length,
+      total: cases.length,
+      overdue: overdueCases.length,
+      breached: breachedCases.length,
+      reopened: reopenedCases.length,
+      medianResolutionHours,
+      avgSatisfaction,
+      satisfactionCount: scored.length,
+      openList: openCases
+        .slice()
+        .sort((a, b) =>
+          String(a.resolutionDueAt ?? "9999").localeCompare(String(b.resolutionDueAt ?? "9999")),
+        )
+        .slice(0, 8)
+        .map((c) => ({
+          id: String(c.id),
+          caseNumber: String(c.caseNumber),
+          subject: String(c.subject),
+          status: String(c.status),
+          priority: String(c.priority),
+          account: c.account,
+          dueAt: c.resolutionDueAt ? String(c.resolutionDueAt) : null,
+          breached: Boolean(c.slaBreached),
+          overdue: Boolean(c.resolutionDueAt && new Date(String(c.resolutionDueAt)) < now),
+        })),
+    },
+
+    money: {
+      revenue,
+      cost,
+      profit: revenue.minus(cost),
+      marginPercent: revenue.isZero()
+        ? 0
+        : Number(revenue.minus(cost).dividedBy(revenue).times(100).toDecimalPlaces(1)),
+    },
+
+    quality: {
+      entries: allLogs.length,
+      rejectedEntries: allLogs.filter((l) => l.approvalStatus === "REJECTED").length,
+      rejectedPercent:
+        allLogs.length === 0
+          ? 0
+          : Number(
+              ((allLogs.filter((l) => l.approvalStatus === "REJECTED").length / allLogs.length) *
+                100).toFixed(1),
+            ),
+      unsubmittedHours: sumHours(allLogs.filter((l) => l.approvalStatus === "DRAFT")),
+      awaitingApprovalHours: sumHours(allLogs.filter((l) => l.approvalStatus === "SUBMITTED")),
+    },
+
+    daily,
+    byTask: taskRows.slice(0, 10),
+    byProject: projectRows,
+  };
+}
+
+/** `yyyy-mm-dd` plus n days, staying in date-only space. */
+function addDays(day: string, n: number): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Whole days between two `yyyy-mm-dd` dates. */
+function daysApart(from: string, to: string): number {
+  const a = new Date(`${from}T00:00:00Z`).getTime();
+  const b = new Date(`${to}T00:00:00Z`).getTime();
+  return Math.round((b - a) / 86_400_000);
+}
+
+/**
+ * Working days from `from` to `to` inclusive, weekends excluded.
+ *
+ * Public holidays are not modelled anywhere in this system, so this is
+ * deliberately a simple Mon-Fri count rather than a false precision.
+ */
+function workingDaysBetween(from: string, to: string): number {
+  let count = 0;
+  const d = new Date(`${from}T00:00:00Z`);
+  const end = new Date(`${to}T00:00:00Z`);
+  while (d <= end) {
+    const day = d.getUTCDay();
+    if (day !== 0 && day !== 6) count++;
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return count;
 }
