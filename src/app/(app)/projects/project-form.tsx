@@ -19,6 +19,7 @@ export interface ProjectFormOptions {
   opportunities: { id: string; opportunityNumber: string; name: string; accountId: string }[];
   contracts: { id: string; contractNumber: string; accountId: string }[];
   currencies: { code: string; name: string }[];
+  products: { id: string; productCode: string; name: string; productType: string }[];
 }
 
 export interface ProjectDefaults {
@@ -28,6 +29,7 @@ export interface ProjectDefaults {
   accountId: string | null;
   opportunityId: string | null;
   contractId: string | null;
+  productId: string | null;
   projectManagerId: string;
   status: string;
   health: string;
@@ -96,6 +98,9 @@ export function ProjectForm({
       accountId: internal ? null : accountId,
       opportunityId: get("opportunityId"),
       contractId: get("contractId"),
+      // Kept for internal work too: building your own product on an internal
+      // project is the main reason this field exists.
+      productId: get("productId"),
       projectManagerId: String(formData.get("projectManagerId") ?? ""),
       status: get("status"),
       health: get("health"),
@@ -192,6 +197,30 @@ export function ProjectForm({
               ))}
             </Select>
           </Field>
+          {/* Outside the !internal block on purpose: an internal project building
+              your own product is exactly the case this field is for, and hiding
+              it there would defeat the link. */}
+          <Field
+            label="Product"
+            hint={internal ? "What this work is building." : "What this work delivers."}
+            help="The catalogue product this project builds or delivers. Linking it is what lets the system add up what a product has cost to build against what it has earned. Leave it as None for work that is not about a product - a website refresh, a content team."
+          >
+            <Select name="productId" defaultValue={defaults?.productId ?? ""}>
+              <option value="">None</option>
+              {options.products.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.productCode})
+                </option>
+              ))}
+            </Select>
+            {options.products.length === 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                No products in the catalogue yet. Add one under Products first, then
+                come back and link this work to it.
+              </p>
+            )}
+          </Field>
+
           {!internal && (
             <>
               <Field label="Sourced from deal" hint={accountId ? "Won deals for this customer." : "Pick a customer first."}

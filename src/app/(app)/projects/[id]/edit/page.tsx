@@ -23,6 +23,7 @@ export default async function EditProjectPage({
     accountId: project.accountId,
     opportunityId: project.opportunityId,
     contractId: project.contractId,
+    productId: project.productId,
     projectManagerId: project.projectManagerId,
     status: project.status,
     health: project.health,

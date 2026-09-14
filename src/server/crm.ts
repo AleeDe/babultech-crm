@@ -1529,3 +1529,208 @@ export async function getCreateFormOptions() {
     campaigns: campaigns.data ?? [],
   };
 }
+
+/**
+ * What a product has cost to build, and what it has earned.
+ *
+ * This is the question the project↔product link exists to answer, and neither
+ * half could answer it alone: cost lives on the projects that build the thing,
+ * revenue lives on the invoice lines that sell it.
+ *
+ * The two sides are deliberately asymmetric, because the business is:
+ *
+ *   * **Cost** is every hour logged to any project carrying this product,
+ *     valued at the rate stamped on each entry. That includes the internal R&D
+ *     project that built it and any customer delivery project for it.
+ *   * **Revenue** is every invoice line carrying this product. A product sold
+ *     to five customers has five sets of lines and one build cost, which is the
+ *     whole point of building a product rather than doing bespoke work.
+ *
+ * A product still in development shows cost and no revenue. That is not a
+ * failure of the report — it is the honest state of an investment that has not
+ * paid back yet, and seeing it is the reason to look.
+ */
+export async function getProductEconomics(productId: string) {
+  // Products are gated on OPPORTUNITY_READ everywhere in this app — the
+  // catalogue page included — so this follows rather than inventing a rule.
+  await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
+
+  const db = await supabaseServer();
+
+  const { data: product, error: productError } = await db
+    .from("product")
+    .select("id, productCode, name, productType, billingType, standardPrice, standardCost, active")
+    .eq("id", productId)
+    .maybeSingle();
+
+  // A malformed id names a record that cannot exist, which is a 404 rather than
+  // a server fault.
+  if (productError) {
+    if (productError.code === "22P02") return null;
+    throw new Error(`Could not load the product: ${productError.message}`);
+  }
+  if (!product) return null;
+
+  const [projectsRes, invoiceLinesRes] = await Promise.all([
+    db
+      .from("project")
+      .select(
+        `id, name, projectNumber, projectType, status, health, completionPercent,
+         startDate, plannedEndDate, approvedHours,
+         account ( id, name )`,
+      )
+      .eq("productId", productId)
+      .is("deletedAt", null)
+      .order("projectNumber"),
+
+    db
+      .from("invoice_line")
+      .select(
+        `id, quantity, unitPrice, lineTotal,
+         invoice!inner ( id, invoiceNumber, status, issueDate, deletedAt,
+                         account ( id, name ) )`,
+      )
+      .eq("productId", productId)
+      .is("invoice.deletedAt", null)
+      .limit(2000),
+  ]);
+
+  // A broken query and an empty result are different things: letting a failed
+  // select read as zero would report a product that cost nothing and earned
+  // nothing, which is the most misleading answer available.
+  for (const [what, res] of [
+    ["projects", projectsRes],
+    ["invoice lines", invoiceLinesRes],
+  ] as const) {
+    if (res.error) {
+      throw new Error(`Could not load ${what} for this product: ${res.error.message}`);
+    }
+  }
+
+  const projects: Record<string, any>[] = ((projectsRes.data ?? []) as Record<string, any>[]).map(
+    (p) => ({ ...p, account: one(p.account as never) as { id: string; name: string } | null }),
+  );
+
+  const projectIds = projects.map((p) => String(p.id));
+
+  // Hours on every project for this product, valued at the rates stamped on
+  // each entry rather than anyone's current rate card.
+  const logsRes = projectIds.length
+    ? await db
+        .from("time_log")
+        .select("projectId, userId, hours, billable, billingRate, costRate, approvalStatus")
+        .in("projectId", projectIds)
+        .neq("approvalStatus", "REJECTED")
+        .limit(20000)
+    : { data: [], error: null };
+
+  if (logsRes.error) {
+    throw new Error(`Could not load time for this product: ${logsRes.error.message}`);
+  }
+  const logs = (logsRes.data ?? []) as Record<string, any>[];
+
+  const hours = logs.reduce((a, l) => a.plus(toDecimal(l.hours)), toDecimal(0));
+  const cost = logs.reduce(
+    (a, l) => a.plus(toDecimal(l.hours).times(toDecimal(l.costRate))),
+    toDecimal(0),
+  );
+
+  // Per project, so the reader can see which piece of work the money went into.
+  const byProject = projects.map((p) => {
+    const mine = logs.filter((l) => String(l.projectId) === String(p.id));
+    return {
+      id: String(p.id),
+      name: String(p.name),
+      projectNumber: String(p.projectNumber),
+      projectType: String(p.projectType ?? "CUSTOMER"),
+      status: String(p.status),
+      health: String(p.health ?? "GREEN"),
+      accountName: p.account?.name ?? null,
+      completionPercent: Number(p.completionPercent ?? 0),
+      hours: Number(
+        mine.reduce((a, l) => a.plus(toDecimal(l.hours)), toDecimal(0)).toDecimalPlaces(1),
+      ),
+      cost: Number(
+        mine
+          .reduce((a, l) => a.plus(toDecimal(l.hours).times(toDecimal(l.costRate))), toDecimal(0))
+          .toDecimalPlaces(2),
+      ),
+      people: new Set(mine.map((l) => String(l.userId))).size,
+    };
+  });
+
+  // --- Revenue -------------------------------------------------------------
+  const lines: Record<string, any>[] = ((invoiceLinesRes.data ?? []) as Record<string, any>[]).map((l) => {
+    const invoice = one(l.invoice as never) as Record<string, any> | null;
+    return {
+      ...l,
+      invoice,
+      invoiceAccount: invoice ? (one(invoice.account as never) as { id: string; name: string } | null) : null,
+    };
+  });
+
+  // Cancelled invoices are excluded: they are a record that something was
+  // withdrawn, not money earned.
+  const counted = lines.filter((l) => String(l.invoice?.status) !== "CANCELLED");
+
+  const revenue = counted.reduce((a, l) => a.plus(toDecimal(l.lineTotal ?? 0)), toDecimal(0));
+  const unitsSold = counted.reduce((a, l) => a.plus(toDecimal(l.quantity ?? 0)), toDecimal(0));
+
+  // Only settled invoices are money actually received; the rest is owed.
+  const collected = counted
+    .filter((l) => String(l.invoice?.status) === "PAID")
+    .reduce((a, l) => a.plus(toDecimal(l.lineTotal ?? 0)), toDecimal(0));
+
+  const customers = new Map<string, { id: string; name: string; revenue: ReturnType<typeof toDecimal>; invoices: number }>();
+  for (const l of counted) {
+    const acct = l.invoiceAccount;
+    if (!acct) continue;
+    const entry =
+      customers.get(String(acct.id)) ??
+      { id: String(acct.id), name: String(acct.name), revenue: toDecimal(0), invoices: 0 };
+    entry.revenue = entry.revenue.plus(toDecimal(l.lineTotal ?? 0));
+    entry.invoices += 1;
+    customers.set(String(acct.id), entry);
+  }
+
+  const margin = revenue.minus(cost);
+
+  return {
+    product,
+
+    investment: {
+      hours: Number(hours.toDecimalPlaces(1)),
+      cost: Number(cost.toDecimalPlaces(2)),
+      projects: projects.length,
+      /** People who have ever logged time to this product. */
+      people: new Set(logs.map((l) => String(l.userId))).size,
+    },
+
+    earnings: {
+      revenue: Number(revenue.toDecimalPlaces(2)),
+      collected: Number(collected.toDecimalPlaces(2)),
+      outstanding: Number(revenue.minus(collected).toDecimalPlaces(2)),
+      unitsSold: Number(unitsSold.toDecimalPlaces(2)),
+      customers: customers.size,
+      invoiceLines: counted.length,
+    },
+
+    /**
+     * Revenue less build cost. Negative while a product is still an investment,
+     * which is the normal state before it has sold — and worth seeing plainly
+     * rather than hiding behind a zero.
+     */
+    margin: Number(margin.toDecimalPlaces(2)),
+    marginPercent: revenue.greaterThan(0)
+      ? Number(margin.dividedBy(revenue).times(100).toDecimalPlaces(1))
+      : null,
+    /** True once it has earned back what it cost to build. */
+    hasPaidBack: revenue.greaterThanOrEqualTo(cost) && revenue.greaterThan(0),
+
+    byProject,
+
+    byCustomer: [...customers.values()]
+      .map((c) => ({ ...c, revenue: Number(c.revenue.toDecimalPlaces(2)) }))
+      .sort((a, b) => b.revenue - a.revenue),
+  };
+}

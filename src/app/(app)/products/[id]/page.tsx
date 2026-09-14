@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { getProductEconomics } from "@/server/crm";
 import {
   PageHeader, Button, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Forbidden
@@ -18,6 +19,10 @@ export default async function ProductDetailPage({
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="the product catalogue" />;
   const db = await supabaseServer();
+
+  // What this product cost to build against what it has earned — the question
+  // the project/product link exists to answer.
+  const economics = await getProductEconomics(id);
 
   const { data: productRow } = await db
     .from("product")
@@ -104,6 +109,148 @@ export default async function ProductDetailPage({
         <StatTile label="In open pipeline" value={formatMoney(pipelineValue)} sublabel={`${product.opportunityLines.length} deal line(s)`} tone="info" />
         <StatTile label="Invoiced" value={formatMoney(invoicedValue)} sublabel={`${product.invoiceLines.length} invoice line(s)`} />
       </div>
+
+      {/* ------------------------------------------- what it cost vs earned */}
+      {economics && (
+        <section className="mt-6">
+          <h2 className="mb-1 text-sm font-semibold">Build and return</h2>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Cost is every hour logged to a project linked to this product, at the
+            rates stamped on each entry. Revenue is every invoice line carrying
+            it. A product still in development shows cost and no revenue — that
+            is an investment that has not paid back yet, not an error.
+          </p>
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatTile
+              label="Cost to build"
+              value={formatMoney(economics.investment.cost)}
+              sublabel={`${formatNumber(economics.investment.hours, 1)}h across ${economics.investment.projects} project${economics.investment.projects === 1 ? "" : "s"}`}
+              help="Every hour logged to a project linked to this product, valued at the cost rate stamped on each entry."
+            />
+            <StatTile
+              label="Revenue"
+              value={formatMoney(economics.earnings.revenue)}
+              sublabel={
+                economics.earnings.customers > 0
+                  ? `${economics.earnings.customers} customer${economics.earnings.customers === 1 ? "" : "s"}`
+                  : "Not sold yet"
+              }
+              help="Invoice lines carrying this product. Cancelled invoices are excluded."
+            />
+            <StatTile
+              label={economics.margin >= 0 ? "Net return" : "Still invested"}
+              value={formatMoney(Math.abs(economics.margin))}
+              sublabel={
+                economics.marginPercent === null
+                  ? "No revenue to measure against"
+                  : `${formatNumber(economics.marginPercent, 1)}% margin`
+              }
+              tone={economics.hasPaidBack ? "success" : economics.margin < 0 ? "warning" : "neutral"}
+              help="Revenue less what it cost to build. Negative while the product has yet to earn back its build cost."
+            />
+            <StatTile
+              label="Collected"
+              value={formatMoney(economics.earnings.collected)}
+              sublabel={
+                economics.earnings.outstanding > 0
+                  ? `${formatMoney(economics.earnings.outstanding)} still owed`
+                  : "Nothing outstanding"
+              }
+              help="Money actually received, from invoices marked paid. The rest is billed but not yet in the bank."
+            />
+          </div>
+
+          <div className="mt-4 grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Where the work happened</CardTitle>
+              </CardHeader>
+              <CardContent className="px-0">
+                {economics.byProject.length === 0 ? (
+                  <p className="px-5 pb-2 text-sm text-muted-foreground">
+                    No project is linked to this product yet. Open a project and set
+                    its Product field to start tracking what this costs to build.
+                  </p>
+                ) : (
+                  <Table>
+                    <THead>
+                      <TR>
+                        <TH>Project</TH>
+                        <TH priority="tertiary">Type</TH>
+                        <TH className="text-right" priority="secondary">Hours</TH>
+                        <TH className="text-right">Cost</TH>
+                      </TR>
+                    </THead>
+                    <TBody>
+                      {economics.byProject.map((p) => (
+                        <TR key={p.id}>
+                          <TD>
+                            <Link href={`/projects/${p.id}`} className="font-medium hover:underline">
+                              {p.name}
+                            </Link>
+                            <p className="text-xs text-muted-foreground">
+                              {p.projectNumber}
+                              {p.accountName && ` · ${p.accountName}`}
+                              {` · ${p.completionPercent}% done`}
+                            </p>
+                          </TD>
+                          <TD priority="tertiary">
+                            <Badge tone={p.projectType === "INTERNAL" ? "neutral" : "info"}>
+                              {p.projectType === "INTERNAL" ? "Own build" : "Customer"}
+                            </Badge>
+                          </TD>
+                          <TD className="text-right tabular" priority="secondary">
+                            {formatNumber(p.hours, 1)}
+                          </TD>
+                          <TD className="text-right tabular">{formatMoney(p.cost)}</TD>
+                        </TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Who bought it</CardTitle>
+              </CardHeader>
+              <CardContent className="px-0">
+                {economics.byCustomer.length === 0 ? (
+                  <p className="px-5 pb-2 text-sm text-muted-foreground">
+                    Not invoiced to anyone yet. Once this product appears on an
+                    invoice line, the customers show here against what they paid.
+                  </p>
+                ) : (
+                  <Table>
+                    <THead>
+                      <TR>
+                        <TH>Customer</TH>
+                        <TH className="text-right" priority="tertiary">Lines</TH>
+                        <TH className="text-right">Revenue</TH>
+                      </TR>
+                    </THead>
+                    <TBody>
+                      {economics.byCustomer.map((c) => (
+                        <TR key={c.id}>
+                          <TD>
+                            <Link href={`/accounts/${c.id}`} className="font-medium hover:underline">
+                              {c.name}
+                            </Link>
+                          </TD>
+                          <TD className="text-right tabular" priority="tertiary">{c.invoices}</TD>
+                          <TD className="text-right tabular">{formatMoney(c.revenue)}</TD>
+                        </TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

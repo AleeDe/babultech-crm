@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
-import { NotesPanel } from "@/components/notes-panel";
+import { NotesSection } from "@/components/notes-section";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { getProject, getProjectBurn, getProjectWorkLog } from "@/server/projects";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
@@ -176,6 +176,7 @@ export default async function ProjectWorkspacePage({
               // has nothing left to offer.
               <TaskBoard
                 projectId={project.id}
+                projectType={project.projectType}
                 tasks={s.tasks as never}
                 phases={s.phases as never}
                 milestones={s.milestones as never}
@@ -283,6 +284,23 @@ export default async function ProjectWorkspacePage({
                     {project.projectType !== "INTERNAL" && (
                       <Row label="Billing">{humanize(project.billingType)}</Row>
                     )}
+                    {/* Shown whichever type the project is: internal R&D on your
+                        own product and customer delivery of it are both worth
+                        naming, and the link is what ties this work to the
+                        product's cost-to-build. */}
+                    {project.product && (
+                      <Row label="Product">
+                        <Link
+                          href={`/products/${project.product.id}`}
+                          className="text-primary hover:underline"
+                        >
+                          {project.product.name}
+                        </Link>
+                        <p className="text-xs text-muted-foreground">
+                          {project.product.productCode}
+                        </p>
+                      </Row>
+                    )}
                     <Row label={project.projectType === "INTERNAL" ? "Budget" : "Contract value"}>
                       {formatMoney(project.contractValue, project.currencyCode)}
                     </Row>
@@ -362,7 +380,7 @@ export default async function ProjectWorkspacePage({
             count: notes.length + documents.length,
             content: (
               <div className="grid gap-6 lg:grid-cols-2">
-                <NotesPanel entityType="Project" entityId={id} notes={notes} />
+                <NotesSection entityType="Project" entityId={id} notes={notes} />
                 <DocumentsPanel entityType="Project" entityId={id} documents={documents} />
               </div>
             ),
