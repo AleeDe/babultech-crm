@@ -1,4 +1,3 @@
-import DOMPurify from "isomorphic-dompurify";
 
 /**
  * Sanitising rich text before it is stored or shown.
@@ -49,6 +48,49 @@ const ALLOWED_ATTR = ["href", "title"];
  */
 const SAFE_SCHEMES = /^(https?:|mailto:|tel:)/i;
 
+/**
+ * DOMPurify is loaded on first use, not at module load.
+ *
+ * It pulls in jsdom, which in turn requires html-encoding-sniffer — a CommonJS
+ * module that `require()`s an ESM-only package. Node's serverless runtime
+ * refuses that combination with ERR_REQUIRE_ESM, so merely importing this file
+ * crashed every route that touched it, including /projects, which only ever
+ * reads. `next dev` tolerates the same require, which is why this only ever
+ * failed once deployed.
+ *
+ * Sanitising happens on write and nowhere else, so the read paths have no
+ * reason to pay for jsdom at all. Requiring it here keeps the dependency on the
+ * one code path that genuinely needs it, and leaves list and detail pages free
+ * of it entirely.
+ *
+ * `require` rather than `await import` deliberately: sanitizeRichText is called
+ * from synchronous code in several places, and making it async would ripple
+ * through every caller for no gain.
+ */
+/** Only the surface this module uses; the hook sees a DOM element. */
+interface HookNode {
+  tagName?: string;
+  getAttribute(name: string): string | null;
+  setAttribute(name: string, value: string): void;
+  removeAttribute(name: string): void;
+}
+
+interface Purifier {
+  sanitize(dirty: string, cfg: object): string;
+  addHook(entryPoint: string, cb: (node: HookNode) => void): void;
+}
+
+let purifier: Purifier | null = null;
+
+function getPurifier(): Purifier {
+  if (!purifier) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require("isomorphic-dompurify");
+    purifier = (mod.default ?? mod) as Purifier;
+  }
+  return purifier;
+}
+
 let hooked = false;
 
 /**
@@ -59,7 +101,7 @@ let hooked = false;
  */
 function ensureHooks() {
   if (hooked) return;
-  DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+  getPurifier().addHook("afterSanitizeAttributes", (node) => {
     if (node.tagName !== "A") return;
     const href = node.getAttribute("href") ?? "";
     if (!SAFE_SCHEMES.test(href)) {
@@ -86,7 +128,7 @@ export function sanitizeRichText(value: unknown): string | null {
 
   ensureHooks();
 
-  const clean = DOMPurify.sanitize(value, {
+  const clean = getPurifier().sanitize(value, {
     ALLOWED_TAGS,
     ALLOWED_ATTR,
     // Keep the text of a disallowed element rather than discarding it: someone
