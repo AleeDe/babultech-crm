@@ -281,7 +281,7 @@ export async function sendInvoice(id: string): Promise<ActionResult<{ commission
     const { data: before } = await db
       .from("invoice")
       .select(
-        "status, invoiceNumber, milestoneId, lines:invoice_line ( id ), milestone ( name, invoicedAt )",
+        "status, invoiceNumber, milestoneId, preparedById, lines:invoice_line ( id ), milestone ( name, invoicedAt )",
       )
       .eq("id", id)
       .maybeSingle();
@@ -293,6 +293,14 @@ export async function sendInvoice(id: string): Promise<ActionResult<{ commission
     }
     if (((before.lines ?? []) as unknown[]).length === 0) {
       return { ok: false, error: "An invoice with no lines cannot be sent." };
+    }
+    // The database refuses this too (guard_invoice_issue), but reaching it
+    // costs a write that fails; saying so here is the better answer.
+    if (before.preparedById && before.preparedById === user.id) {
+      return {
+        ok: false,
+        error: `${before.invoiceNumber} was prepared by you. Someone else has to issue it.`,
+      };
     }
 
     const milestone = one(before.milestone as never) as
