@@ -181,3 +181,48 @@ end $$;
 reset role;
 
 select 'finance write boundaries verified' as result;
+
+-- ------------------------------- cancelling your own draft is not issuing it
+-- Added after 20260918000011: the issue guard must not catch a cancellation.
+select set_config('request.jwt.claim.sub', (select id::text from fin_fixture where k='preparer'), true);
+set local role authenticated;
+do $$
+declare acct uuid := (select id from fin_fixture where k='account'); own uuid := gen_random_uuid();
+begin
+  insert into invoice(id, "invoiceNumber", "accountId", "invoiceDate", "dueDate", status,
+    "currencyCode", subtotal, "discountAmount", "taxAmount", "totalAmount", "paidAmount", "outstandingAmount", "updatedAt")
+  values (own, 'FINTEST-CANCEL', acct, current_date, current_date + 30, 'DRAFT',
+    'PKR', 100, 0, 0, 100, 0, 100, now());
+  -- The preparer cancels their own draft. Nobody is billed by this.
+  update invoice set status = 'CANCELLED', "updatedAt" = now() where id = own;
+  if not exists (select 1 from invoice where id = own and status = 'CANCELLED') then
+    raise exception 'A preparer could not cancel their own draft';
+  end if;
+end $$;
+reset role;
+
+select 'cancellation is not issuing' as result;
+
+-- ------------------------- but invoice:write still cannot bill the customer
+select set_config('request.jwt.claim.sub', (select id::text from fin_fixture where k='preparer'), true);
+set local role authenticated;
+do $$
+declare acct uuid := (select id from fin_fixture where k='account'); own uuid := gen_random_uuid();
+begin
+  insert into invoice(id, "invoiceNumber", "accountId", "invoiceDate", "dueDate", status,
+    "currencyCode", subtotal, "discountAmount", "taxAmount", "totalAmount", "paidAmount", "outstandingAmount", "updatedAt")
+  values (own, 'FINTEST-NOBILL', acct, current_date, current_date + 30, 'DRAFT',
+    'PKR', 100, 0, 0, 100, 0, 100, now());
+  -- Allowing CANCELLED must not have opened a route to PAID.
+  -- Either the policy or the issue guard may reject it; what matters is that
+  -- the status did not move.
+  begin
+    update invoice set status = 'PAID', "updatedAt" = now() where id = own;
+  exception when insufficient_privilege or check_violation then null; end;
+  if exists (select 1 from invoice where id = own and status = 'PAID') then
+    raise exception 'invoice:write reached a billing status';
+  end if;
+end $$;
+reset role;
+
+select 'cancellation allowed, billing still refused' as result;
