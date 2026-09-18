@@ -13,7 +13,10 @@ describe("version history API shapes and boundaries", () => {
   const plan = chain({ data: { revision: 1 }, error: null });
   const history = chain({ data: [{ id: "v1", author: [{ fullName: "Writer" }], reviews: [{ id: "r1", reviewer: [{ fullName: "Reviewer" }] }], publications }], count: 41, error: null });
   const latest = chain({ data: { versionNumber: 41 }, error: null });
-  const from = vi.fn().mockReturnValueOnce(task).mockReturnValueOnce(plan).mockReturnValueOnce(history).mockReturnValueOnce(latest);
+  // Client review links are fetched alongside the history; the token hash they
+  // carry is of no use to anyone, so the panel can list them.
+  const links = chain({ data: [], error: null });
+  const from = vi.fn().mockReturnValueOnce(task).mockReturnValueOnce(plan).mockReturnValueOnce(history).mockReturnValueOnce(latest).mockReturnValueOnce(links);
   mocks.server.mockResolvedValue({ from, rpc: vi.fn().mockResolvedValue({ data: false, error: null }) });
   return { task, history, from };
  }

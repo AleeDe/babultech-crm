@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { PageHeader, Button } from "@/components/ui";
 import { getContentVersions } from "@/server/content-versions";
 import { VersionActionForm } from "./version-forms";
+import { ReviewLinkPanel } from "./review-link";
 export default async function ContentVersionsPage({ params, searchParams }: { params: Promise<{ id: string; taskId: string }>; searchParams: Promise<{ page?: string }> }) {
  const { id, taskId } = await params; const query = await searchParams;
  const data = await getContentVersions(id, taskId, Number(query.page ?? 1)); if (!data) notFound();
@@ -24,8 +25,9 @@ export default async function ContentVersionsPage({ params, searchParams }: { pa
  <p className="whitespace-pre-wrap my-4">{v.copy}</p>
  {v.assetUrl && <div className="text-sm"><a href={v.assetUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">Open asset version</a><p className="break-all">SHA-256: {v.assetSha256}</p></div>}
  <details className="my-3"><summary className="cursor-pointer">Saved brief and approval requirement</summary><p className="whitespace-pre-wrap text-sm">{v.planSnapshot.brief}</p><p className="text-sm">Client approval: {v.planSnapshot.clientApprovalRequired ? "Required" : "Not required"}</p></details>
- <div className="space-y-3 my-4">{v.reviews.map(r => <div key={r.id} className="border-l-2 pl-3 text-sm"><p>{r.stage} · {r.decision} · {r.reviewer?.fullName ?? "Reviewer"} · {dates.format(new Date(r.createdAt))} PKT</p>{r.clientApprover && <p>Client approver: {r.clientApprover}</p>}<p className="whitespace-pre-wrap">{r.evidence}</p></div>)}</div>
+ <div className="space-y-3 my-4">{v.reviews.map(r => <div key={r.id} className="border-l-2 pl-3 text-sm"><p>{r.stage} · {r.decision} · {r.reviewer?.fullName ?? "Reviewer"} · {dates.format(new Date(r.createdAt))} PKT</p>{r.clientApprover && <p>Client approver: {r.clientApprover}{r.viaLinkId ? " (recorded by the client)" : " (recorded by staff)"}</p>}<p className="whitespace-pre-wrap">{r.evidence}</p></div>)}</div>
  {reviewer && !internal && <VersionActionForm kind="review" versionId={v.id} />}
+ {internal?.decision === "APPROVED" && v.planSnapshot.clientApprovalRequired && !client && <ReviewLinkPanel versionId={v.id} links={data.links.get(v.id) ?? []} canSend={Boolean(current && data.canManage && !["COMPLETED", "CANCELLED"].includes(data.task.status))} />}
  {reviewer && internal?.decision === "APPROVED" && v.planSnapshot.clientApprovalRequired && !client && <VersionActionForm kind="review" versionId={v.id} stage="CLIENT" />}
  {(internal?.decision === "CHANGES_REQUESTED" || client?.decision === "CHANGES_REQUESTED") && <p className="text-sm">Changes requested. Submit a new version for another review.</p>}
  {v.publications.map(p => <p key={p.id} className="text-sm mt-3">Publication evidence: <a href={p.liveUrl} target="_blank" rel="noopener noreferrer" className="underline text-primary">Live URL</a> · {dates.format(new Date(p.publishedAt))} PKT</p>)}
