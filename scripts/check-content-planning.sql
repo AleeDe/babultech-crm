@@ -1,0 +1,48 @@
+create temp table content_fixture(k text primary key,id uuid);
+grant select on content_fixture to authenticated;
+insert into content_fixture select 'pm',u.id from app_user u join security_role r on r.id=u."roleId" where r.name='Project Manager' and u.status='ACTIVE' and u."deletedAt" is null limit 1;
+insert into content_fixture select 'contributor',u.id from app_user u join security_role r on r.id=u."roleId" where r.name='Consultant' and u.status='ACTIVE' and u."deletedAt" is null limit 1;
+insert into content_fixture values('project',gen_random_uuid()),('task',gen_random_uuid());
+do $$ begin if (select count(*) from content_fixture)<>4 then raise exception 'Missing fixtures'; end if; end $$;
+insert into project(id,"projectNumber",name,"projectManagerId","projectType","billingType", "updatedAt") values((select id from content_fixture where k='project'),'CONTENT-TEST','Content planning test',(select id from content_fixture where k='pm'),'INTERNAL','FIXED',now());
+insert into project_task(id,"projectId",name,"assignedUserId","updatedAt") values((select id from content_fixture where k='task'),(select id from content_fixture where k='project'),'Content test task',(select id from content_fixture where k='contributor'),now());
+insert into project_member("projectId","userId",active,"projectRole","updatedAt") values((select id from content_fixture where k='project'),(select id from content_fixture where k='contributor'),true,'Writer',now());
+create temp table content_payload as select '{"channel":"INSTAGRAM","format":"POST","objective":"Awareness","audience":"Retailers","brief":"Product introduction","plannedPublishAt":"2026-10-01T19:00:00Z","clientApprovalRequired":true}'::jsonb as plan;
+grant select on content_payload to authenticated;
+select set_config('request.jwt.claim.sub',(select id::text from content_fixture where k='pm'),true);
+set local role authenticated;
+do $$ declare tid uuid:=(select id from content_fixture where k='task'); payload jsonb:=(select plan from content_payload); denied boolean; begin
+ if save_content_plan(tid,0,payload)<>1 then raise exception 'Initial revision wrong'; end if;
+ denied:=false; begin perform save_content_plan(tid,0,payload); exception when serialization_failure then denied:=true; end;
+ if not denied then raise exception 'Stale create overwritten'; end if;
+ if save_content_plan(tid,1,jsonb_set(payload,'{brief}','"Updated brief"'))<>2 then raise exception 'Update revision wrong'; end if;
+ denied:=false; begin perform save_content_plan(tid,1,payload); exception when serialization_failure then denied:=true; end;
+ if not denied then raise exception 'Stale edit overwritten'; end if;
+ denied:=false; begin update project_content_plan set brief='Bypass' where "taskId"=tid; exception when insufficient_privilege then denied:=true; end;
+ if not denied then raise exception 'Direct edit allowed'; end if;
+ denied:=false; begin perform save_content_plan(tid,2,jsonb_set(payload,'{channel}','"INVALID"')); exception when check_violation then denied:=true; end;
+ if not denied then raise exception 'Unknown channel accepted'; end if;
+ if not exists(select 1 from project_content_plan where "taskId"=tid and revision=2 and brief='Updated brief') then raise exception 'Failed write left partial changes'; end if;
+end $$;
+reset role;
+select set_config('request.jwt.claim.sub',(select id::text from content_fixture where k='contributor'),true);
+set local role authenticated;
+do $$ declare denied boolean:=false; begin
+ if not exists(select 1 from project_content_plan where "taskId"=(select id from content_fixture where k='task')) then raise exception 'Member cannot read plan'; end if;
+ begin perform save_content_plan((select id from content_fixture where k='task'),2,(select plan from content_payload)); exception when insufficient_privilege then denied:=true; end;
+ if not denied then raise exception 'Contributor changed planning'; end if;
+end $$;
+reset role;
+update project_member set active=false where "projectId"=(select id from content_fixture where k='project');
+set local role authenticated;
+do $$ begin if exists(select 1 from project_content_plan where "taskId"=(select id from content_fixture where k='task')) then raise exception 'Revoked member reads plan'; end if; end $$;
+reset role;
+update project_task set status='COMPLETED' where id=(select id from content_fixture where k='task');
+select set_config('request.jwt.claim.sub',(select id::text from content_fixture where k='pm'),true);
+set local role authenticated;
+do $$ declare denied boolean:=false; begin
+ begin perform save_content_plan((select id from content_fixture where k='task'),2,(select plan from content_payload)); exception when invalid_parameter_value then denied:=true; end;
+ if not denied then raise exception 'Completed task replanned'; end if;
+end $$;
+reset role;
+select 'Content planning access, revision conflicts, validation and revocation checks passed' as result;
