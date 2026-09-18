@@ -11,6 +11,8 @@ import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { sanitizeRichText } from "@/lib/rich-text";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionResult } from "./partners";
+import { MEMBER_PUBLIC_COLUMNS, TIME_PUBLIC_COLUMNS, withRateSnapshots } from "@/lib/rate-snapshots";
+import { getProjectPeople } from "./project-directory";
 
 /** The slice of the Supabase client the roll-up helper needs. */
 type Db = Pick<SupabaseClient, "from">;
@@ -87,7 +89,11 @@ async function rollUpProgress(db: Db, projectId: string): Promise<void> {
     }));
 
   if (phaseUpdates.length) {
-    await db.from("project_phase").upsert(phaseUpdates, { onConflict: "id" });
+    // These are updates, not inserts. An upsert also requires INSERT authority
+    // and a complete new phase row before its conflict path is considered.
+    const results = await Promise.all(phaseUpdates.map(({ id, ...values }) =>
+      db.from("project_phase").update(values).eq("id", id).eq("projectId", projectId)));
+    if (results.some((result) => result.error)) throw new Error("Could not update phase progress.");
   }
 
   const overall = weighted(tasks);
@@ -152,7 +158,7 @@ const projectSchema = z
 export async function createProject(
   input: z.input<typeof projectSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_MANAGE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = projectSchema.safeParse(input);
@@ -202,7 +208,7 @@ export async function updateProject(
   id: string,
   input: z.input<typeof projectSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_MANAGE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
   const user = _auth.user;
 
@@ -361,7 +367,7 @@ export async function getProject(id: string) {
          milestone ( id, name )
        ),
        members:project_member (
-         *,
+         ${MEMBER_PUBLIC_COLUMNS},
          user:app_user!project_member_userId_fkey ( id, fullName, jobTitle, email )
        ),
        risks:project_risk ( *, owner:app_user!project_risk_ownerUserId_fkey ( id, fullName ) ),
@@ -412,7 +418,7 @@ export async function getProject(id: string) {
         _count: { subtasks: subtaskCount.get(t.id as string) ?? 0 },
       }))
       .sort((a, b) => num(a.sortOrder) - num(b.sortOrder) || asc(a.createdAt, b.createdAt)),
-    members: rows(data.members)
+    members: (await withRateSnapshots("project_member", rows(data.members) as Array<Row & { id: string }>))
       .map((m): Row => ({ ...m, user: one(m.user as never) }))
       .sort((a, b) => asc(a.createdAt, b.createdAt)),
     risks: rows(data.risks)
@@ -441,7 +447,7 @@ export async function getProjectBurn(projectId: string) {
       .neq("approvalStatus", "REJECTED"),
     db
       .from("time_log")
-      .select("hours, billable, billingRate, costRate")
+      .select("id, hours, billable")
       .eq("projectId", projectId)
       .eq("approvalStatus", "APPROVED"),
   ]);
@@ -453,7 +459,7 @@ export async function getProjectBurn(projectId: string) {
 
   let billableValue = toDecimal(0);
   let cost = toDecimal(0);
-  for (const log of approvedRes.data ?? []) {
+  for (const log of await withRateSnapshots("time_log", approvedRes.data ?? [])) {
     const hours = toDecimal(log.hours);
     if (log.billable && log.billingRate) {
       billableValue = billableValue.plus(hours.times(toDecimal(log.billingRate)));
@@ -484,7 +490,7 @@ const phaseSchema = z.object({
 export async function createPhase(
   input: z.infer<typeof phaseSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_MANAGE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = phaseSchema.safeParse(input);
@@ -523,7 +529,7 @@ export async function createPhase(
 }
 
 export async function deletePhase(id: string): Promise<ActionResult> {
-  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_MANAGE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
   try {
@@ -577,7 +583,7 @@ const milestoneSchema = z.object({
 export async function createMilestone(
   input: z.infer<typeof milestoneSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_MANAGE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = milestoneSchema.safeParse(input);
@@ -611,7 +617,7 @@ export async function completeMilestone(
   id: string,
   customerApproved: boolean,
 ): Promise<ActionResult> {
-  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_MANAGE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
   const user = _auth.user;
 
@@ -753,7 +759,7 @@ async function billableForProject(
 export async function createTask(
   input: z.infer<typeof taskSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_MANAGE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = taskSchema.safeParse(input);
@@ -812,7 +818,7 @@ export async function updateTask(
   id: string,
   input: z.infer<typeof taskSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_MANAGE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
   const user = _auth.user;
 
@@ -890,7 +896,7 @@ export async function changeTaskStatus(
   id: string,
   status: string,
 ): Promise<ActionResult> {
-  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_MANAGE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
   const user = _auth.user;
 
@@ -962,7 +968,7 @@ export async function getTask(id: string) {
        milestone ( id, name ),
        parentTask:parentTaskId ( id, name ),
        assignedUser:app_user!project_task_assignedUserId_fkey ( id, fullName ),
-       timeLogs:time_log ( *, user:app_user!time_log_userId_fkey ( id, fullName ) )`,
+       timeLogs:time_log ( ${TIME_PUBLIC_COLUMNS}, user:app_user!time_log_userId_fkey ( id, fullName ) )`,
     )
     .eq("id", id)
     .maybeSingle();
@@ -1023,7 +1029,6 @@ export async function getProjectWorkLog(projectId: string, days = 30) {
     .select(
       `id, workDate, hours, description, billable, approvalStatus,
        startTime, endTime,
-       billingRate, costRate,
        user:app_user!time_log_userId_fkey ( id, fullName ),
        task:project_task ( id, name )`,
     )
@@ -1167,7 +1172,7 @@ const memberSchema = z.object({
 export async function addProjectMember(
   input: z.infer<typeof memberSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_MANAGE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = memberSchema.safeParse(input);
@@ -1193,7 +1198,7 @@ export async function addProjectMember(
     // Service role: these two columns are revoked from the authenticated role
     // (20260902000000_hide_rate_columns.sql), and adding someone to a project
     // legitimately needs their standing rates to seed the membership. The
-    // caller has already passed project:write to reach this line.
+    // caller has already passed project:manage to reach this line.
     const { data: person } = await supabaseAdmin()
       .from("app_user")
       .select("costRate, defaultBillingRate")
@@ -1224,7 +1229,7 @@ export async function updateProjectMember(
   id: string,
   input: Omit<z.infer<typeof memberSchema>, "projectId" | "userId"> & { active: boolean },
 ): Promise<ActionResult> {
-  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_MANAGE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const schema = memberSchema
@@ -1271,7 +1276,7 @@ export async function updateProjectMember(
  * must not lose their owner.
  */
 export async function removeProjectMember(id: string): Promise<ActionResult<{ deactivated: boolean }>> {
-  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_MANAGE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
   try {
@@ -1338,7 +1343,7 @@ const LEVEL_SCORE: Record<string, number> = { LOW: 1, MEDIUM: 2, HIGH: 3, CRITIC
 export async function createRisk(
   input: z.infer<typeof riskSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_MANAGE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = riskSchema.safeParse(input);
@@ -1374,7 +1379,7 @@ const issueSchema = z.object({
 export async function createIssue(
   input: z.infer<typeof issueSchema>,
 ): Promise<ActionResult<{ id: string }>> {
-  const _auth = await authorize(PERMISSIONS.PROJECT_WRITE);
+  const _auth = await authorize(PERMISSIONS.PROJECT_MANAGE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const parsed = issueSchema.safeParse(input);
@@ -1407,14 +1412,7 @@ export async function getProjectFormOptions() {
   const [accountsRes, usersRes, opportunitiesRes, contractsRes, currenciesRes, productsRes] =
     await Promise.all([
       db.from("account").select("id, name").is("deletedAt", null).order("name"),
-      supabaseAdmin()
-        .from("app_user")
-        // Rates come back for the team picker, which shows what a person costs
-        // before they are booked — so this one reads through the service role.
-        .select("id, fullName, jobTitle, costRate, defaultBillingRate")
-        .eq("status", "ACTIVE")
-        .is("deletedAt", null)
-        .order("fullName"),
+      getProjectPeople(),
       db
         .from("opportunity")
         .select("id, opportunityNumber, name, accountId")
@@ -1438,7 +1436,7 @@ export async function getProjectFormOptions() {
     ]);
 
   const accounts = accountsRes.data ?? [];
-  const users = usersRes.data ?? [];
+  const users = usersRes;
   const opportunities = opportunitiesRes.data ?? [];
   const contracts = contractsRes.data ?? [];
   const currencies = currenciesRes.data ?? [];

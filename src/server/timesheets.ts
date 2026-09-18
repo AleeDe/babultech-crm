@@ -1,5 +1,6 @@
 "use server";
 
+import { TIME_PUBLIC_COLUMNS, withRateSnapshots } from "@/lib/rate-snapshots";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import Decimal from "decimal.js";
@@ -57,7 +58,6 @@ async function isBillableProject(
 
   return project?.projectType === "INTERNAL" ? false : requested;
 }
-
 
 /**
  * Clock times are optional and hours are not.
@@ -198,7 +198,7 @@ export async function logTime(
       // change cannot rewrite what already-logged time was worth.
       const { data: member } = await db
         .from("project_member")
-        .select("active, billingRate, costRate")
+        .select("active")
         .eq("projectId", projectId)
         .eq("userId", user.id)
         .maybeSingle();
@@ -215,28 +215,13 @@ export async function logTime(
         ...base,
         projectId,
         projectTaskId: data.projectTaskId ?? null,
-        billingRate: member.billingRate,
-        costRate: member.costRate,
+
       });
     } else {
-      // Support-case time: no project membership, so fall back to standing rates.
-      //
-      // Read through the service role rather than the caller's client. These
-      // two columns are salary data and are revoked from the authenticated role
-      // (see 20260902000000_hide_rate_columns.sql), so a user client asking for
-      // them now errors. Using the admin client here is not a widening: the
-      // query is pinned to the caller's own id, so it returns their rates and
-      // nobody else's.
-      const { data: person } = await supabaseAdmin()
-        .from("app_user")
-        .select("costRate, defaultBillingRate")
-        .eq("id", user.id)
-        .maybeSingle();
-
+      // The database snapshots standing rates for support-case time.
       created = await createRecord<{ id: string; projectId: string | null }>("time_log", {
         ...base,
-        billingRate: person?.defaultBillingRate ?? null,
-        costRate: person?.costRate ?? null,
+
       });
     }
 
@@ -328,7 +313,7 @@ export async function logProjectDay(
   // around a restriction the single-entry form enforces.
   const { data: member } = await db
     .from("project_member")
-    .select("active, billingRate, costRate")
+    .select("active")
     .eq("projectId", data.projectId)
     .eq("userId", user.id)
     .maybeSingle();
@@ -352,8 +337,7 @@ export async function logProjectDay(
     billable: l.billable,
     // Snapshotted per row, so a later rate change never rewrites what
     // already-logged work was worth.
-    billingRate: l.billable ? member.billingRate : null,
-    costRate: member.costRate,
+
     approvalStatus: "DRAFT",
     updatedAt: new Date().toISOString(),
   }));
@@ -608,14 +592,14 @@ export async function rejectTimeLogs(ids: string[], reason: string): Promise<Act
     // after the transition rather than inside it, since a failure here leaves
     // the rejection itself intact and only loses the appended note.
     const stampedAt = new Date().toISOString();
-    await db.from("time_log").upsert(
-      logs.map((log) => ({
-        id: log.id,
+    const reasons = await Promise.all(logs.map((log) => db.from("time_log")
+      .update({
         description: `${log.description}\n\n[Rejected by ${user.fullName}: ${reason.trim()}]`,
         updatedAt: stampedAt,
-      })),
-      { onConflict: "id" },
-    );
+      }).eq("id", log.id).select("id")));
+    if (reasons.some((result) => result.error || result.data?.length !== 1)) {
+      return { ok: false, error: "Time was rejected, but its review reason could not be saved." };
+    }
 
     revalidatePath("/timesheets/approvals");
     revalidatePath("/timesheets");
@@ -638,7 +622,7 @@ export async function getMyWeek(weekStartISO: string) {
   const { data, error } = await db
     .from("time_log")
     .select(
-      `*,
+      `${TIME_PUBLIC_COLUMNS},
        project ( id, name, projectNumber ),
        projectTask:project_task ( id, name ),
        case:support_case ( id, caseNumber, subject )`,
@@ -711,7 +695,7 @@ export async function getPendingApprovals() {
   const { data, error } = await db
     .from("time_log")
     .select(
-      `*,
+      `${TIME_PUBLIC_COLUMNS},
        user:app_user!time_log_userId_fkey ( id, fullName ),
        project ( id, name, projectNumber ),
        projectTask:project_task ( id, name ),
@@ -739,6 +723,7 @@ export async function getPendingApprovals() {
  * two is the number a delivery manager actually needs.
  */
 export async function getUtilisation(weeks = 4) {
+  await requirePermission(PERMISSIONS.PROJECT_RATES_READ);
   // time:approve, not project:read. This report lists every colleague's cost
   // rate and utilisation, which is a staffing and margin view for whoever books
   // the work — and the page that renders it already required time:approve, so
@@ -866,6 +851,7 @@ export async function getUtilisation(weeks = 4) {
  * judge whether there is enough of it to trust.
  */
 export async function getResourceDetail(userId: string, weeks = 12) {
+  await requirePermission(PERMISSIONS.PROJECT_RATES_READ);
   // Identical gate to getUtilisation. This page carries cost and billing rates
   // and one person's approval history, which is more sensitive than the roster,
   // never less — so it must not be reachable on a weaker permission.
@@ -924,7 +910,7 @@ export async function getResourceDetail(userId: string, weeks = 12) {
     db
       .from("time_log")
       .select(
-        "hours, billable, workDate, approvalStatus, billingRate, costRate, projectId, projectTaskId",
+        "id, hours, billable, workDate, approvalStatus, projectId, projectTaskId",
       )
       .eq("userId", userId)
       .gte("workDate", fromDay)
@@ -967,7 +953,7 @@ export async function getResourceDetail(userId: string, weeks = 12) {
       { id: string; name: string; projectNumber: string } | null,
   }));
 
-  const allLogs = logsRes.data ?? [];
+  const allLogs = await withRateSnapshots("time_log", logsRes.data ?? []);
   // Rejected time is excluded from every hours figure, matching getUtilisation
   // — it is work the business decided not to count. It is kept in `allLogs`
   // purely so the rejection rate below can be measured against the full set.

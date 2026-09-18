@@ -287,6 +287,9 @@ export const PERMISSIONS = {
   CASE_WRITE: "case:write",
   PROJECT_READ: "project:read",
   PROJECT_WRITE: "project:write",
+  // Project administration is separate from a contributor's own task progress.
+  PROJECT_MANAGE: "project:manage",
+  PROJECT_RATES_READ: "project:rates",
   TIME_APPROVE: "time:approve",
   INVOICE_READ: "invoice:read",
   INVOICE_WRITE: "invoice:write",

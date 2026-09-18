@@ -2,6 +2,28 @@
 
 How access is decided in this system, and the rules to follow when changing it.
 
+## 18 September 2026 application update
+
+Project administration server actions and create/edit screens now require
+`project:manage`. Administrator (`*`) and Project Manager (`project:*`) already
+hold it. Consultant's legacy `project:write` does not grant this capability.
+Contributors continue to update their own assigned tasks through My Work or
+the task detail page; assignment ownership is checked separately. Custom roles
+that administer projects need an explicitly reviewed `project:manage` grant.
+
+Assignment pickers return only active staff identity. Migrations
+`20260918000002` and `20260918000003` now enforce project assignment/management
+boundaries in PostgreSQL, restrict own-task progress fields, protect user/team
+administration, and revoke direct SELECT of member/time rate columns.
+Financial reads require `project:rates` and recheck record visibility before
+privileged enrichment; invoice-only readers get billing rates without costs.
+Database triggers own time-rate snapshots and prevent self-approval/tampering.
+Current PM `project:*` includes rate authority; narrower roles can separate it.
+
+The historical deployment observations below are not a current audit. Run
+`npm run access:audit` for staffing findings and see the agency plan for rollout
+status. No persistent user role, reporting or team assignment was changed.
+
 ## One role per user
 
 `app_user.roleId` is a single NOT NULL column. A user has exactly one role, and
@@ -136,6 +158,8 @@ Until one of the above is done, project visibility is effectively
 Administrator-and-Project-Manager only.
 
 ## Adding a role
+
+Sales handoff workflow (18 September 2026): submitters need `lead:read` and `lead:write` and must own the open lead. Recipients must be active internal users in an active role with those permissions plus `opportunity:write`. Role names are not used for eligibility. Only sender/recipient can read the handoff snapshot, subject to active internal lead-read access. The designated recipient accepts/rejects; the sender cancels. Acceptance transfers lead ownership atomically and requires a future follow-up. Pending handoffs block direct status/ownership/conversion changes. Handoff rows have no authenticated direct mutation grants; checked RPCs perform writes. No existing staff role or team assignments were changed for this rollout.
 
 1. Start from the smallest existing role that resembles the job.
 2. Add only the permissions the job cannot be done without.
