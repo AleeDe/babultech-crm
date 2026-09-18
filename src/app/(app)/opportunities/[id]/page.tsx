@@ -55,6 +55,7 @@ export default async function OpportunityDetailPage({
         backLabel="Back to opportunities"
         title={opp.name} description={`${opp.opportunityNumber} · ${opp.account?.name}`}>
         <Badge tone={statusTone(opp.stage)}>{humanize(opp.stage)}</Badge>
+        {opp.stage === "CLOSED_WON" && opp.ownerUserId === _me.id && can(_me, PERMISSIONS.OPPORTUNITY_WRITE) && <Button asChild variant="outline"><Link href={`/projects/handoffs?opportunityId=${opp.id}`}>Delivery handoff</Link></Button>}
         <Button asChild variant="outline">
           <Link href={`/opportunities/${opp.id}/edit`}>Edit</Link>
         </Button>
