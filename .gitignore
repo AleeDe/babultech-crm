@@ -1,5 +1,6 @@
 node_modules
 .next
+artifacts/browser-qa/
 .env
 *.tsbuildinfo
 dev.log
