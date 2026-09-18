@@ -58,7 +58,11 @@ Browser pilot completed on 18 September 2026 against the local application and t
 
 `scripts/test-leads-browser.mjs` covers the Phase 2 calling and handoff workflow: fifteen checks passed for SDR and salesperson sign-in, the personal calling queue showing only the signed-in owner's lead, a logged call writing the activity ledger and follow-up without changing lifecycle status, qualification submission marking the lead Qualified while ownership stays with the sender, a pending handoff blocking resubmission, the recipient reading the qualification brief and accepting, ownership transferring atomically, the lead moving between the two calling queues, the research quality queue rendering for the new owner, and a 390px viewport with no horizontal overflow.
 
-This is automated interface verification with synthetic data, not a staff pilot. It does not exercise the delivery-handoff screens, real customer records, production data volumes, or acceptance by the people who will use these workflows. Staff pilot and delivery-handoff browser coverage remain outstanding.
+`scripts/test-delivery-browser.mjs` covers the delivery handoff: seventeen checks passed for sales and PM sign-in, the submission form staying hidden from a PM without `opportunity:write`, a submitted checklist routing to the project's assigned PM, the PM reading the full checklist and returning it with a reason, sales correcting the payment evidence and resubmitting while the earlier review survives as history, acceptance with a future kickoff, and a 390px viewport with no horizontal overflow.
+
+Five of those checks confirm the gates hold in PostgreSQL rather than only in the interface: a `PENDING` payment state refuses acceptance through a direct RPC call, project activation is refused while the current handoff is unaccepted, acceptance records readiness without activating the project, activation succeeds once the handoff is accepted, and changing the accepted quotation's total invalidates the stored fingerprint so activation is refused until a fresh handoff is accepted.
+
+This is automated interface verification with synthetic data, not a staff pilot. It does not exercise real customer records, production data volumes, or acceptance by the people who will use these workflows. The staff pilot remains outstanding.
 
 ## 1. Decision and evidence
 
