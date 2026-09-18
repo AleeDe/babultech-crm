@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Play } from "lucide-react";
 import { runMilestoneBilling, runTimeBilling } from "@/server/billing";
+import { runRecurringBilling } from "@/server/recurring-billing";
 import { Button, Card, CardContent, CardHeader, CardTitle, Select, Alert } from "@/components/ui";
 
 /**
@@ -33,6 +34,23 @@ export function BillingRun({
         setNotice(
           created === 0
             ? "No completed billing milestones are waiting to be invoiced."
+            : `${created} draft invoice(s) raised.${skipped.length ? ` Skipped: ${skipped.join("; ")}` : ""}`,
+        );
+        router.refresh();
+      } else setError(result.error);
+    });
+  }
+
+  function recurring() {
+    setError(null);
+    setNotice(null);
+    startTransition(async () => {
+      const result = await runRecurringBilling();
+      if (result.ok) {
+        const { created, skipped } = result.data;
+        setNotice(
+          created === 0
+            ? "No contract periods are waiting to be billed."
             : `${created} draft invoice(s) raised.${skipped.length ? ` Skipped: ${skipped.join("; ")}` : ""}`,
         );
         router.refresh();
@@ -92,12 +110,17 @@ export function BillingRun({
           <Button variant="outline" disabled={pending} onClick={time}>
             Bill approved time
           </Button>
+          <Button variant="outline" disabled={pending} onClick={recurring}>
+            Bill contract periods
+          </Button>
         </div>
 
         <p className="text-xs text-muted-foreground">
           Milestone billing picks up completed, billing-flagged milestones that have not been
           invoiced. Time billing picks up approved, billable hours that carry a rate and have not
-          been billed, grouped by person.
+          been billed, grouped by person. Contract billing raises one draft per monthly, quarterly
+          or annual period that has already started and has not been billed - running it twice
+          cannot bill the same period twice.
         </p>
       </CardContent>
     </Card>
