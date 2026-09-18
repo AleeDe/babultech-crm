@@ -8,7 +8,7 @@ import {
   FileText, FileSignature, Handshake, Coins, LifeBuoy, FolderKanban,
   Receipt, Package, CalendarCheck, Menu, X, LogOut, Clock, UsersRound, Banknote,
   ShieldCheck, UserCog, Settings, BookOpen, CheckSquare, FileInput, Wallet, Stamp,
-  ChevronDown, PanelLeftClose, PanelLeftOpen, KeyRound, CalendarClock,
+  ChevronDown, PanelLeftClose, PanelLeftOpen, KeyRound, CalendarClock, HeartPulse, CalendarSync,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { holdsAny } from "@/lib/nav-permissions";
@@ -64,10 +64,12 @@ const NAV: NavGroup[] = [
     label: "Sales",
     items: [
       { href: "/accounts", label: "Accounts", icon: Building2, permissions: ["account:read"] },
+      { href: "/accounts/health", label: "Account health", icon: HeartPulse, permissions: ["account:read"] },
       { href: "/contacts", label: "Contacts", icon: Users, permissions: ["account:read"] },
       { href: "/opportunities", label: "Opportunities", icon: Target, permissions: ["opportunity:read"] },
       { href: "/quotations", label: "Quotations", icon: FileText, permissions: ["quotation:read", "quotation:write"] },
       { href: "/contracts", label: "Contracts", icon: FileSignature, permissions: ["contract:read", "contract:write", "opportunity:read"] },
+      { href: "/accounts/renewals", label: "Renewals", icon: CalendarSync, permissions: ["contract:read", "contract:write", "opportunity:read"] },
       { href: "/products", label: "Products", icon: Package, permissions: ["opportunity:read"] },
     ],
   },
