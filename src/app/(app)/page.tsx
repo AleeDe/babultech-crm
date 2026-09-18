@@ -20,7 +20,7 @@ import { PulseTile } from "./pulse-tile";
 import { LiveIndicator, LiveClock, PulseDot } from "@/components/live-indicator";
 import { ActivityStream } from "@/components/activity-stream";
 import { DashboardViews, type ViewKey } from "./dashboard-views";
-import { DateRangeFilter } from "./date-range-filter";
+import { DeliveryFiltersBar } from "./delivery-filters-bar";
 import { resolveRange } from "@/lib/date-range";
 import { SalesView } from "./views/sales-view";
 import { FinanceView } from "./views/finance-view";
@@ -51,6 +51,10 @@ export default async function DashboardPage({
     from?: string;
     to?: string;
     days?: string;
+    resource?: string;
+    project?: string;
+    projectStatus?: string;
+    health?: string;
   }>;
 }) {
   const user = await requireUser();
@@ -240,7 +244,7 @@ export default async function DashboardPage({
       // Null rather than a hand-written empty shape: the empty object had to be
       // updated every time the analytics gained a field, and forgetting was a
       // type error at best and a wrong zero at worst.
-      seeProjects ? getDeliveryAnalytics(range) : Promise.resolve(null),
+      seeProjects ? getDeliveryAnalytics(range, rangeParams) : Promise.resolve(null),
     ]);
 
   const openStages = pipeline.filter(
@@ -519,9 +523,9 @@ export default async function DashboardPage({
           narrow screen. Only the Delivery view reads the range so far, so it is
           only offered there — a filter that changes nothing is worse than no
           filter. */}
-      {view === "delivery" && (
+      {view === "delivery" && deliveryAnalytics && (
         <div className="mb-6">
-          <DateRangeFilter range={range} />
+          <DeliveryFiltersBar range={range} options={deliveryAnalytics.filterOptions} />
         </div>
       )}
 
@@ -542,8 +546,6 @@ export default async function DashboardPage({
         />
       ) : view === "delivery" && deliveryAnalytics ? (
         <DeliveryView
-          summary={summary}
-          attention={{ breachedCases: attentionData.breachedCases }}
           analytics={deliveryAnalytics}
         />
       ) : view === "service" && serviceAnalytics ? (

@@ -30,7 +30,7 @@ export default async function ResourcesPage({
   // project:write to update the work they are booked on, so that would not have
   // excluded them. Approving someone else's time is what actually marks a person
   // as managing other people's capacity.
-  if (!can(_me, PERMISSIONS.TIME_APPROVE)) {
+  if ((!can(_me, PERMISSIONS.TIME_APPROVE) || !can(_me, PERMISSIONS.PROJECT_RATES_READ))) {
     return <Forbidden what="resource utilisation" />;
   }
 

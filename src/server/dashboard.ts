@@ -1,5 +1,7 @@
 "use server";
 
+import { withRateSnapshots } from "@/lib/rate-snapshots";
+import { filterDeliveryData, type DeliveryFilters } from "@/lib/delivery-filters";
 import { supabaseServer } from "@/lib/supabase";
 import { requireUser, can, requirePermission, PERMISSIONS } from "@/lib/authz";
 import { toDecimal, one } from "@/lib/decimal";
@@ -780,7 +782,8 @@ export async function getFinanceAnalytics() {
  * Collapsing the two would produce numbers that look authoritative and mean
  * nothing, which is worse than showing fewer of them.
  */
-export async function getDeliveryAnalytics(range: DateRange = resolveRange({})) {
+export async function getDeliveryAnalytics(range: DateRange = resolveRange({}), filters: DeliveryFilters = {}) {
+  const ratesVisible = can(await requireUser(), PERMISSIONS.PROJECT_RATES_READ);
   await requirePermission(PERMISSIONS.PROJECT_READ);
 
   const db = await supabaseServer();
@@ -791,7 +794,7 @@ export async function getDeliveryAnalytics(range: DateRange = resolveRange({})) 
   const prev = previousRange(range);
 
   const logSelect =
-    "projectId, projectTaskId, userId, hours, billable, billingRate, costRate, approvalStatus, workDate";
+    "id, projectId, projectTaskId, userId, hours, billable, approvalStatus, workDate";
 
   const rangedLogs = (from: string | null, to: string | null) => {
     let q = db
@@ -855,25 +858,35 @@ export async function getDeliveryAnalytics(range: DateRange = resolveRange({})) 
   // A broken query and an empty result are different things: letting a failed
   // select fall through as zero would report a healthy, idle delivery team.
   for (const [what, res] of [
-    ["projects", projectsRes], ["time logs", logsRes], ["tasks", tasksRes],
+    ["projects", projectsRes], ["time logs", logsRes], ["previous time logs", prevLogsRes], ["tasks", tasksRes],
     ["milestones", milestonesRes], ["project members", membersRes], ["users", usersRes],
   ] as const) {
     if (res.error) throw new Error(`Delivery analytics could not load ${what}: ${res.error.message}`);
   }
 
-  const projects = (projectsRes.data ?? []).map((p: Record<string, any>) => ({
+  const allProjects: Record<string, any>[] = (projectsRes.data ?? []).map((p: Record<string, any>) => ({
     ...p,
     account: one(p.account as never) as { id: string; name: string } | null,
   }));
 
-  const tasks: Record<string, any>[] = ((tasksRes.data ?? []) as Record<string, any>[]).map(
+  const allTasks: Record<string, any>[] = ((tasksRes.data ?? []) as Record<string, any>[]).map(
     (t) => ({ ...t, project: one(t.project as never) as Record<string, any> | null }),
   );
 
-  const logs = (logsRes.data ?? []) as Record<string, any>[];
-  const prevLogs = (prevLogsRes.data ?? []) as Record<string, any>[];
-  const members = ((membersRes.data ?? []) as Record<string, any>[]);
-  const users = (usersRes.data ?? []) as Record<string, any>[];
+  const allLogs = await withRateSnapshots("time_log", (logsRes.data ?? []) as Array<Record<string, any> & {id: string}>);
+  const allPrevLogs = await withRateSnapshots("time_log", (prevLogsRes.data ?? []) as Array<Record<string, any> & {id: string}>);
+  const allMembers = ((membersRes.data ?? []) as Record<string, any>[]);
+  const allUsers = (usersRes.data ?? []) as Record<string, any>[];
+
+  const filterOptions = {
+    resources: allUsers.map((u) => ({ id: String(u.id), name: String(u.fullName) })).sort((a, b) => a.name.localeCompare(b.name)),
+    projects: allProjects.map((p) => ({ id: String(p.id), name: String(p.name) })).sort((a, b) => a.name.localeCompare(b.name)),
+    statuses: [...new Set(allProjects.map((p) => String(p.status)))].sort(),
+    health: [...new Set(allProjects.map((p) => String(p.health ?? "GREEN")))].sort(),
+  };
+  const { projects, tasks, logs, prevLogs, members, users, projectIds, narrowProjects } = filterDeliveryData(
+    { projects: allProjects, tasks: allTasks, logs: allLogs, prevLogs: allPrevLogs, members: allMembers, users: allUsers }, filters,
+  );
 
   // ---- Per-project money and hours, over the range -------------------------
   interface Bucket {
@@ -995,7 +1008,7 @@ export async function getDeliveryAnalytics(range: DateRange = resolveRange({})) 
   // Where each person's hours actually went, by task and by project. This is
   // the "current allocation" question in its useful form: a percentage says
   // someone is booked, this says what they are booked *on*.
-  const taskNameById = new Map(tasks.map((t) => [String(t.id), t]));
+  const taskNameById = new Map(allTasks.map((t) => [String(t.id), t]));
   const projectNameById = new Map(projects.map((p: Record<string, any>) => [String(p.id), p]));
 
   const userTaskHours = new Map<string, Map<string, ReturnType<typeof toDecimal>>>();
@@ -1232,7 +1245,7 @@ export async function getDeliveryAnalytics(range: DateRange = resolveRange({})) 
 
   const upcomingMilestones = ((milestonesRes.data ?? []) as Record<string, any>[])
     .map((m) => ({ row: m, project: one(m.project as never) as Record<string, any> | null }))
-    .filter(({ row, project }) => project && !project.deletedAt && row.dueDate)
+    .filter(({ row, project }) => project && !project.deletedAt && row.dueDate && (!narrowProjects || projectIds.has(project.id)))
     .filter(({ row }) => new Date(String(row.dueDate)) <= in30)
     .map(({ row, project }) => ({
       id: String(row.id),
@@ -1249,9 +1262,11 @@ export async function getDeliveryAnalytics(range: DateRange = resolveRange({})) 
 
   return {
     range,
+    filterOptions,
 
     rows,
 
+    ratesVisible,
     totals: {
       ...totals,
       margin: totals.revenue - totals.cost,
@@ -1310,7 +1325,7 @@ export async function getDeliveryAnalytics(range: DateRange = resolveRange({})) 
      */
     current: {
       activeProjects: rows.length,
-      projectsAtRisk: rows.filter((r) => r.health === "RED" || r.status === "AT_RISK").length,
+      projectsAtRisk: rows.filter((r) => r.health === "RED" || r.health === "AMBER" || r.status === "AT_RISK").length,
       projectsOverdue: rows.filter((r) => r.overdue).length,
       projectsOverBudget: rows.filter((r) => r.overBudget).length,
       totalTasks: tasks.length,

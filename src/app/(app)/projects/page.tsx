@@ -37,12 +37,13 @@ export default async function ProjectsPage({
         title="Projects"
         description="Delivery engagements. Open one to run its plan, tasks, team and RAID log."
       >
+        {can(_me, PERMISSIONS.PROJECT_MANAGE) && <Button asChild variant="outline"><Link href="/projects/handoffs">Delivery handoffs</Link></Button>}
         <ExportButton entity="projects" params={{ search: params.search, status: params.status, projectType: params.projectType }} />
-        <Button asChild>
+        {can(_me, PERMISSIONS.PROJECT_MANAGE) && <Button asChild>
           <Link href="/projects/new">
             <Plus className="h-4 w-4" /> New project
           </Link>
-        </Button>
+        </Button>}
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -84,9 +85,9 @@ export default async function ProjectsPage({
             title="No projects match"
             description="Projects are usually created from a won opportunity or a signed contract."
             action={
-              <Button asChild>
+              can(_me, PERMISSIONS.PROJECT_MANAGE) ? <Button asChild>
                 <Link href="/projects/new">Create a project</Link>
-              </Button>
+              </Button> : undefined
             }
           />
         ) : (

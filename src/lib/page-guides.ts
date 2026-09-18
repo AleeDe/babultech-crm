@@ -109,9 +109,12 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
     feeds: [
       "Quotation and invoice lines pull price and tax from here",
       "Standard cost is what makes margin figures meaningful",
+      "Product: an item or licence you sell, e.g. a POS device or a one-time software licence",
+      "Service: work you deliver, e.g. installation, consulting or training",
+      "Subscription: recurring access or a plan, e.g. monthly BabulPOS access or annual hosting",
     ],
     watchOut:
-      "Set standard cost even roughly. Without it every margin figure in the system reads zero.",
+      "Keep one product and add pricing plans: Lifetime (Fixed), Basic (Monthly), Pro (Monthly). Select a plan on quotes and invoices. Monthly + User means price and cost per user, per month. Changing billing does not convert the amount or automatically issue recurring invoices. See Guide for worked examples.",
   },
 
   "/partners": {

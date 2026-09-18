@@ -12,7 +12,7 @@ export default async function EditProjectPage({
 }) {
   const { id } = await params;
   const user = await requireUser();
-  if (!can(user, PERMISSIONS.PROJECT_WRITE)) return <Forbidden what="projects" />;
+  if (!can(user, PERMISSIONS.PROJECT_MANAGE)) return <Forbidden what="projects" />;
   const [project, options] = await Promise.all([getProject(id), getProjectFormOptions()]);
   if (!project) notFound();
 

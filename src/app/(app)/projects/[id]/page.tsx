@@ -5,7 +5,7 @@ import { listDocuments } from "@/server/documents";
 import { NotesSection } from "@/components/notes-section";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { getProject, getProjectBurn, getProjectWorkLog } from "@/server/projects";
-import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
+import { getProjectPeople } from "@/server/project-directory";
 import { getAuditTrail } from "@/lib/audit";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
@@ -18,6 +18,7 @@ import { ChangeRequestsPanel } from "./change-requests-panel";
 import { RecordTabs } from "@/components/record-tabs";
 import { WorkLogPanel } from "./work-log";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { ProjectManagementProvider } from "./management-context";
 
 export default async function ProjectWorkspacePage({
   params,
@@ -26,6 +27,8 @@ export default async function ProjectWorkspacePage({
 }) {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.PROJECT_READ)) return <Forbidden what="projects" />;
+  const canManage = can(_me, PERMISSIONS.PROJECT_MANAGE);
+  const canViewRates = can(_me, PERMISSIONS.PROJECT_RATES_READ);
 
   const { id } = await params;
 
@@ -51,20 +54,7 @@ export default async function ProjectWorkspacePage({
       // accounts, opportunities, contracts and currencies for the edit form —
       // four reference tables pulled on every view of a page that never shows
       // them. At ~400ms a query that is most of a second spent on nothing.
-      (async () => {
-        // Service role, because costRate and defaultBillingRate are revoked
-        // from the authenticated role. The page has already checked
-        // project:read, and the team panel shows what a person costs before
-        // they are booked onto the project.
-        const db = supabaseAdmin();
-        const { data } = await db
-          .from("app_user")
-          .select("id, fullName, jobTitle, costRate, defaultBillingRate")
-          .eq("status", "ACTIVE")
-          .is("deletedAt", null)
-          .order("fullName");
-        return { users: data ?? [] };
-      })(),
+      getProjectPeople().then((users) => ({ users })),
       getAuditTrail("Project", id, 10),
     ]);
 
@@ -101,9 +91,10 @@ export default async function ProjectWorkspacePage({
       >
         <Badge tone={statusTone(project.health)}>{humanize(project.health)}</Badge>
         <Badge tone={statusTone(project.status)}>{humanize(project.status)}</Badge>
-        <Button asChild variant="outline">
+        {canManage && <Button asChild variant="outline">
           <Link href={`/projects/${project.id}/edit`}>Edit</Link>
-        </Button>
+        </Button>}
+        <Button asChild variant="outline"><Link href={`/projects/${id}/content`}>Content calendar</Link></Button>
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -119,7 +110,7 @@ export default async function ProjectWorkspacePage({
           sublabel={approvedHours > 0 ? `${formatPercent(budgetUsed, 0)} of ${formatNumber(approvedHours, 0)}h approved` : "No budget set"}
           tone={overBudget ? "danger" : budgetUsed > 80 ? "warning" : "neutral"}
         />
-        <StatTile
+        {canViewRates && <><StatTile
           label="Billable value"
           value={formatMoney(burn.billableValue, project.currencyCode)}
           sublabel={`Cost ${formatMoney(burn.cost, project.currencyCode)}`}
@@ -129,7 +120,7 @@ export default async function ProjectWorkspacePage({
           value={formatMoney(margin, project.currencyCode)}
           sublabel="Approved time only"
           tone={margin >= 0 ? "success" : "danger"}
-        />
+        /></>}
       </div>
 
       {(overBudget || overdueTasks.length > 0) && (
@@ -159,6 +150,8 @@ export default async function ProjectWorkspacePage({
           What stays above the tabs is what answers "is this project in
           trouble?" - the status, the four figures, and the two alerts. Those
           are read at a glance and acted on; the rest is read on purpose. */}
+      {!canManage && <p className="my-4 text-sm text-muted-foreground">Open your assigned task or My Work to update progress. Project setup and assignments are managed by your project manager.</p>}
+      <ProjectManagementProvider allowed={canManage} ratesAllowed={canViewRates}>
       <RecordTabs
         tabs={[
           {
@@ -387,6 +380,7 @@ export default async function ProjectWorkspacePage({
           },
         ]}
       />
+      </ProjectManagementProvider>
 
     </>
   );

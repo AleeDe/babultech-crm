@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Kpi, AttentionList } from "@/components/dashboard-kit";
 import { formatCompactMoney, formatDate, formatNumber, cn } from "@/lib/utils";
-import type { ModuleSummary, getDeliveryAnalytics } from "@/server/dashboard";
+import type { getDeliveryAnalytics } from "@/server/dashboard";
 
 type Analytics = NonNullable<Awaited<ReturnType<typeof getDeliveryAnalytics>>>;
 
@@ -25,15 +25,11 @@ type Analytics = NonNullable<Awaited<ReturnType<typeof getDeliveryAnalytics>>>;
  * billable engagement".
  */
 export function DeliveryView({
-  summary,
-  attention,
   analytics,
 }: {
-  summary: ModuleSummary;
-  attention: { breachedCases: Record<string, any>[] };
   analytics: Analytics;
 }) {
-  const { rows, totals, upcomingMilestones, period, current, previous, people, daily, range } =
+  const { ratesVisible, rows, totals, upcomingMilestones, period, current, previous, people, daily, range } =
     analytics;
 
   /** Period-on-period direction. Null when there is nothing to compare against. */
@@ -52,7 +48,7 @@ export function DeliveryView({
   const attentionItems = [
     {
       id: "at-risk",
-      count: summary.delivery.atRiskProjects,
+      count: current.projectsAtRisk,
       title: "Projects flagged at risk",
       detail: "Health is amber or red - someone has said so deliberately",
       href: "/projects",
@@ -86,13 +82,13 @@ export function DeliveryView({
       id: "unapproved",
       count: totals.unapprovedHours > 0 ? 1 : 0,
       title: "Time waiting on approval",
-      detail: `${formatNumber(totals.unapprovedHours, 1)} hours · ${formatCompactMoney(totals.unbilledValue)} cannot be invoiced yet`,
+      detail: `${formatNumber(totals.unapprovedHours, 1)} hours · ${ratesVisible ? formatCompactMoney(totals.unbilledValue) : "Value restricted"} cannot be invoiced yet`,
       href: "/timesheets/approvals",
       tone: "warning" as const,
     },
     {
       id: "overdue-tasks",
-      count: summary.delivery.overdueTasks,
+      count: current.overdueTasks,
       title: "Tasks past their due date",
       href: "/projects",
       tone: "warning" as const,
@@ -101,6 +97,230 @@ export function DeliveryView({
 
   return (
     <div className="space-y-6">
+      {/* ------------------------------------------------------- who is loaded? */}
+      {people.length > 0 && (
+        <section>
+          <h2 className="mb-1 text-sm font-semibold">Resources</h2>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Allocation is what people are booked for and is current; hours and
+            utilisation are for the selected period.
+          </p>
+          <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Kpi
+              label="People active"
+              value={String(current.peopleActive)}
+              sublabel={`${current.peopleBooked} booked on a project`}
+            />
+            <Kpi
+              label="Over-allocated"
+              value={String(current.peopleOverAllocated)}
+              sublabel="booked past 100%"
+            />
+            <Kpi
+              label="On no project"
+              value={String(current.peopleUnallocated)}
+            />
+            <Kpi
+              label="Team utilisation"
+              value={
+                period.utilisationPercent === null
+                  ? "—"
+                  : `${formatNumber(period.utilisationPercent, 0)}%`
+              }
+              sublabel={
+                period.billableUtilisationPercent === null
+                  ? undefined
+                  : `${formatNumber(period.billableUtilisationPercent, 0)}% billable · ${period.workingDays ?? 0} working days`
+              }
+            />
+          </div>
+          <div className="overflow-x-auto rounded-xl border bg-card">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-4 py-2 font-medium">Person</th>
+                  <th className="px-4 py-2 text-right font-medium">Booked</th>
+                  <th className="px-4 py-2 text-right font-medium">Hours</th>
+                  <th className="px-4 py-2 text-right font-medium">Utilisation</th>
+                  <th className="px-4 py-2 text-right font-medium">Open tasks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {people.map((p) => (
+                  <tr key={p.id} className="border-b last:border-0">
+                    <td className="px-4 py-2">
+                      <Link href={`/resources/${p.id}`} className="font-medium hover:underline">
+                        {p.fullName}
+                      </Link>
+                      <p className="text-xs text-muted-foreground">
+                        {p.jobTitle ?? "—"} · {p.projects} project{p.projects === 1 ? "" : "s"}
+                      </p>
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      <span
+                        className={
+                          p.allocatedPercent > 100
+                            ? "font-medium text-red-600 dark:text-red-400"
+                            : ""
+                        }
+                      >
+                        {formatNumber(p.allocatedPercent, 0)}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {formatNumber(p.hours, 1)}
+                      <p className="text-xs text-muted-foreground">
+                        {formatNumber(p.billableHours, 1)}h billable
+                      </p>
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {p.utilisationPercent === null
+                        ? "—"
+                        : `${formatNumber(p.utilisationPercent, 0)}%`}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {p.openTasks}
+                      {p.overdueTasks > 0 && (
+                        <p className="text-xs text-red-600 dark:text-red-400">
+                          {p.overdueTasks} overdue
+                        </p>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Who is on what, in detail. The table above says how loaded each
+              person is; this says what they are loaded *with*, which is the
+              question a delivery lead actually acts on. */}
+          <div className="mt-4 space-y-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Current allocation — what each person is working on
+            </p>
+            {people
+              .filter((p) => p.allocatedPercent > 0 || p.hours > 0 || p.openTasks > 0)
+              .map((p) => (
+                <div key={p.id} className="rounded-xl border bg-card p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <Link href={`/resources/${p.id}`} className="font-medium hover:underline">
+                        {p.fullName}
+                      </Link>
+                      <p className="text-xs text-muted-foreground">
+                        {p.jobTitle ?? "—"} · booked {formatNumber(p.allocatedPercent, 0)}% across{" "}
+                        {p.projects} project{p.projects === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    <div className="text-right text-xs text-muted-foreground">
+                      <span className="text-sm font-semibold tabular-nums text-foreground">
+                        {formatNumber(p.hours, 1)}h
+                      </span>{" "}
+                      logged
+                      {p.utilisationPercent !== null && (
+                        <p>{formatNumber(p.utilisationPercent, 0)}% utilised</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Hours by project, as a single proportional bar. */}
+                  {p.projectBreakdown.length > 0 && (
+                    <div className="mt-3">
+                      <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
+                        {p.projectBreakdown.map((proj, i) => (
+                          <div
+                            key={proj.id}
+                            title={`${proj.name} — ${formatNumber(proj.hours, 1)}h`}
+                            className={
+                              ["bg-emerald-500", "bg-blue-500", "bg-amber-500", "bg-violet-500", "bg-rose-500"][i % 5]
+                            }
+                            style={{ width: `${(proj.hours / Math.max(p.hours, 0.01)) * 100}%` }}
+                          />
+                        ))}
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        {p.projectBreakdown.map((proj, i) => (
+                          <span key={proj.id} className="inline-flex items-center gap-1">
+                            <span
+                              aria-hidden
+                              className={`h-2 w-2 rounded-full ${["bg-emerald-500", "bg-blue-500", "bg-amber-500", "bg-violet-500", "bg-rose-500"][i % 5]}`}
+                            />
+                            <Link href={`/projects/${proj.id}`} className="hover:underline">
+                              {proj.name}
+                            </Link>
+                            <span className="tabular-nums">{formatNumber(proj.hours, 1)}h</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Where the hours went, task by task. */}
+                  {p.taskBreakdown.length > 0 && (
+                    <div className="mt-3 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Time went into</p>
+                      {p.taskBreakdown.map((t) => (
+                        <div key={t.id} className="flex items-baseline justify-between gap-3 text-sm">
+                          <span className="min-w-0 truncate">
+                            {t.name}
+                            {t.projectName && (
+                              <span className="text-xs text-muted-foreground"> · {t.projectName}</span>
+                            )}
+                          </span>
+                          <span className="shrink-0 tabular-nums text-muted-foreground">
+                            {formatNumber(t.hours, 1)}h
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* What they are holding, for the person who has logged nothing. */}
+                  {p.currentTasks.length > 0 && (
+                    <div className="mt-3 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Open now ({p.openTasks})
+                      </p>
+                      {p.currentTasks.map((t) => (
+                        <div key={t.id} className="flex items-baseline justify-between gap-3 text-sm">
+                          <span className="min-w-0 truncate">
+                            {t.name}
+                            {t.projectName && (
+                              <span className="text-xs text-muted-foreground"> · {t.projectName}</span>
+                            )}
+                          </span>
+                          <span
+                            className={cn(
+                              "shrink-0 text-xs tabular-nums",
+                              t.overdue ? "font-medium text-red-600 dark:text-red-400" : "text-muted-foreground",
+                            )}
+                          >
+                            {t.completionPercent}%
+                            {t.dueDate && ` · due ${formatDate(t.dueDate)}`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {p.taskBreakdown.length === 0 && p.currentTasks.length === 0 && (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      Booked {formatNumber(p.allocatedPercent, 0)}% but holding no open tasks and
+                      logging no time in this period.
+                    </p>
+                  )}
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
+
+      {people.length === 0 && (
+        <section className="rounded-xl border bg-card p-6">
+          <h2 className="text-sm font-semibold">Resources</h2>
+          <p className="mt-2 text-sm text-muted-foreground">No resources match these filters. Try another project or clear the filters.</p>
+        </section>
+      )}
       {/* ------------------------------------------- is the work getting done? */}
       <section>
         <h2 className="mb-3 text-sm font-semibold">
@@ -276,232 +496,13 @@ export function DeliveryView({
         </div>
       </section>
 
-      {/* ------------------------------------------------------- who is loaded? */}
-      {people.length > 0 && (
-        <section>
-          <h2 className="mb-1 text-sm font-semibold">Resources</h2>
-          <p className="mb-3 text-xs text-muted-foreground">
-            Allocation is what people are booked for and is current; hours and
-            utilisation are for the selected period.
-          </p>
-          <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Kpi
-              label="People active"
-              value={String(current.peopleActive)}
-              sublabel={`${current.peopleBooked} booked on a project`}
-            />
-            <Kpi
-              label="Over-allocated"
-              value={String(current.peopleOverAllocated)}
-              sublabel="booked past 100%"
-            />
-            <Kpi
-              label="On no project"
-              value={String(current.peopleUnallocated)}
-            />
-            <Kpi
-              label="Team utilisation"
-              value={
-                period.utilisationPercent === null
-                  ? "—"
-                  : `${formatNumber(period.utilisationPercent, 0)}%`
-              }
-              sublabel={
-                period.billableUtilisationPercent === null
-                  ? undefined
-                  : `${formatNumber(period.billableUtilisationPercent, 0)}% billable · ${period.workingDays ?? 0} working days`
-              }
-            />
-          </div>
-          <div className="overflow-x-auto rounded-xl border bg-card">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">Person</th>
-                  <th className="px-4 py-2 text-right font-medium">Booked</th>
-                  <th className="px-4 py-2 text-right font-medium">Hours</th>
-                  <th className="px-4 py-2 text-right font-medium">Utilisation</th>
-                  <th className="px-4 py-2 text-right font-medium">Open tasks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {people.slice(0, 12).map((p) => (
-                  <tr key={p.id} className="border-b last:border-0">
-                    <td className="px-4 py-2">
-                      <Link href={`/resources/${p.id}`} className="font-medium hover:underline">
-                        {p.fullName}
-                      </Link>
-                      <p className="text-xs text-muted-foreground">
-                        {p.jobTitle ?? "—"} · {p.projects} project{p.projects === 1 ? "" : "s"}
-                      </p>
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums">
-                      <span
-                        className={
-                          p.allocatedPercent > 100
-                            ? "font-medium text-red-600 dark:text-red-400"
-                            : ""
-                        }
-                      >
-                        {formatNumber(p.allocatedPercent, 0)}%
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums">
-                      {formatNumber(p.hours, 1)}
-                      <p className="text-xs text-muted-foreground">
-                        {formatNumber(p.billableHours, 1)}h billable
-                      </p>
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums">
-                      {p.utilisationPercent === null
-                        ? "—"
-                        : `${formatNumber(p.utilisationPercent, 0)}%`}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums">
-                      {p.openTasks}
-                      {p.overdueTasks > 0 && (
-                        <p className="text-xs text-red-600 dark:text-red-400">
-                          {p.overdueTasks} overdue
-                        </p>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {/* Who is on what, in detail. The table above says how loaded each
-              person is; this says what they are loaded *with*, which is the
-              question a delivery lead actually acts on. */}
-          <div className="mt-4 space-y-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Current allocation — what each person is working on
-            </p>
-            {people
-              .filter((p) => p.allocatedPercent > 0 || p.hours > 0 || p.openTasks > 0)
-              .slice(0, 10)
-              .map((p) => (
-                <div key={p.id} className="rounded-xl border bg-card p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <Link href={`/resources/${p.id}`} className="font-medium hover:underline">
-                        {p.fullName}
-                      </Link>
-                      <p className="text-xs text-muted-foreground">
-                        {p.jobTitle ?? "—"} · booked {formatNumber(p.allocatedPercent, 0)}% across{" "}
-                        {p.projects} project{p.projects === 1 ? "" : "s"}
-                      </p>
-                    </div>
-                    <div className="text-right text-xs text-muted-foreground">
-                      <span className="text-sm font-semibold tabular-nums text-foreground">
-                        {formatNumber(p.hours, 1)}h
-                      </span>{" "}
-                      logged
-                      {p.utilisationPercent !== null && (
-                        <p>{formatNumber(p.utilisationPercent, 0)}% utilised</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Hours by project, as a single proportional bar. */}
-                  {p.projectBreakdown.length > 0 && (
-                    <div className="mt-3">
-                      <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
-                        {p.projectBreakdown.map((proj, i) => (
-                          <div
-                            key={proj.id}
-                            title={`${proj.name} — ${formatNumber(proj.hours, 1)}h`}
-                            className={
-                              ["bg-emerald-500", "bg-blue-500", "bg-amber-500", "bg-violet-500", "bg-rose-500"][i % 5]
-                            }
-                            style={{ width: `${(proj.hours / Math.max(p.hours, 0.01)) * 100}%` }}
-                          />
-                        ))}
-                      </div>
-                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        {p.projectBreakdown.map((proj, i) => (
-                          <span key={proj.id} className="inline-flex items-center gap-1">
-                            <span
-                              aria-hidden
-                              className={`h-2 w-2 rounded-full ${["bg-emerald-500", "bg-blue-500", "bg-amber-500", "bg-violet-500", "bg-rose-500"][i % 5]}`}
-                            />
-                            <Link href={`/projects/${proj.id}`} className="hover:underline">
-                              {proj.name}
-                            </Link>
-                            <span className="tabular-nums">{formatNumber(proj.hours, 1)}h</span>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Where the hours went, task by task. */}
-                  {p.taskBreakdown.length > 0 && (
-                    <div className="mt-3 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Time went into</p>
-                      {p.taskBreakdown.map((t) => (
-                        <div key={t.id} className="flex items-baseline justify-between gap-3 text-sm">
-                          <span className="min-w-0 truncate">
-                            {t.name}
-                            {t.projectName && (
-                              <span className="text-xs text-muted-foreground"> · {t.projectName}</span>
-                            )}
-                          </span>
-                          <span className="shrink-0 tabular-nums text-muted-foreground">
-                            {formatNumber(t.hours, 1)}h
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* What they are holding, for the person who has logged nothing. */}
-                  {p.currentTasks.length > 0 && (
-                    <div className="mt-3 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">
-                        Open now ({p.openTasks})
-                      </p>
-                      {p.currentTasks.map((t) => (
-                        <div key={t.id} className="flex items-baseline justify-between gap-3 text-sm">
-                          <span className="min-w-0 truncate">
-                            {t.name}
-                            {t.projectName && (
-                              <span className="text-xs text-muted-foreground"> · {t.projectName}</span>
-                            )}
-                          </span>
-                          <span
-                            className={cn(
-                              "shrink-0 text-xs tabular-nums",
-                              t.overdue ? "font-medium text-red-600 dark:text-red-400" : "text-muted-foreground",
-                            )}
-                          >
-                            {t.completionPercent}%
-                            {t.dueDate && ` · due ${formatDate(t.dueDate)}`}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {p.taskBreakdown.length === 0 && p.currentTasks.length === 0 && (
-                    <p className="mt-3 text-sm text-muted-foreground">
-                      Booked {formatNumber(p.allocatedPercent, 0)}% but holding no open tasks and
-                      logging no time in this period.
-                    </p>
-                  )}
-                </div>
-              ))}
-          </div>
-        </section>
-      )}
-
       {/* ------------------------------------ is the portfolio making money? */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi
           label="Margin to date"
-          value={formatCompactMoney(totals.margin)}
+          value={ratesVisible ? formatCompactMoney(totals.margin) : "Restricted"}
           sublabel={
-            totals.marginPercent === null
+            !ratesVisible ? "Financial access required" : totals.marginPercent === null
               ? "Nothing billable approved yet"
               : `${formatNumber(totals.marginPercent, 0)}% of ${formatCompactMoney(totals.revenue)} billed`
           }
@@ -516,7 +517,7 @@ export function DeliveryView({
         />
         <Kpi
           label="Unbilled value"
-          value={formatCompactMoney(totals.unbilledValue)}
+          value={ratesVisible ? formatCompactMoney(totals.unbilledValue) : "Restricted"}
           sublabel={`${formatNumber(totals.unapprovedHours, 1)} hours not yet approved`}
           // Down is good: unbilled work is revenue you have earned and not asked
           // for, so a rising figure means money is stuck, not money is coming.
@@ -526,10 +527,10 @@ export function DeliveryView({
         />
         <Kpi
           label="Active projects"
-          value={String(summary.delivery.activeProjects)}
+          value={String(current.activeProjects)}
           sublabel={
-            summary.delivery.atRiskProjects > 0
-              ? `${summary.delivery.atRiskProjects} at risk`
+            current.projectsAtRisk > 0
+              ? `${current.projectsAtRisk} at risk`
               : "All healthy"
           }
           module="delivery"
@@ -601,10 +602,10 @@ export function DeliveryView({
                           {r.hours > 0 ? `${formatNumber((r.billableHours / r.hours) * 100, 0)}%` : "—"}
                         </td>
                         <td className="px-3 py-2.5 text-right tabular-nums">
-                          {r.revenue > 0 ? formatCompactMoney(r.revenue) : "—"}
+                          {ratesVisible && r.revenue > 0 ? formatCompactMoney(r.revenue) : "—"}
                         </td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
-                          {r.cost > 0 ? formatCompactMoney(r.cost) : "—"}
+                          {ratesVisible && r.cost > 0 ? formatCompactMoney(r.cost) : "—"}
                         </td>
                         <td
                           className={cn(

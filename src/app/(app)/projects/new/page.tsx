@@ -10,7 +10,7 @@ export default async function NewProjectPage({
   searchParams: Promise<{ accountId?: string }>;
 }) {
   const user = await requireUser();
-  if (!can(user, PERMISSIONS.PROJECT_WRITE)) return <Forbidden what="projects" />;
+  if (!can(user, PERMISSIONS.PROJECT_MANAGE)) return <Forbidden what="projects" />;
   const [{ accountId }, options] = await Promise.all([searchParams, getProjectFormOptions()]);
 
   return (

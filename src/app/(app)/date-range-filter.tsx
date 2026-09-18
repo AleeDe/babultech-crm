@@ -23,7 +23,7 @@ import { RANGE_PRESETS, MAX_N_DAYS, type DateRange, type RangePreset } from "@/l
  * this app, logs the user out. See src/components/filter-form.tsx for the whole
  * account of that.
  */
-export function DateRangeFilter({ range }: { range: DateRange }) {
+export function DateRangeFilter({ range, showSummary = true }: { range: DateRange; showSummary?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -35,8 +35,10 @@ export function DateRangeFilter({ range }: { range: DateRange }) {
 
   const push = (next: URLSearchParams) => {
     // The view tab is a separate concern and has to survive a range change.
-    const view = searchParams.get("view");
-    if (view) next.set("view", view);
+    for (const key of ["view", "resource", "project", "projectStatus", "health"]) {
+      const value = searchParams.get(key);
+      if (value) next.set(key, value);
+    }
     const qs = next.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
@@ -145,10 +147,10 @@ export function DateRangeFilter({ range }: { range: DateRange }) {
         </div>
       )}
 
-      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+      {showSummary && <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
         <Calendar className="h-3.5 w-3.5" aria-hidden />
         {range.label}
-      </span>
+      </span>}
     </div>
   );
 }

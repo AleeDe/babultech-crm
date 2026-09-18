@@ -19,6 +19,8 @@ import { cn, formatDate, formatMoney, formatPercent, humanize } from "@/lib/util
 import { FormDialog } from "@/components/form-dialog";
 import { RichTextEditor } from "@/components/rich-text-editor";
 
+import { useProjectManagement, useProjectRates } from "./management-context";
+
 const TASK_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "UNDER_REVIEW", "COMPLETED"];
 const ALL_TASK_STATUSES = [...TASK_STATUSES, "CANCELLED"];
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
@@ -123,6 +125,8 @@ function AddSection({
   onToggle: () => void;
   children: React.ReactNode;
 }) {
+  const canManage = useProjectManagement();
+  if (!canManage) return null;
   return (
     <>
       <Button type="button" variant="outline" size="sm" onClick={onToggle}>
@@ -161,6 +165,7 @@ export function TaskBoard({
   milestones: MilestoneRow[];
   members: Member[];
 }) {
+  const canManage = useProjectManagement();
   const router = useRouter();
   const isInternal = projectType === "INTERNAL";
   const [pending, startTransition] = useTransition();
@@ -353,7 +358,7 @@ export function TaskBoard({
         >
           Cancel
         </Button>
-        <Button type="submit" size="sm" disabled={pending}>
+        <Button type="submit" size="sm" disabled={!canManage || pending}>
           {pending ? "Saving…" : task ? "Save task" : "Add task"}
         </Button>
       </div>
@@ -403,12 +408,12 @@ export function TaskBoard({
           "group rounded-md border bg-card transition-shadow",
           "hover:shadow-sm focus-within:shadow-sm",
           isSub && "ml-4 border-dashed",
-          draggable && "cursor-grab active:cursor-grabbing",
+          canManage && draggable && "cursor-grab active:cursor-grabbing",
           dragging === t.id && "opacity-40",
         )}
-        draggable={draggable}
-        onDragStart={draggable ? () => setDragging(t.id) : undefined}
-        onDragEnd={draggable ? () => setDragging(null) : undefined}
+        draggable={canManage && draggable}
+        onDragStart={canManage && draggable ? () => setDragging(t.id) : undefined}
+        onDragEnd={canManage && draggable ? () => setDragging(null) : undefined}
       >
         <div className="p-2.5">
           <div className="flex items-start gap-2">
@@ -479,12 +484,12 @@ export function TaskBoard({
             )}
           >
             <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs"
-              onClick={() => { setError(null); setAdding(false); setParentFor(null); setEditingId(t.id); }}>
+              disabled={!canManage} onClick={() => { setError(null); setAdding(false); setParentFor(null); setEditingId(t.id); }}>
               Edit
             </Button>
             {!isSub && (
               <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs"
-                onClick={() => { setError(null); setAdding(false); setEditingId(null); setParentFor(t.id); }}>
+                disabled={!canManage} onClick={() => { setError(null); setAdding(false); setEditingId(null); setParentFor(t.id); }}>
                 Subtask
               </Button>
             )}
@@ -494,7 +499,7 @@ export function TaskBoard({
               <Select
                 className="h-7 w-auto text-xs"
                 value={t.status}
-                disabled={pending}
+                disabled={!canManage || pending}
                 onChange={(e) => quickStatus(t.id, e.target.value)}
               >
                 {ALL_TASK_STATUSES.map((st) => (
@@ -555,10 +560,10 @@ export function TaskBoard({
             type="button"
             variant="outline"
             size="sm"
+            disabled={!canManage}
             onClick={() => { setError(null); setEditingId(null); setParentFor(null); setAdding(true); }}
           >
-            {/* No disabled state and no flip to "Cancel": the dialog is modal,
-                so this button is not reachable while the form is open. */}
+            {/* Management permission is also checked by the server action. */}
             <Plus className="h-4 w-4" /> Add task
           </Button>
         </div>
@@ -656,6 +661,7 @@ export function TeamPanel({
   users: UserOption[];
   currency: string;
 }) {
+  const canManage = useProjectManagement();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -663,6 +669,7 @@ export function TeamPanel({
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  const canViewRates = useProjectRates();
   const memberIds = new Set(members.map((m) => m.userId));
   const available = users.filter((u) => !memberIds.has(u.id));
 
@@ -680,8 +687,8 @@ export function TeamPanel({
         allocationPercent: get("allocationPercent"),
         startDate: get("startDate"),
         endDate: get("endDate"),
-        billingRate: get("billingRate"),
-        costRate: get("costRate"),
+        ...(canViewRates ? { billingRate: get("billingRate"), costRate: get("costRate") } : {}),
+
       } as never);
       if (result.ok) { setAdding(false); router.refresh(); }
       else setError(result.error);
@@ -768,15 +775,15 @@ export function TeamPanel({
               </Field>
               <Field label="Billing rate" hint="Blank uses their standard rate."
             help="What the customer is charged per hour of this person's time on this project.">
-                <Input name="billingRate" type="number" step="0.01" min="0" />
+                <Input disabled={!canViewRates} name="billingRate" type="number" step="0.01" min="0" />
               </Field>
               <Field label="Cost rate" hint="Blank uses their standard cost."
             help="What this person costs per hour. Used for margin, never shown to the customer.">
-                <Input name="costRate" type="number" step="0.01" min="0" />
+                <Input disabled={!canViewRates} name="costRate" type="number" step="0.01" min="0" />
               </Field>
             </div>
             <div className="flex justify-end">
-              <Button type="submit" size="sm" disabled={pending}>
+              <Button type="submit" size="sm" disabled={!canManage || pending}>
                 {pending ? "Adding…" : "Add to project"}
               </Button>
             </div>
@@ -801,8 +808,8 @@ export function TeamPanel({
                 <TH>Person</TH>
                 <TH>Role</TH>
                 <TH className="text-right">Allocation</TH>
-                <TH className="text-right">Billing rate</TH>
-                <TH className="text-right">Cost rate</TH>
+                {canViewRates && <TH className="text-right">Billing rate</TH>}
+                {canViewRates && <TH className="text-right">Cost rate</TH>}
                 <TH>Window</TH>
                 <TH className="text-right">Actions</TH>
               </TR>
@@ -819,16 +826,16 @@ export function TeamPanel({
                     </TD>
                     <TD className="text-sm">{m.projectRole}</TD>
                     <TD className="text-right tabular">{formatPercent(m.allocationPercent, 0)}</TD>
-                    <TD className="text-right tabular">{formatMoney(m.billingRate, currency)}</TD>
-                    <TD className="text-right tabular">{formatMoney(m.costRate, currency)}</TD>
+                    {canViewRates && <TD className="text-right tabular">{formatMoney(m.billingRate, currency)}</TD>}
+                    {canViewRates && <TD className="text-right tabular">{formatMoney(m.costRate, currency)}</TD>}
                     <TD className="whitespace-nowrap text-sm text-muted-foreground">
                       {formatDate(m.startDate)} → {formatDate(m.endDate)}
                     </TD>
                     <TD className="whitespace-nowrap text-right">
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setEditingId(editingId === m.id ? null : m.id)}>
+                      <Button type="button" variant="ghost" size="sm" disabled={!canManage} onClick={() => setEditingId(editingId === m.id ? null : m.id)}>
                         Edit
                       </Button>
-                      <Button type="button" variant="ghost" size="icon" disabled={pending} onClick={() => remove(m.id)} aria-label="Remove">
+                      <Button type="button" variant="ghost" size="icon" disabled={!canManage || pending} onClick={() => remove(m.id)} aria-label="Remove">
                         <Trash2 className="h-4 w-4 text-muted-foreground" />
                       </Button>
                     </TD>
@@ -865,7 +872,7 @@ export function TeamPanel({
                           </div>
                           <div className="flex justify-end gap-2">
                             <Button type="button" variant="ghost" size="sm" onClick={() => setEditingId(null)}>Cancel</Button>
-                            <Button type="submit" size="sm" disabled={pending}>Save</Button>
+                            <Button type="submit" size="sm" disabled={!canManage || pending}>Save</Button>
                           </div>
                         </form>
                       </TD>
@@ -900,6 +907,7 @@ export function PlanPanel({
   currency: string;
   contractValue: string | null;
 }) {
+  const canManage = useProjectManagement();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -1008,7 +1016,7 @@ export function PlanPanel({
                   </Field>
                 </div>
                 <div className="flex justify-end">
-                  <Button type="submit" size="sm" disabled={pending}>Add phase</Button>
+                  <Button type="submit" size="sm" disabled={!canManage || pending}>Add phase</Button>
                 </div>
               </form>
             </AddSection>
@@ -1039,7 +1047,7 @@ export function PlanPanel({
                     </p>
                   </div>
                   <Badge tone={statusTone(p.status)}>{humanize(p.status)}</Badge>
-                  <Button type="button" variant="ghost" size="icon" disabled={pending} onClick={() => removePhase(p.id)} aria-label="Delete phase">
+                  <Button type="button" variant="ghost" size="icon" disabled={!canManage || pending} onClick={() => removePhase(p.id)} aria-label="Delete phase">
                     <Trash2 className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </div>
@@ -1110,7 +1118,7 @@ export function PlanPanel({
                   </div>
                 </div>
                 <div className="flex justify-end">
-                  <Button type="submit" size="sm" disabled={pending}>Add milestone</Button>
+                  <Button type="submit" size="sm" disabled={!canManage || pending}>Add milestone</Button>
                 </div>
               </form>
             </AddSection>
@@ -1152,7 +1160,7 @@ export function PlanPanel({
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={pending}
+                        disabled={!canManage || pending}
                         onClick={() => complete(m.id, m.customerApprovalRequired)}
                       >
                         Complete
@@ -1191,6 +1199,7 @@ export function RaidPanel({
   }[];
   users: UserOption[];
 }) {
+  const canManage = useProjectManagement();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -1300,7 +1309,7 @@ export function RaidPanel({
                   </div>
                 </div>
                 <div className="flex justify-end">
-                  <Button type="submit" size="sm" disabled={pending}>Log risk</Button>
+                  <Button type="submit" size="sm" disabled={!canManage || pending}>Log risk</Button>
                 </div>
               </form>
             </AddSection>
@@ -1367,7 +1376,7 @@ export function RaidPanel({
                   </div>
                 </div>
                 <div className="flex justify-end">
-                  <Button type="submit" size="sm" disabled={pending}>Log issue</Button>
+                  <Button type="submit" size="sm" disabled={!canManage || pending}>Log issue</Button>
                 </div>
               </form>
             </AddSection>

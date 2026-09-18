@@ -34,7 +34,7 @@ export default async function ResourceDetailPage({
 
   // Same gate as the list it is reached from — this page carries cost rates and
   // one person's approval history, so it is more sensitive than the roster.
-  if (!can(_me, PERMISSIONS.TIME_APPROVE)) {
+  if ((!can(_me, PERMISSIONS.TIME_APPROVE) || !can(_me, PERMISSIONS.PROJECT_RATES_READ))) {
     return <Forbidden what="resource utilisation" />;
   }
 

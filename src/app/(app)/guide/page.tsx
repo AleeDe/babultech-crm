@@ -346,6 +346,38 @@ export default async function GuidePage() {
         </div>
       </GuideSection>
 
+      {can(me, PERMISSIONS.OPPORTUNITY_READ) && (
+        <GuideSection
+          title="Products, services and subscriptions"
+          summary="Choose the catalogue type, billing period and unit, with pricing examples."
+        >
+          <p className="mb-4 text-sm text-muted-foreground">
+            All three are catalogue entries under Products. Type describes what the customer
+            buys; Billing describes how it is charged; Unit describes what one quantity represents.
+          </p>
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-muted/40">
+                <tr><th className="p-3">Type</th><th className="p-3">When to use it</th><th className="p-3">Example</th></tr>
+              </thead>
+              <tbody className="divide-y">
+                <tr><td className="p-3 font-medium">Product</td><td className="p-3">An item or software licence you sell.</td><td className="p-3">POS terminal: Fixed billing, Device unit, PKR 50,000 per device. Two devices = PKR 100,000.</td></tr>
+                <tr><td className="p-3 font-medium">Service</td><td className="p-3">Work your team performs, such as setup, consulting or training.</td><td className="p-3">Installation support: Hourly billing, Hour unit, PKR 3,000 per hour. Five hours = PKR 15,000.</td></tr>
+                <tr><td className="p-3 font-medium">Subscription</td><td className="p-3">Access or a plan that continues for a recurring period.</td><td className="p-3">BabulPOS access: Monthly billing, User unit, PKR 2,000 per user per month. Ten users for one month = PKR 20,000.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-4 space-y-3 text-sm text-muted-foreground">
+            <p>These are illustrative prices before discounts and tax. A one-time BabulPOS licence can be a Product, its installation a Service, and ongoing hosted access a Subscription. Keep BabulPOS as one Product and add Lifetime (Fixed), Basic (Monthly) and Pro (Monthly) pricing plans. Installation can be a separate Service when it is sold separately.</p>
+            <p>A Service can also use Monthly billing, such as a monthly maintenance service. Each pricing plan has its own billing, unit, price and cost. Type does not choose or restrict plan billing automatically. Annual + Licence means per licence per year; Monthly + User means per user per month.</p>
+            <p>Enter standard price and standard cost for the same unit and period. For example, a monthly price of PKR 2,000 and cost of PKR 800 are both per user per month. Changing Monthly to Annual does not multiply the amount by 12; enter the agreed annual price.</p>
+            <p>Choose the product, then its pricing plan on quotes and invoices. The plan fills the description and unit price, which remain editable for negotiated deals. The first plan is the default for other catalogue screens. Subscription or Monthly does not automatically send invoices or collect payments; create invoices through the billing workflow and state the period covered.</p>
+            <p>Code is generated automatically. Search Category and Unit, reuse an existing or similar option, and create a new option only when none fits.</p>
+            <Link href="/products" className="inline-block text-primary hover:underline">Open the product catalogue →</Link>
+          </div>
+        </GuideSection>
+      )}
+
       {can(me, PERMISSIONS.EXPENSE_READ) && (
         <GuideSection
           title="How an expense gets paid"
