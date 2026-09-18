@@ -8,6 +8,8 @@ import { getAuditTrail } from "@/lib/audit";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { Mail, Phone, MessageCircle, ArrowRight } from "lucide-react";
 import { getLead } from "@/server/crm";
+import { getHandoffRecipients, getHandoffs } from "@/server/lead-handoffs";
+import { RequestHandoffForm } from "../handoffs/forms";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
@@ -42,6 +44,10 @@ export default async function LeadDetailPage({
   const name = `${lead.firstName} ${lead.lastName}`;
   const converted = Boolean(lead.convertedAt);
   const disqualified = lead.status === "DISQUALIFIED";
+  const canHandoff = lead.ownerUserId === me.id && can(me, PERMISSIONS.LEAD_WRITE) && !converted && !disqualified;
+  const handoffData = canHandoff ? await getHandoffs(1, id) : null;
+  const pendingHandoff = handoffData?.handoffs.some(h => h.status === "PENDING");
+  const recipients = canHandoff && !pendingHandoff ? await getHandoffRecipients() : [];
 
   /**
    * Which campaign a touch logged from here should be attributed to.
@@ -94,6 +100,7 @@ export default async function LeadDetailPage({
             <Link href={`/leads/${lead.id}/edit`}>Edit</Link>
           </Button>
         )}
+        {can(me, PERMISSIONS.LEAD_WRITE) && !converted && !disqualified && !pendingHandoff && <Button asChild><Link href={`/leads/${lead.id}/convert`}>Convert lead</Link></Button>}
       </PageHeader>
 
       {converted && (
@@ -124,6 +131,10 @@ export default async function LeadDetailPage({
           </Alert>
         </div>
       )}
+
+      {canHandoff && <Card className="mb-6"><CardHeader><CardTitle>Qualification & sales handoff</CardTitle></CardHeader><CardContent>
+        {pendingHandoff ? <p>A sales handoff is pending. <Link className="underline" href="/leads/handoffs">View or cancel handoff</Link> before changing ownership, status or converting.</p> : <RequestHandoffForm leadId={id} recipients={recipients} />}
+      </CardContent></Card>}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
