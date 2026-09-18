@@ -1,5 +1,6 @@
 "use server";
 
+import { commercialPlanSchema } from "@/lib/product-plans";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import Decimal from "decimal.js";
@@ -27,6 +28,7 @@ const EDITABLE = ["DRAFT", "UNDER_REVIEW", "APPROVED"] as const;
 
 const lineSchema = z.object({
   productId: z.string().uuid().optional().nullable(),
+  productPlan: commercialPlanSchema.optional().nullable(),
   description: z.string().min(1, "Every line needs a description."),
   quantity: z.coerce.number().positive(),
   unitPrice: z.coerce.number().min(0),
@@ -54,6 +56,7 @@ interface Totals {
   lines: {
     lineTotal: Decimal;
     productId: string | null;
+    productPlan: z.infer<typeof commercialPlanSchema> | null;
     description: string;
     quantity: number;
     unitPrice: number;
@@ -93,6 +96,7 @@ async function computeTotals(
     return {
       lineTotal: net,
       productId: line.productId ?? null,
+      productPlan: line.productPlan ?? null,
       description: line.description,
       quantity: line.quantity,
       unitPrice: line.unitPrice,
@@ -509,7 +513,7 @@ export async function getQuotationFormOptions(opportunityId?: string) {
       .order("firstName"),
     db
       .from("product")
-      .select("id, name, productCode, standardPrice, defaultTaxRateId")
+      .select("id, name, productCode, standardPrice, defaultTaxRateId, pricingPlans")
       .is("deletedAt", null)
       .eq("active", true)
       .order("name"),

@@ -1,5 +1,6 @@
 "use client";
 
+import type { CommercialPlan } from "@/lib/product-plans";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createInvoice, updateInvoice } from "@/server/billing";
@@ -45,6 +46,7 @@ export interface InvoiceDefaults {
   notes: string | null;
   lines: {
     productId: string | null;
+    productPlan?: CommercialPlan | null;
     description: string;
     quantity: string;
     unitPrice: string;
@@ -82,6 +84,7 @@ export function InvoiceForm({
           return {
             key: `d${importSeq}`,
             productId: l.productId ?? "",
+            productPlan: l.productPlan ?? null,
             description: l.description,
             quantity: l.quantity,
             unitPrice: l.unitPrice,
@@ -151,6 +154,7 @@ export function InvoiceForm({
       notes: get("notes"),
       lines: usable.map((l) => ({
         productId: l.productId || null,
+        productPlan: l.productPlan ?? null,
         projectId: projectId || null,
         milestoneId: null,
         description: l.description,

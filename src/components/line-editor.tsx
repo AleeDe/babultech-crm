@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button, Field, Input, Select } from "@/components/ui";
 import { formatMoney } from "@/lib/utils";
+import { commercialPlanSchema, planDescription, type ProductPlan, type CommercialPlan } from "@/lib/product-plans";
 
 /**
  * The line grid shared by the quote builder and the invoice builder.
@@ -18,6 +19,7 @@ import { formatMoney } from "@/lib/utils";
 export interface LineRow {
   key: string;
   productId: string;
+  productPlan?: CommercialPlan | null;
   description: string;
   quantity: string;
   unitPrice: string;
@@ -31,6 +33,7 @@ export interface ProductOption {
   productCode: string;
   standardPrice: string | null;
   defaultTaxRateId: string | null;
+  pricingPlans?: ProductPlan[];
 }
 
 export interface TaxRateOption {
@@ -105,8 +108,9 @@ export function LineEditor({
     const line = lines.find((l) => l.key === key);
     update(key, {
       productId,
-      description: product && !line?.description ? product.name : (line?.description ?? ""),
-      unitPrice: product?.standardPrice ?? line?.unitPrice ?? "",
+      productPlan: product?.pricingPlans?.length === 1 ? commercialPlanSchema.parse(product.pricingPlans[0]) : null,
+      description: product?.pricingPlans?.length === 1 ? planDescription(product.name, product.pricingPlans[0]) : product?.name ?? line?.description ?? "",
+      unitPrice: (product?.pricingPlans?.length ?? 0) > 1 ? "" : String(product?.standardPrice ?? line?.unitPrice ?? ""),
       taxRateId: product?.defaultTaxRateId ?? line?.taxRateId ?? "",
     });
   }
@@ -134,6 +138,19 @@ export function LineEditor({
                   ))}
                 </Select>
               </Field>
+              {(products.find((p) => p.id === line.productId)?.pricingPlans?.length || line.productPlan) && (
+                <Field label="Pricing plan" help="Choose the one-time or recurring offer. The selected plan fills the price and description; prices remain editable for negotiated deals.">
+                  <Select aria-label="Pricing plan" required disabled={disabled} value={line.productPlan?.id ?? ""} onChange={(e) => {
+                    const product = products.find((p) => p.id === line.productId);
+                    const plan = product?.pricingPlans?.find((p) => p.id === e.target.value);
+                    if (product && plan) update(line.key, { productPlan: commercialPlanSchema.parse(plan), description: planDescription(product.name, plan), unitPrice: plan.standardPrice == null ? "" : String(plan.standardPrice) });
+                  }}>
+                    <option value="" disabled>Choose a plan</option>
+                    {line.productPlan && !products.find((p) => p.id === line.productId)?.pricingPlans?.some((p) => p.id === line.productPlan?.id) && <option value={line.productPlan.id}>{line.productPlan.name} (saved plan)</option>}
+                    {products.find((p) => p.id === line.productId)?.pricingPlans?.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.billingType.toLowerCase()} · {p.standardPrice == null ? "Price not set" : formatMoney(p.standardPrice, currency)}</option>)}
+                  </Select>
+                </Field>
+              )}
             </div>
             <div className="sm:col-span-3">
               <Field label="Description">
@@ -157,7 +174,7 @@ export function LineEditor({
             <div className="sm:col-span-2">
               <Field label="Unit price">
                 <Input
-                  type="number" step="0.01" min="0" value={line.unitPrice} disabled={disabled}
+                  type="number" step="0.01" min="0" required value={line.unitPrice} disabled={disabled}
                   onChange={(e) => update(line.key, { unitPrice: e.target.value })}
                 />
               </Field>

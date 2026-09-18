@@ -1,12 +1,17 @@
 "use server";
 
+import { getProductOptions } from "./product-options";
+import { BILLING_OPTIONS, optionKey } from "@/lib/product-options";
+import { productPlansSchema } from "@/lib/product-plans";
+import { randomUUID } from "node:crypto";
+import { withRateSnapshots } from "@/lib/rate-snapshots";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase";
 import { createRecord, updateRecord, applyScope, applySearch, LIST_LIMIT } from "@/lib/db";
 import { one, toDecimal } from "@/lib/decimal";
 import { SEQUENCES } from "@/lib/numbering";
-import { PERMISSIONS, authorize, requirePermission, requireUser, scopedContext } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission, requireUser, scopedContext, can } from "@/lib/authz";
 import { registrationExpiry, protectionDaysFor } from "@/lib/partner-policy";
 import { MESSAGE_CHANNELS } from "@/lib/types";
 import type { ActionResult } from "./partners";
@@ -884,7 +889,7 @@ export async function getFormOptions() {
         .order("firstName"),
       db
         .from("product")
-        .select("id, name, productCode, standardPrice, defaultTaxRateId")
+        .select("id, name, productCode, standardPrice, defaultTaxRateId, pricingPlans")
         .is("deletedAt", null)
         .eq("active", true)
         .order("name"),
@@ -1055,7 +1060,7 @@ const productSchema = z.object({
   productCode: z.string().min(1, "Give the product a code.").max(50),
   name: z.string().min(1, "Give the product a name.").max(200),
   productType: z.enum(["PRODUCT", "SERVICE", "SUBSCRIPTION"]),
-  billingType: z.enum(["FIXED", "HOURLY", "RETAINER", "MILESTONE", "ANNUAL"]),
+  billingType: z.enum(BILLING_OPTIONS).default("FIXED"),
   description: z.string().optional().nullable(),
   category: z.string().max(100).optional().nullable(),
   unitOfMeasure: z.string().max(30).optional().nullable(),
@@ -1067,13 +1072,15 @@ const productSchema = z.object({
   active: z.coerce.boolean().default(true),
 });
 
+const createProductSchema = productSchema.omit({ productCode: true }).extend({ pricingPlans: productPlansSchema });
+
 export async function createProduct(
-  input: z.infer<typeof productSchema>,
+  input: z.infer<typeof createProductSchema>,
 ): Promise<ActionResult<{ id: string }>> {
   const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
-  const parsed = productSchema.safeParse(input);
+  const parsed = createProductSchema.safeParse(input);
   if (!parsed.success) {
     return {
       ok: false,
@@ -1082,6 +1089,30 @@ export async function createProduct(
     };
   }
   const d = parsed.data;
+  // Legacy catalogue consumers use the first plan as their default.
+  Object.assign(d, { billingType: d.pricingPlans[0].billingType, unitOfMeasure: d.pricingPlans[0].unitOfMeasure, standardPrice: d.pricingPlans[0].standardPrice, standardCost: d.pricingPlans[0].standardCost });
+
+  try {
+    const options = await getProductOptions();
+    for (const plan of d.pricingPlans) {
+      if (!plan.unitOfMeasure) continue;
+      const unit = options.units.find((value) => optionKey(value) === optionKey(plan.unitOfMeasure!));
+      if (!unit) return { ok: false, error: "Select or create a unit for each plan.", fieldErrors: { pricingPlans: ["One plan has an unknown unit."] } };
+      plan.unitOfMeasure = unit;
+    }
+
+    for (const [field, values] of [["category", options.categories], ["unitOfMeasure", options.units]] as const) {
+      if (!d[field]) continue;
+      const canonical = values.find((value) => optionKey(value) === optionKey(d[field]!));
+      if (!canonical) return { ok: false, error: "Choose an existing category or unit, or create it first.", fieldErrors: { [field]: ["Select or create an option first."] } };
+      d[field] = canonical;
+    }
+  } catch (error) { return { ok: false, error: error instanceof Error ? error.message : "Could not load product options." }; }
+
+
+  // Generate on the server. The existing
+  // product_productCode_key unique index is the final concurrency-safe guard.
+  const productCode = `PRD-${randomUUID().toUpperCase()}`;
 
   // Selling below cost is legitimate but rarely intended, so it is worth
   // stopping on here rather than discovering it on a margin report later.
@@ -1099,22 +1130,23 @@ export async function createProduct(
     const { data: clash } = await db
       .from("product")
       .select("id")
-      .eq("productCode", d.productCode)
+      .eq("productCode", productCode)
       .maybeSingle();
 
     if (clash) {
       return {
         ok: false,
-        error: `Product code ${d.productCode} is already in use.`,
+        error: `Product code ${productCode} is already in use.`,
         fieldErrors: { productCode: ["Already in use."] },
       };
     }
 
     const created = await createRecord<{ id: string }>("product", {
-      productCode: d.productCode,
+      productCode,
       name: d.name,
       productType: d.productType,
       billingType: d.billingType,
+      pricingPlans: d.pricingPlans,
       description: d.description || null,
       category: d.category || null,
       unitOfMeasure: d.unitOfMeasure || null,
@@ -1324,12 +1356,12 @@ export async function getProduct(id: string) {
 
 export async function updateProduct(
   id: string,
-  input: z.infer<typeof productSchema>,
+  input: z.infer<typeof createProductSchema>,
 ): Promise<ActionResult<{ id: string }>> {
   const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
-  const parsed = productSchema.safeParse(input);
+  const parsed = createProductSchema.safeParse(input);
   if (!parsed.success) {
     return {
       ok: false,
@@ -1338,6 +1370,26 @@ export async function updateProduct(
     };
   }
   const d = parsed.data;
+  // Legacy catalogue consumers use the first plan as their default.
+  Object.assign(d, { billingType: d.pricingPlans[0].billingType, unitOfMeasure: d.pricingPlans[0].unitOfMeasure, standardPrice: d.pricingPlans[0].standardPrice, standardCost: d.pricingPlans[0].standardCost });
+
+  try {
+    const options = await getProductOptions();
+    for (const plan of d.pricingPlans) {
+      if (!plan.unitOfMeasure) continue;
+      const unit = options.units.find((value) => optionKey(value) === optionKey(plan.unitOfMeasure!));
+      if (!unit) return { ok: false, error: "Select or create a unit for each plan.", fieldErrors: { pricingPlans: ["One plan has an unknown unit."] } };
+      plan.unitOfMeasure = unit;
+    }
+
+    for (const [field, values] of [["category", options.categories], ["unitOfMeasure", options.units]] as const) {
+      if (!d[field]) continue;
+      const canonical = values.find((value) => optionKey(value) === optionKey(d[field]!));
+      if (!canonical) return { ok: false, error: "Choose an existing category or unit, or create it first.", fieldErrors: { [field]: ["Select or create an option first."] } };
+      d[field] = canonical;
+    }
+  } catch (error) { return { ok: false, error: error instanceof Error ? error.message : "Could not load product options." }; }
+
 
   if (d.standardPrice != null && d.standardCost != null && d.standardPrice < d.standardCost) {
     return {
@@ -1348,33 +1400,14 @@ export async function updateProduct(
   }
 
   try {
-    const db = await supabaseServer();
-
-    // The code is unique, so a rename onto another product's code has to be
-    // caught here rather than surfacing as a constraint violation.
-    const { data: clash } = await db
-      .from("product")
-      .select("id")
-      .eq("productCode", d.productCode)
-      .neq("id", id)
-      .maybeSingle();
-
-    if (clash) {
-      return {
-        ok: false,
-        error: `Product code ${d.productCode} is already in use.`,
-        fieldErrors: { productCode: ["Already in use."] },
-      };
-    }
-
     await updateRecord(
       "product",
       id,
       {
-        productCode: d.productCode,
         name: d.name,
         productType: d.productType,
         billingType: d.billingType,
+      pricingPlans: d.pricingPlans,
         description: d.description || null,
         category: d.category || null,
         unitOfMeasure: d.unitOfMeasure || null,
@@ -1551,6 +1584,8 @@ export async function getCreateFormOptions() {
  * paid back yet, and seeing it is the reason to look.
  */
 export async function getProductEconomics(productId: string) {
+  const viewer = await requireUser();
+  if (!can(viewer, PERMISSIONS.PROJECT_RATES_READ)) return null;
   // Products are gated on OPPORTUNITY_READ everywhere in this app — the
   // catalogue page included — so this follows rather than inventing a rule.
   await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
@@ -1587,7 +1622,7 @@ export async function getProductEconomics(productId: string) {
       .from("invoice_line")
       .select(
         `id, quantity, unitPrice, lineTotal,
-         invoice!inner ( id, invoiceNumber, status, issueDate, deletedAt,
+         invoice!inner ( id, invoiceNumber, status, invoiceDate, deletedAt,
                          account ( id, name ) )`,
       )
       .eq("productId", productId)
@@ -1618,7 +1653,7 @@ export async function getProductEconomics(productId: string) {
   const logsRes = projectIds.length
     ? await db
         .from("time_log")
-        .select("projectId, userId, hours, billable, billingRate, costRate, approvalStatus")
+        .select("id, projectId, userId, hours, billable, approvalStatus")
         .in("projectId", projectIds)
         .neq("approvalStatus", "REJECTED")
         .limit(20000)
@@ -1627,7 +1662,7 @@ export async function getProductEconomics(productId: string) {
   if (logsRes.error) {
     throw new Error(`Could not load time for this product: ${logsRes.error.message}`);
   }
-  const logs = (logsRes.data ?? []) as Record<string, any>[];
+  const logs = await withRateSnapshots("time_log", (logsRes.data ?? []) as Array<Record<string, any> & {id: string}>);
 
   const hours = logs.reduce((a, l) => a.plus(toDecimal(l.hours)), toDecimal(0));
   const cost = logs.reduce(

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
+import { priceBasis } from "@/lib/product-options";
+import type { ProductPlan } from "@/lib/product-plans";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { getProductEconomics } from "@/server/crm";
 import {
@@ -99,7 +101,7 @@ export default async function ProductDetailPage({
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="List price" value={formatMoney(product.standardPrice)} sublabel={product.unitOfMeasure ? `per ${product.unitOfMeasure}` : undefined} />
+        <StatTile label="Default plan price" value={formatMoney(product.standardPrice)} sublabel={priceBasis(product.billingType, product.unitOfMeasure)} />
         <StatTile
           label="Margin"
           value={price > 0 ? formatPercent(marginPercent, 1) : "—"}
@@ -109,6 +111,22 @@ export default async function ProductDetailPage({
         <StatTile label="In open pipeline" value={formatMoney(pipelineValue)} sublabel={`${product.opportunityLines.length} deal line(s)`} tone="info" />
         <StatTile label="Invoiced" value={formatMoney(invoicedValue)} sublabel={`${product.invoiceLines.length} invoice line(s)`} />
       </div>
+
+      <Card className="mt-6">
+        <CardHeader><CardTitle>Pricing plans</CardTitle></CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {((product.pricingPlans ?? []) as ProductPlan[]).map((plan, index) => (
+              <div key={plan.id} className="rounded-lg border p-4">
+                <p className="font-semibold">{plan.name} {index === 0 && <Badge tone="neutral">Default</Badge>}</p>
+                <p className="mt-2 text-xl font-semibold">{plan.standardPrice == null ? "Price not set" : formatMoney(plan.standardPrice)}</p>
+                <p className="text-sm text-muted-foreground">{priceBasis(plan.billingType, plan.unitOfMeasure)}</p>
+                <p className="mt-2 text-xs text-muted-foreground">Cost: {plan.standardCost == null ? "Not set" : formatMoney(plan.standardCost)}</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ------------------------------------------- what it cost vs earned */}
       {economics && (

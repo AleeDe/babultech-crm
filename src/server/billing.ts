@@ -1,5 +1,7 @@
 "use server";
 
+import { commercialPlanSchema } from "@/lib/product-plans";
+import { withRateSnapshots } from "@/lib/rate-snapshots";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import Decimal from "decimal.js";
@@ -28,6 +30,7 @@ const EDITABLE_INVOICE = ["DRAFT", "APPROVED"] as const;
 
 const lineSchema = z.object({
   productId: z.string().uuid().optional().nullable(),
+  productPlan: commercialPlanSchema.optional().nullable(),
   projectId: z.string().uuid().optional().nullable(),
   milestoneId: z.string().uuid().optional().nullable(),
   description: z.string().min(1, "Every line needs a description."),
@@ -76,6 +79,7 @@ async function computeLines(lines: z.infer<typeof lineSchema>[]) {
 
     return {
       productId: line.productId ?? null,
+      productPlan: line.productPlan ?? null,
       projectId: line.projectId ?? null,
       milestoneId: line.milestoneId ?? null,
       description: line.description,
@@ -509,14 +513,13 @@ export async function runTimeBilling(
 
     const { data: logRows } = await db
       .from("time_log")
-      .select("id, userId, hours, billingRate, user:app_user!time_log_userId_fkey ( id, fullName )")
+      .select("id, userId, hours, user:app_user!time_log_userId_fkey ( id, fullName )")
       .eq("projectId", projectId)
       .eq("approvalStatus", "APPROVED")
       .eq("billable", true)
-      .is("invoiceLineId", null)
-      .not("billingRate", "is", null);
+      .is("invoiceLineId", null);
 
-    const logs = (logRows ?? []).map((l) => ({
+    const logs = (await withRateSnapshots("time_log", logRows ?? [], "billing")).filter((l) => l.billingRate !== null).map((l) => ({
       ...l,
       user: one(l.user as never) as unknown as { id: string; fullName: string },
     }));
@@ -829,7 +832,7 @@ export async function getBillingFormOptions() {
         .order("contractNumber"),
       db
         .from("product")
-        .select("id, name, productCode, standardPrice, defaultTaxRateId")
+        .select("id, name, productCode, standardPrice, defaultTaxRateId, pricingPlans")
         .is("deletedAt", null)
         .eq("active", true)
         .order("name"),
