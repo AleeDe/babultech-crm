@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { picklistCode } from "@/lib/picklists";
 import Decimal from "decimal.js";
 import { randomUUID } from "node:crypto";
 import { toDecimal, one } from "@/lib/decimal";
@@ -492,6 +493,60 @@ export async function updateExpense(
   }
 }
 
+/**
+ * Removing an expense recorded by mistake.
+ *
+ * A soft delete through update_record, so the removal lands in the expense
+ * history with who did it. The same locks as editing apply: once approved or
+ * paid, the expense is part of the books and has to be rejected back first.
+ */
+export async function deleteExpense(id: string): Promise<ActionResult<{ id: string }>> {
+  const _auth = await authorize(PERMISSIONS.EXPENSE_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
+
+  const db = await supabaseServer();
+  const { data: before, error: readError } = await db
+    .from("expense")
+    .select("id, approvalStatus, paymentStatus, deletedAt")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (readError) {
+    if (readError.code === "22P02") return { ok: false, error: "That expense no longer exists." };
+    return { ok: false, error: `Could not load the expense: ${readError.message}` };
+  }
+  if (!before || before.deletedAt) return { ok: false, error: "That expense no longer exists." };
+
+  if (before.approvalStatus === "APPROVED") {
+    return {
+      ok: false,
+      error: "Approved expenses are locked. Ask an approver to reject it back to draft before deleting it.",
+    };
+  }
+  if (before.paymentStatus === "PAID") {
+    return { ok: false, error: "This expense has already been paid, so it cannot be deleted." };
+  }
+  if (before.approvalStatus === "SUBMITTED" && !can(user, PERMISSIONS.EXPENSE_APPROVE)) {
+    return {
+      ok: false,
+      error: "This claim is waiting on approval. Ask your approver to reject it back to you before deleting it.",
+    };
+  }
+
+  try {
+    await updateRecord("expense", id, { deletedAt: new Date().toISOString() }, "Expense", user.id);
+    revalidatePath("/expenses");
+    revalidatePath(`/expenses/${id}`);
+    return { ok: true, data: { id } };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not delete the expense.",
+    };
+  }
+}
+
 export async function getExpense(id: string) {
   const me = await requirePermission(PERMISSIONS.EXPENSE_READ);
   const db = await supabaseServer();
@@ -506,6 +561,7 @@ export async function getExpense(id: string) {
        project ( id, name, projectNumber, account ( id, name ) )`,
     )
     .eq("id", id)
+    .is("deletedAt", null)
     .maybeSingle();
 
   if (error) throw new Error(`Could not load expense: ${error.message}`);
@@ -1159,7 +1215,7 @@ const vendorPaymentSchema = z.object({
   paymentDate: z.string().min(1, "When was it paid?"),
   amount: z.coerce.number().positive("A payment has to be more than zero."),
   currencyCode: z.string().length(3).default("PKR"),
-  paymentMethod: z.enum(["BANK", "CHEQUE", "CASH", "CARD", "WALLET"]),
+  paymentMethod: picklistCode,
   bankAccountId: z.string().uuid().optional().nullable(),
   referenceNumber: z.string().max(100).optional().nullable(),
   /** Bills this payment settles, in the order given. */

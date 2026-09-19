@@ -3,13 +3,13 @@
 import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, X, Send, Banknote, Receipt } from "lucide-react";
+import { Check, X, Send, Banknote, Receipt, Pencil, Trash2 } from "lucide-react";
 import {
   Table, THead, TBody, TR, TH, TD, Badge, statusTone, Button, Alert,
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize } from "@/lib/utils";
 import {
-  setExpenseApprovalBulk, markExpensePaidBulk,
+  setExpenseApprovalBulk, markExpensePaidBulk, deleteExpense,
 } from "@/server/payables";
 
 type Expense = Record<string, any>;
@@ -29,11 +29,13 @@ export function ExpenseBulkTable({
   expenses,
   canApprove,
   canPay,
+  canWrite,
   currentUserId,
 }: {
   expenses: Expense[];
   canApprove: boolean;
   canPay: boolean;
+  canWrite: boolean;
   currentUserId: string;
 }) {
   const router = useRouter();
@@ -118,6 +120,34 @@ export function ExpenseBulkTable({
   }
 
   const ids = () => [...selected];
+
+  // Why a row cannot be edited or deleted, mirroring updateExpense and
+  // deleteExpense. The server still decides; this only disables a dead button.
+  function lockedReason(e: Expense): string | null {
+    if (e.approvalStatus === "APPROVED") return "Approved expenses are locked. Reject it back to draft first.";
+    if (e.paymentStatus === "PAID") return "Paid expenses cannot be changed.";
+    if (e.approvalStatus === "SUBMITTED" && !canApprove) return "Waiting on approval. Ask your approver to reject it back first.";
+    return null;
+  }
+
+  function remove(e: Expense) {
+    if (!window.confirm(`Delete ${e.expenseNumber}? This removes it from the expense list.`)) return;
+    setMessage(null);
+    start(async () => {
+      const result = await deleteExpense(e.id);
+      if (!result.ok) {
+        setMessage({ tone: "danger", text: result.error ?? "Could not delete the expense." });
+        return;
+      }
+      setMessage({ tone: "success", text: `${e.expenseNumber} deleted.` });
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(e.id);
+        return next;
+      });
+      router.refresh();
+    });
+  }
 
   // Of the rows just acted on, which are now sitting approved and unpaid.
   // Approving is only half the job — the money still has to go out — so the
@@ -243,6 +273,7 @@ export function ExpenseBulkTable({
                 className="h-4 w-4 cursor-pointer rounded border-input"
               />
             </TH>
+            {canWrite && <TH className="w-24">Actions</TH>}
             <TH>Expense</TH>
             <TH priority="tertiary">Category</TH>
             <TH priority="secondary">Who</TH>
@@ -269,6 +300,39 @@ export function ExpenseBulkTable({
                   className="h-4 w-4 cursor-pointer rounded border-input"
                 />
               </TD>
+              {canWrite && (
+                <TD>
+                  {(() => {
+                    const locked = lockedReason(e);
+                    return (
+                      <div className="flex items-center gap-1">
+                        {locked ? (
+                          <Button size="sm" variant="ghost" disabled title={locked} aria-label={`Edit ${e.expenseNumber}`}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        ) : (
+                          <Button asChild size="sm" variant="ghost" title="Edit" aria-label={`Edit ${e.expenseNumber}`}>
+                            <Link href={`/expenses/${e.id}/edit`}>
+                              <Pencil className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={pending || Boolean(locked)}
+                          title={locked ?? "Delete"}
+                          aria-label={`Delete ${e.expenseNumber}`}
+                          onClick={() => remove(e)}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    );
+                  })()}
+                </TD>
+              )}
               <TD>
                 <Link href={`/expenses/${e.id}`} className="font-mono text-xs hover:underline">
                   {e.expenseNumber}

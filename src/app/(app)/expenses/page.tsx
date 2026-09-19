@@ -150,6 +150,7 @@ export default async function ExpensesPage({
               expenses={expenses.rows}
               canApprove={can(me, PERMISSIONS.EXPENSE_APPROVE)}
               canPay={can(me, PERMISSIONS.EXPENSE_APPROVE)}
+              canWrite={can(me, PERMISSIONS.EXPENSE_WRITE)}
               currentUserId={me.id}
             />
             <Pagination
