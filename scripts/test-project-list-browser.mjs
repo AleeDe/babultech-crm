@@ -100,6 +100,15 @@ try {
  await pages.admin.getByText(`QA List Project ${run}`, { exact: false }).waitFor({ timeout: 30000 });
  await passed("The user detail page loads its project memberships");
 
+ // --- My work, which read project_member with * ---
+ currentPage = pages.pm;
+ await pages.pm.goto(`${base}/my-work`);
+ const myWorkText = await pages.pm.locator("body").innerText();
+ assert.ok(!myWorkText.includes("permission denied"), "My work reports a permission error");
+ await pages.pm.getByText(`QA List Project ${run}`, { exact: false }).first().waitFor({ timeout: 30000 });
+ assert.ok(!myWorkText.includes("5000") && !myWorkText.includes("3000"), "A rate appeared on My work");
+ await passed("My work loads the signed-in person's project memberships");
+
  // --- The rate columns must still be unreadable ---
  const anon = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
  const signIn = await anon.auth.signInWithPassword({ email: emails.pm, password: passwords.pm });

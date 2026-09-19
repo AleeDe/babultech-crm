@@ -6,6 +6,7 @@ import { supabaseServer } from "@/lib/supabase";
 import { requireUser } from "@/lib/authz";
 import { updateRecord } from "@/lib/db";
 import { toDecimal } from "@/lib/decimal";
+import { MEMBER_PUBLIC_COLUMNS } from "@/lib/rate-snapshots";
 import type { ActionResult } from "./partners";
 
 /**
@@ -42,10 +43,12 @@ export async function getMyWork() {
       .order("dueDate", { nullsFirst: false })
       .limit(100),
 
+    // Named columns, not *: project_member has had no table-level SELECT grant
+    // since 20260918000003, which keeps the rate columns unreadable.
     db
       .from("project_member")
       .select(
-        `*,
+        `${MEMBER_PUBLIC_COLUMNS},
          project ( id, name, projectNumber, status, health, completionPercent,
                    plannedEndDate, account ( id, name ) )`,
       )
