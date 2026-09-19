@@ -108,6 +108,10 @@ Reconciliation against bank records, approval thresholds, second-person authoriz
 
 This is automated interface verification with synthetic data, not a staff pilot. It does not exercise real customer records, production data volumes, or acceptance by the people who will use these workflows. The staff pilot remains outstanding.
 
+`docs/STAFF-PILOT-RUNBOOK.md` gathers the per-slice pilot instructions above into one document written for the people who will run them, and records what a read of the live grants and data found on 19 September 2026: three of the five workflows cannot be piloted yet. `lead:read` is held only by the administrator, so no staff member can open the calling queue, sales handoffs or the research queue, and the handoff recipient picker needs `lead:read`, `lead:write` and `opportunity:write` together, which only the administrator holds. The database contains 10 projects and 6 tasks but no leads, customer accounts, contracts or invoices, so the calling, research, renewal, health and finance paths have nothing to act on. Only the content workflow can be piloted today, between the one project manager and the administrator.
+
+Two deliberate separation rules also need a second person who does not currently exist in sufficient number: content review excludes the author, and only the project manager and the administrator hold `project:manage`; invoice issuing excludes the preparer, and only Finance and the administrator hold `invoice:approve`. Both behave as designed. Whether to widen those grants, or to have the administrator take part in the pilot, is a business decision and no grants were changed.
+
 ## 1. Decision and evidence
 
 Keep the existing CRM, delivery, and finance foundation. First repair access boundaries and staff assignments; then connect acquisition, delivery, content production, retention, and billing through explicit handoffs. Do not build a second account database or replace working modules.
