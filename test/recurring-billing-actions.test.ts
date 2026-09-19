@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ authorize: vi.fn(), server: vi.fn(), rpc: vi.fn(), select: vi.fn() }));
+const mocks = vi.hoisted(() => ({ authorize: vi.fn(), authorizeAny: vi.fn(), server: vi.fn(), rpc: vi.fn(), select: vi.fn() }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/authz", () => ({
   authorize: mocks.authorize,
+  authorizeAny: mocks.authorizeAny,
+  canAny: vi.fn(() => true),
   requirePermission: vi.fn(),
   can: vi.fn(() => true),
-  PERMISSIONS: { INVOICE_READ: "invoice:read", INVOICE_WRITE: "invoice:write", INVOICE_APPROVE: "invoice:approve" },
+  PERMISSIONS: {
+    INVOICE_READ: "invoice:read", INVOICE_WRITE: "invoice:write",
+    INVOICE_APPROVE: "invoice:approve", PERIOD_CLOSE: "period:close",
+  },
 }));
 vi.mock("@/lib/supabase", () => ({ supabaseServer: mocks.server }));
 
@@ -129,18 +134,19 @@ describe("closing and reopening a period", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.authorize.mockResolvedValue({ ok: true, user: { id: "approver" } });
+    mocks.authorizeAny.mockResolvedValue({ ok: true, user: { id: "approver" } });
     mocks.rpc.mockResolvedValue({ error: null });
     mocks.server.mockResolvedValue({ rpc: mocks.rpc });
   });
 
-  it("needs approval authority to close", async () => {
-    mocks.authorize.mockResolvedValue({ ok: false, error: "Not allowed." });
+  it("needs period-closing authority to close", async () => {
+    mocks.authorizeAny.mockResolvedValue({ ok: false, error: "Not allowed." });
     expect((await closePeriod({ periodStart: "2026-01-01", note: "Closed" })).ok).toBe(false);
     expect(mocks.server).not.toHaveBeenCalled();
   });
 
-  it("needs approval authority to reopen", async () => {
-    mocks.authorize.mockResolvedValue({ ok: false, error: "Not allowed." });
+  it("needs period-closing authority to reopen", async () => {
+    mocks.authorizeAny.mockResolvedValue({ ok: false, error: "Not allowed." });
     expect((await reopenPeriod({ periodStart: "2026-01-01", note: "Reopened" })).ok).toBe(false);
     expect(mocks.server).not.toHaveBeenCalled();
   });
@@ -155,6 +161,11 @@ describe("closing and reopening a period", () => {
     const result = await closePeriod({ periodStart: "2026-01-01", note: "   " });
     expect(result.ok).toBe(false);
     expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("accepts either period:close or the coarse invoice:approve", async () => {
+    await closePeriod({ periodStart: "2026-01-01", note: "Books signed off" });
+    expect(mocks.authorizeAny).toHaveBeenCalledWith("period:close", "invoice:approve");
   });
 
   it("passes the month and note through to the database", async () => {

@@ -9,7 +9,7 @@ import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
 import { createRecord, updateRecord, LIST_LIMIT, applySearch } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
-import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
+import { PERMISSIONS, authorize, authorizeAny, requirePermission } from "@/lib/authz";
 import { accrueForInvoice, accrueForPayment } from "./commission-engine";
 import type { ActionResult } from "./partners";
 
@@ -271,7 +271,8 @@ export async function updateInvoice(
  * never be billed twice (spec §13), and fires ON_INVOICE_SENT commission.
  */
 export async function sendInvoice(id: string): Promise<ActionResult<{ commissionsCreated: number }>> {
-  const _auth = await authorize(PERMISSIONS.INVOICE_APPROVE);
+  // Asking a customer for money. Separate from forgiving what they owe.
+  const _auth = await authorizeAny(PERMISSIONS.INVOICE_ISSUE, PERMISSIONS.INVOICE_APPROVE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
   const user = _auth.user;
 
@@ -350,7 +351,8 @@ export async function sendInvoice(id: string): Promise<ActionResult<{ commission
 }
 
 export async function writeOffInvoice(id: string, amount: number, reason: string): Promise<ActionResult> {
-  const _auth = await authorize(PERMISSIONS.INVOICE_APPROVE);
+  // Forgiving money already invoiced. Separate from issuing it.
+  const _auth = await authorizeAny(PERMISSIONS.INVOICE_VOID, PERMISSIONS.INVOICE_APPROVE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
   const user = _auth.user;
 

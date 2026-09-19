@@ -8,7 +8,7 @@ import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { createRecord, updateRecord, applySearch, LIST_LIMIT, EXPENSE_PAGE_SIZE } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
-import { PERMISSIONS, authorize, can, requirePermission } from "@/lib/authz";
+import { PERMISSIONS, authorize, authorizeAny, can, requirePermission } from "@/lib/authz";
 import { notifyExpenseSubmitted, notifyExpenseDecided } from "./expense-notifications";
 import type { ActionResult } from "./partners";
 
@@ -1109,9 +1109,11 @@ export async function setVendorBillStatus(
   id: string,
   next: string,
 ): Promise<ActionResult<{ id: string }>> {
-  const _auth = await authorize(
-    next === "APPROVED" ? PERMISSIONS.INVOICE_APPROVE : PERMISSIONS.INVOICE_WRITE,
-  );
+  // Approving a bill commits the company to paying a supplier, which is not
+  // the same authority as issuing an invoice to a customer.
+  const _auth = next === "APPROVED"
+    ? await authorizeAny(PERMISSIONS.PAYABLE_APPROVE, PERMISSIONS.INVOICE_APPROVE)
+    : await authorize(PERMISSIONS.INVOICE_WRITE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
   const db = await supabaseServer();

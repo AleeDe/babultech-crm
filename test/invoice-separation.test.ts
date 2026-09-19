@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   authorize: vi.fn(),
+  authorizeAny: vi.fn(),
   server: vi.fn(),
   maybeSingle: vi.fn(),
   updateRecord: vi.fn(),
@@ -11,9 +12,14 @@ const mocks = vi.hoisted(() => ({
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/authz", () => ({
   authorize: mocks.authorize,
+  authorizeAny: mocks.authorizeAny,
+  canAny: vi.fn(() => true),
   requirePermission: vi.fn(),
   can: vi.fn(() => true),
-  PERMISSIONS: { INVOICE_WRITE: "invoice:write", INVOICE_APPROVE: "invoice:approve" },
+  PERMISSIONS: {
+    INVOICE_WRITE: "invoice:write", INVOICE_APPROVE: "invoice:approve",
+    INVOICE_ISSUE: "invoice:issue", INVOICE_VOID: "invoice:void",
+  },
 }));
 vi.mock("@/lib/supabase", () => ({ supabaseServer: mocks.server }));
 vi.mock("@/lib/db", () => ({
@@ -43,6 +49,7 @@ describe("issuing an invoice needs a second person", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.authorize.mockResolvedValue({ ok: true, user: { id: "approver" } });
+    mocks.authorizeAny.mockResolvedValue({ ok: true, user: { id: "approver" } });
     mocks.updateRecord.mockResolvedValue(undefined);
     mocks.accrue.mockResolvedValue([]);
     mocks.maybeSingle.mockResolvedValue({ data: invoice() });
@@ -70,6 +77,11 @@ describe("issuing an invoice needs a second person", () => {
     if (!result.ok) expect(result.error).toContain("INV-0042");
   });
 
+  it("accepts either the narrow issuing grant or the coarse one", async () => {
+    await sendInvoice("inv-1");
+    expect(mocks.authorizeAny).toHaveBeenCalledWith("invoice:issue", "invoice:approve");
+  });
+
   it("lets a different person issue it", async () => {
     const result = await sendInvoice("inv-1");
     expect(result.ok).toBe(true);
@@ -83,7 +95,7 @@ describe("issuing an invoice needs a second person", () => {
   });
 
   it("checks the issuing permission before reading anything", async () => {
-    mocks.authorize.mockResolvedValue({ ok: false, error: "Not allowed." });
+    mocks.authorizeAny.mockResolvedValue({ ok: false, error: "Not allowed." });
     const result = await sendInvoice("inv-1");
     expect(result.ok).toBe(false);
     expect(mocks.server).not.toHaveBeenCalled();

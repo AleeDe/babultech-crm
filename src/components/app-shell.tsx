@@ -50,7 +50,7 @@ const NAV: NavGroup[] = [
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/my-work", label: "My work", icon: CheckSquare },
-      { href: "/approvals", label: "Approvals", icon: Stamp, permissions: ["quotation:approve", "invoice:approve", "expense:approve", "time:approve", "commission:approve"] },
+      { href: "/approvals", label: "Approvals", icon: Stamp, permissions: ["quotation:approve", "invoice:approve", "invoice:void", "payable:approve", "expense:approve", "time:approve", "commission:approve"] },
     ],
   },
   {

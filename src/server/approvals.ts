@@ -1,7 +1,7 @@
 "use server";
 
 import { supabaseServer } from "@/lib/supabase";
-import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { requireUser, can, canAny, PERMISSIONS } from "@/lib/authz";
 import { toDecimal, one } from "@/lib/decimal";
 
 /**
@@ -61,7 +61,9 @@ export async function getPendingApprovals(): Promise<{
   const db = await supabaseServer();
 
   const seeQuotations = can(me, PERMISSIONS.QUOTATION_APPROVE);
-  const seeInvoicing = can(me, PERMISSIONS.INVOICE_APPROVE);
+  // This branch is the vendor bill queue, so it follows the authority to
+  // approve a payable rather than the one to issue an invoice.
+  const seeInvoicing = canAny(me, PERMISSIONS.PAYABLE_APPROVE, PERMISSIONS.INVOICE_APPROVE);
   // Expense claims moved off invoice:approve so that filing one no longer
   // requires the receivables ledger. The queue follows.
   const seeExpenses = can(me, PERMISSIONS.EXPENSE_APPROVE);

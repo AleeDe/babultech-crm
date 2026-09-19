@@ -191,8 +191,13 @@ async function send(input: {
 /**
  * Tells the approvers that an expense is waiting on them.
  *
- * Recipients are everyone holding invoice:approve, minus the claimant, who
+ * Recipients are everyone holding expense:approve, minus the claimant, who
  * cannot approve their own claim and would only be receiving noise.
+ *
+ * This followed invoice:approve until 20260919000001. Expenses moved onto
+ * expense:approve back in 20260830000000, so the notification was going to
+ * whoever ran the receivables ledger rather than to whoever could actually
+ * decide the claim.
  */
 export async function notifyExpenseSubmitted(
   expenseIds: string[],
@@ -221,7 +226,7 @@ export async function notifyExpenseSubmitted(
   const approvers = (users ?? []).filter((u) => {
     const role = Array.isArray(u.role) ? u.role[0] : u.role;
     return (
-      hasPermission((role as { permissions: string[] } | null)?.permissions ?? null, "invoice:approve") &&
+      hasPermission((role as { permissions: string[] } | null)?.permissions ?? null, "expense:approve") &&
       !claimantIds.has(u.id)
     );
   });

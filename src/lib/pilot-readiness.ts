@@ -50,6 +50,13 @@ function activeStaff(users: PilotUser[]) {
   );
 }
 
+/** Staff holding at least one of these permissions. */
+export function holdersOfAny(users: PilotUser[], permissions: string[]) {
+  return activeStaff(users)
+    .filter((u) => permissions.some((p) => grants(u.role?.permissions ?? [], p)))
+    .map((u) => u.fullName);
+}
+
 /** Staff holding every one of these permissions at once. */
 export function holdersOfAll(users: PilotUser[], permissions: string[]) {
   return activeStaff(users)
@@ -63,7 +70,10 @@ export function assessPilot(users: PilotUser[], counts: PilotCounts): WorkflowRe
   const projectManagers = holdersOfAll(users, ["project:manage"]);
   const salesWithDelivery = holdersOfAll(users, ["opportunity:write"]);
   const invoiceDrafters = holdersOfAll(users, ["invoice:write"]);
-  const invoiceIssuers = holdersOfAll(users, ["invoice:approve"]);
+  // invoice:approve was split in 20260919000001; it still implies the narrow
+  // grants, so either satisfies these.
+  const invoiceIssuers = holdersOfAny(users, ["invoice:issue", "invoice:approve"]);
+  const periodClosers = holdersOfAny(users, ["period:close", "invoice:approve"]);
   const accountReaders = holdersOfAll(users, ["account:read"]);
   const contractReaders = holdersOfAll(users, ["opportunity:read"]);
 
@@ -144,7 +154,7 @@ export function assessPilot(users: PilotUser[], counts: PilotCounts): WorkflowRe
     const blockers: string[] = [];
     if (invoiceDrafters.length === 0) blockers.push("Nobody holds invoice:write to raise a draft.");
     if (invoiceIssuers.length === 0) {
-      blockers.push("Nobody holds invoice:approve to issue an invoice.");
+      blockers.push("Nobody can issue an invoice (needs invoice:issue or invoice:approve).");
     } else if (invoiceIssuers.length === 1 && invoiceDrafters.length === 1 && invoiceIssuers[0] === invoiceDrafters[0]) {
       blockers.push(`Only ${invoiceIssuers[0]} can both prepare and issue, and an invoice cannot be issued by whoever prepared it.`);
     }
@@ -160,9 +170,9 @@ export function assessPilot(users: PilotUser[], counts: PilotCounts): WorkflowRe
   // --- Period locking ---
   {
     const blockers: string[] = [];
-    if (invoiceIssuers.length === 0) blockers.push("Nobody holds invoice:approve to close a period.");
+    if (periodClosers.length === 0) blockers.push("Nobody can close a period (needs period:close or invoice:approve).");
     if (counts.invoices === 0) blockers.push("There is no financial activity, so no month can be closed yet.");
-    workflows.push({ workflow: "Finance: closing a month", ready: blockers.length === 0, people: invoiceIssuers, blockers });
+    workflows.push({ workflow: "Finance: closing a month", ready: blockers.length === 0, people: periodClosers, blockers });
   }
 
   // --- Renewals ---

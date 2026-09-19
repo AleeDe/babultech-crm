@@ -145,6 +145,33 @@ export function can(user: SessionUser, permission: string): boolean {
   return holds(user.permissions, permission);
 }
 
+/**
+ * Whether a user holds any one of these permissions.
+ *
+ * Used where a narrow grant and the coarse grant it was split out of both
+ * satisfy an action, so the "invoice:approve still implies everything" rule
+ * lives here rather than being repeated at each call site.
+ */
+export function canAny(user: SessionUser, ...permissions: string[]): boolean {
+  return permissions.some((permission) => holds(user.permissions, permission));
+}
+
+/** The same, for an action that authorizes before doing anything else. */
+export async function authorizeAny(
+  ...permissions: string[]
+): Promise<{ ok: true; user: SessionUser } | { ok: false; error: string }> {
+  let user: SessionUser;
+  try {
+    user = await requireUser();
+  } catch {
+    return { ok: false, error: "Your session has ended. Sign in again and retry." };
+  }
+  if (!canAny(user, ...permissions)) {
+    return { ok: false, error: "You do not have permission to do that." };
+  }
+  return { ok: true, user };
+}
+
 export async function requirePermission(permission: string): Promise<SessionUser> {
   const user = await requireUser();
   if (!can(user, permission)) {
@@ -293,7 +320,15 @@ export const PERMISSIONS = {
   TIME_APPROVE: "time:approve",
   INVOICE_READ: "invoice:read",
   INVOICE_WRITE: "invoice:write",
+  // invoice:approve is the coarse grant and still implies all of the narrow
+  // ones below, so nothing that held it loses an authority. The narrow grants
+  // exist so a role can be given one without the rest - issuing an invoice and
+  // writing one off are close to opposite acts.
   INVOICE_APPROVE: "invoice:approve",
+  INVOICE_ISSUE: "invoice:issue",
+  INVOICE_VOID: "invoice:void",
+  PERIOD_CLOSE: "period:close",
+  PAYABLE_APPROVE: "payable:approve",
   PAYMENT_WRITE: "payment:write",
   // Expense claims are deliberately NOT invoice:*. Anyone who spends money out
   // of pocket needs to file a claim, which briefly made invoice:read the

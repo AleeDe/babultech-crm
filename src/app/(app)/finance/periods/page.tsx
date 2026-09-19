@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { PageHeader, Button, Forbidden, Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
-import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { requireUser, can, canAny, PERMISSIONS } from "@/lib/authz";
 import { one } from "@/lib/decimal";
 import { monthLabel } from "@/lib/recurring-billing";
 import { listPeriodLocks, getClosableMonths } from "@/server/recurring-billing";
@@ -11,7 +11,7 @@ export default async function PeriodsPage() {
   if (!can(user, PERMISSIONS.INVOICE_READ)) return <Forbidden what="accounting periods" />;
 
   const [locks, closable] = await Promise.all([listPeriodLocks(), getClosableMonths()]);
-  const mayClose = can(user, PERMISSIONS.INVOICE_APPROVE);
+  const mayClose = canAny(user, PERMISSIONS.PERIOD_CLOSE, PERMISSIONS.INVOICE_APPROVE);
   const dates = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" });
   const closed = locks.filter((l) => !l.reopenedAt);
   const reopened = locks.filter((l) => l.reopenedAt);
@@ -29,7 +29,7 @@ export default async function PeriodsPage() {
 
       {!mayClose && (
         <p className="my-5 rounded-xl border p-5 text-sm text-muted-foreground">
-          You can see which months are closed. Closing or reopening one needs invoice approval authority.
+          You can see which months are closed. Closing or reopening one needs period-closing authority.
         </p>
       )}
 

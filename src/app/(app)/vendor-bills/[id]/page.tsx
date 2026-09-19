@@ -7,7 +7,7 @@ import { NotesSection } from "@/components/notes-section";
 import { AuditPanel } from "@/components/audit-panel";
 import { getAuditTrail } from "@/lib/audit";
 import { DocumentsPanel } from "@/components/documents-panel";
-import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { requireUser, can, canAny, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Forbidden,
@@ -74,7 +74,7 @@ export default async function VendorBillDetailPage({
             outstanding={outstanding}
             currencyCode={bill.currencyCode}
             banks={options.banks}
-            canApprove={can(me, PERMISSIONS.INVOICE_APPROVE)}
+            canApprove={canAny(me, PERMISSIONS.PAYABLE_APPROVE, PERMISSIONS.INVOICE_APPROVE)}
             canPay={can(me, PERMISSIONS.PAYMENT_WRITE)}
           />
         </CardContent>

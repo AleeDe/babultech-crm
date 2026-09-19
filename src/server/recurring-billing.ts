@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { authorize, requirePermission, PERMISSIONS } from "@/lib/authz";
+import { authorize, authorizeAny, requirePermission, PERMISSIONS } from "@/lib/authz";
 import { supabaseServer } from "@/lib/supabase";
 import { SEQUENCES } from "@/lib/numbering";
 import {
@@ -186,7 +186,7 @@ export async function getClosableMonths() {
 }
 
 export async function closePeriod(input: unknown): Promise<ActionResult> {
-  const _auth = await authorize(PERMISSIONS.INVOICE_APPROVE);
+  const _auth = await authorizeAny(PERMISSIONS.PERIOD_CLOSE, PERMISSIONS.INVOICE_APPROVE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
   const parsed = periodLockSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the period details." };
@@ -200,7 +200,7 @@ export async function closePeriod(input: unknown): Promise<ActionResult> {
     return {
       ok: false,
       error: error.code === "42501"
-        ? "Closing a period needs invoice approval authority."
+        ? "Closing a period needs period-closing authority."
         : "Could not close that period. Only a month that has already finished can be closed.",
     };
   }
@@ -210,7 +210,7 @@ export async function closePeriod(input: unknown): Promise<ActionResult> {
 }
 
 export async function reopenPeriod(input: unknown): Promise<ActionResult> {
-  const _auth = await authorize(PERMISSIONS.INVOICE_APPROVE);
+  const _auth = await authorizeAny(PERMISSIONS.PERIOD_CLOSE, PERMISSIONS.INVOICE_APPROVE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
   const parsed = periodLockSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Say why this period is being reopened." };
@@ -224,7 +224,7 @@ export async function reopenPeriod(input: unknown): Promise<ActionResult> {
     return {
       ok: false,
       error: error.code === "42501"
-        ? "Reopening a period needs invoice approval authority."
+        ? "Reopening a period needs period-closing authority."
         : "Could not reopen that period.",
     };
   }
