@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { supabaseServer, supabaseAdmin, supabaseAnon } from "@/lib/supabase";
-import { createRecord, updateRecord, LIST_LIMIT } from "@/lib/db";
+import { LIST_LIMIT } from "@/lib/db";
 import { one, toDecimal, type Decimal } from "@/lib/decimal";
 import { MEMBER_PUBLIC_COLUMNS } from "@/lib/rate-snapshots";
 import { PERMISSIONS, authorize, requirePermission, requireUser } from "@/lib/authz";
@@ -75,13 +75,32 @@ async function validateAgainstRole(
 
   const { data: role } = await db
     .from("security_role")
-    .select("name")
+    .select("name, active")
     .eq("id", data.roleId)
     .maybeSingle();
 
-  if (!role) return { ok: false, error: "That role no longer exists." };
+  if (!role?.active) return { ok: false, error: "Choose an active role.", fieldErrors: { roleId: ["Choose an active role."] } };
+
+  if (data.departmentId) {
+    const { data: department, error } = await db.from("department").select("id").eq("id", data.departmentId).eq("active", true).is("deletedAt", null).maybeSingle();
+    if (error || !department) return { ok: false, error: "Choose an active department.", fieldErrors: { departmentId: ["Choose an active department."] } };
+  }
+  if (data.managerUserId) {
+    const visited = new Set<string>(selfId ? [selfId] : []);
+    let current: string | null = data.managerUserId;
+    for (let depth = 0; current; depth++) {
+      if (visited.has(current) || depth >= 100) return { ok: false, error: "This reporting line contains a cycle or is too deep. Choose another manager.", fieldErrors: { managerUserId: ["Invalid reporting line."] } };
+      visited.add(current);
+      const result = await db.from("app_user").select("id, managerUserId, status, deletedAt, partnerId").eq("id", current).maybeSingle();
+      const manager = result.data as { id: string; managerUserId: string | null; status: string; deletedAt: string | null; partnerId: string | null } | null;
+      const error = result.error;
+      if (error || !manager || (depth === 0 && (manager.status !== "ACTIVE" || manager.deletedAt || manager.partnerId))) return { ok: false, error: "Choose an active internal manager.", fieldErrors: { managerUserId: ["Choose an active internal manager."] } };
+      current = manager.managerUserId;
+    }
+  }
 
   if (role.name === PARTNER_ROLE) {
+    if (data.departmentId || data.managerUserId || data.costRate != null || data.defaultBillingRate != null) return { ok: false, error: "Partner logins cannot have internal staffing assignments or rates." };
     if (!data.partnerId) {
       return {
         ok: false,
@@ -89,6 +108,8 @@ async function validateAgainstRole(
         fieldErrors: { partnerId: ["Choose the partner this login belongs to."] },
       };
     }
+    const { data: partner, error: partnerError } = await db.from("partner").select("id").eq("id", data.partnerId).is("deletedAt", null).maybeSingle();
+    if (partnerError || !partner) return { ok: false, error: "Choose an existing partner." };
     let takenQuery = db
       .from("app_user")
       .select("fullName")
@@ -182,13 +203,18 @@ export async function createUser(
     }
 
     try {
-      const user = await createRecord<{ id: string }>("app_user", {
+      // ADMIN was checked above. The generic invoker RPC returns all columns,
+      // which authenticated clients cannot read after rate-column hardening.
+      // Keep privileged access on this fixed table and return only the ID.
+      const { data: user, error: profileError } = await auth.from("app_user").insert({
         ...data,
         id: created.user.id,
         email,
         notificationEmail: data.notificationEmail || null,
         passwordHash: await bcrypt.hash(password, BCRYPT_ROUNDS),
-      });
+        updatedAt: new Date().toISOString(),
+      }).select("id").single();
+      if (profileError) throw new Error(profileError.message);
 
       revalidatePath("/users");
       return { ok: true, data: { id: user.id } };
@@ -309,13 +335,14 @@ export async function updateUser(
 
     // An empty field means "no override", which is null rather than "" — an
     // empty string would read as a real address and send mail nowhere.
-    await updateRecord(
-      "app_user",
-      id,
-      { ...data, email, notificationEmail: data.notificationEmail || null },
-      "User",
-      actor.id,
-    );
+    // Preserve atomic audit history while keeping protected columns server-only.
+    // Table and actor are fixed here, after ADMIN authorization and validation.
+    const { error: updateError } = await supabaseAdmin().rpc("update_record", {
+      p_table: "app_user", p_id: id,
+      p_payload: { ...data, email, notificationEmail: data.notificationEmail || null },
+      p_entity_type: "User", p_actor_id: actor.id,
+    });
+    if (updateError) throw new Error(updateError.message);
 
     revalidatePath("/users");
     revalidatePath(`/users/${id}`);
@@ -609,6 +636,7 @@ export async function getUserFormOptions() {
         .select("id, fullName, jobTitle")
         .eq("status", "ACTIVE")
         .is("deletedAt", null)
+        .is("partnerId", null)
         .order("fullName"),
       db
         .from("partner")

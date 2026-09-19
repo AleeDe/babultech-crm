@@ -1,5 +1,12 @@
 # Agency operating model and CRM roadmap
 
+Role presets are now available: [SDR, marketing and internal content editor](AGENCY-ROLE-PRESETS.md).
+Campaign/lead permission separation remains pending; existing staff roles were not reassigned.
+
+Latest incremental review: [19 September implementation review](IMPLEMENTATION-REVIEW-2026-09-19.md).
+Capacity now has a scoped forecast screen and corrected overdue-work handling;
+working calendars, leave, allocations and the remaining C/D deliverables are still pending.
+
 Review date: 18 September 2026. Status: proposal for discussion; no application, role, or database changes authorized by this document.
 
 Implementation started after the user's subsequent approval. The first package adds a repeatable read-only access audit, removes employee rates from project assignment pickers, and requires `project:manage` for project administration server actions and create/edit screens. Existing Administrator (`*`) and Project Manager (`project:*`) grants satisfy the new capability; the existing Consultant `project:write` grant does not. Contributors retain their separately checked own-task progress flow. Custom roles needing administration must be reviewed for an explicit `project:manage` grant.

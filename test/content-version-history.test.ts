@@ -7,7 +7,7 @@ import { getContentVersions } from "@/server/content-versions";
 
 describe("version history API shapes and boundaries", () => {
  beforeEach(() => { vi.clearAllMocks(); mocks.permission.mockResolvedValue({ id: "writer" }); });
- function database(publications: unknown, taskVisible = true) {
+ function database(publications: unknown, taskVisible = true, reviewAllowed = false) {
   const chain = (result: unknown) => ({ select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), order: vi.fn().mockReturnThis(), limit: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue(result), range: vi.fn().mockResolvedValue(result) });
   const task = chain({ data: taskVisible ? { id: "task", projectId: "project", assignedUserId: "writer" } : null, error: null });
   const plan = chain({ data: { revision: 1 }, error: null });
@@ -17,7 +17,7 @@ describe("version history API shapes and boundaries", () => {
   // carry is of no use to anyone, so the panel can list them.
   const links = chain({ data: [], error: null });
   const from = vi.fn().mockReturnValueOnce(task).mockReturnValueOnce(plan).mockReturnValueOnce(history).mockReturnValueOnce(latest).mockReturnValueOnce(links);
-  mocks.server.mockResolvedValue({ from, rpc: vi.fn().mockResolvedValue({ data: false, error: null }) });
+  mocks.server.mockResolvedValue({ from, rpc: vi.fn().mockImplementation(async (name: string) => ({ data: name === "app_content_review_access" && reviewAllowed, error: null })) });
   return { task, history, from };
  }
  it("normalizes the unique publication object for rendering", async () => {
@@ -27,6 +27,12 @@ describe("version history API shapes and boundaries", () => {
   expect(result?.versions[0].author).toEqual({ fullName: "Writer" });
   expect(result?.versions[0].reviews[0].reviewer).toEqual({ fullName: "Reviewer" });
   expect(result?.canWrite).toBe(true); expect(result?.canManage).toBe(false);
+ });
+ it("keeps internal review authority separate from project management", async () => {
+  database(null, true, true);
+  const result = await getContentVersions("project", "task");
+  expect(result?.canReview).toBe(true);
+  expect(result?.canManage).toBe(false);
  });
  it.each([null, []])("handles versions without publication evidence (%j)", async value => {
   database(value); expect((await getContentVersions("project", "task"))?.versions[0].publications).toEqual([]);

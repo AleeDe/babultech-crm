@@ -15,7 +15,7 @@ export async function getContentVersions(projectId: string, taskId: string, page
  const { data: task, error } = await db.from("project_task").select("id,name,projectId,status,assignedUserId").eq("id", taskId).eq("projectId", projectId).maybeSingle();
  if (error) throw new Error("Could not load content task."); if (!task) return null;
  const safePage = Number.isSafeInteger(page) && page > 0 ? Math.min(page, 10000) : 1;
- const [plan, versions, latest, manage, links] = await Promise.all([
+ const [plan, versions, latest, manage, links, review] = await Promise.all([
  db.from("project_content_plan").select("revision,clientApprovalRequired,brief").eq("taskId", taskId).maybeSingle(),
  db.from("content_version").select("*,author:app_user!content_version_createdById_fkey(fullName),reviews:content_review(*,reviewer:app_user(fullName)),publications:content_publication(*)", { count: "exact" }).eq("taskId", taskId).order("versionNumber", { ascending: false }).range((safePage - 1) * 20, safePage * 20 - 1),
  db.from("content_version").select("versionNumber").eq("taskId", taskId).order("versionNumber", { ascending: false }).limit(1).maybeSingle(),
@@ -23,8 +23,9 @@ export async function getContentVersions(projectId: string, taskId: string, page
  // Review links carry only a hash, never a usable token, so listing them here
  // exposes nothing an attacker could replay.
  db.from("client_review_link").select("id,versionId,recipientName,recipientEmail,createdAt,expiresAt,usedAt,revokedAt").order("createdAt", { ascending: false }),
+ db.rpc("app_content_review_access", { p_project: projectId }),
  ]);
- if (plan.error || versions.error || latest.error || manage.error) throw new Error("Could not load content versions.");
+ if (plan.error || versions.error || latest.error || manage.error || review.error) throw new Error("Could not load content versions.");
  // PostgREST embeds the UNIQUE versionId publication relation as an object,
  // while reviews are to-many. Normalize both for the history renderer.
  const rows = (versions.data ?? []).map(row => ({ ...row,
@@ -37,7 +38,7 @@ export async function getContentVersions(projectId: string, taskId: string, page
  const list = linksByVersion.get(link.versionId);
  if (list) list.push(link); else linksByVersion.set(link.versionId, [link]);
  }
- return { task, userId: user.id, plan: plan.data, canManage: manage.data === true, links: linksByVersion, canWrite: manage.data === true || task.assignedUserId === user.id, latest: latest.data?.versionNumber ?? 0, page: safePage, count: versions.count ?? 0, versions: rows as unknown as ContentVersionRow[] };
+ return { task, userId: user.id, plan: plan.data, canReview: review.data === true, canManage: manage.data === true, links: linksByVersion, canWrite: manage.data === true || task.assignedUserId === user.id, latest: latest.data?.versionNumber ?? 0, page: safePage, count: versions.count ?? 0, versions: rows as unknown as ContentVersionRow[] };
 }
 export async function mutateContentVersion(kind: "version" | "review" | "publication", input: unknown): Promise<ActionResult<{ id: string }>> {
  await requirePermission(PERMISSIONS.PROJECT_READ);

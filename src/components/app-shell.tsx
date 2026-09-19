@@ -88,6 +88,7 @@ const NAV: NavGroup[] = [
       { href: "/projects", label: "Projects", icon: FolderKanban, permissions: ["project:read"] },
       { href: "/timesheets", label: "Timesheets", icon: Clock, permissions: ["project:read"] },
       { href: "/resources", label: "Resources", icon: UsersRound, permissions: ["time:approve"] },
+      { href: "/resources/capacity", label: "Capacity planning", icon: UsersRound, permissions: ["project:manage"] },
       { href: "/activities", label: "Activities", icon: CalendarCheck },
     ],
   },

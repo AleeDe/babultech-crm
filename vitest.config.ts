@@ -9,6 +9,12 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["test/setup.ts"],
     include: ["test/**/*.test.ts"],
+    // These legacy suites connect to .env and some rewrite actual staff rows.
+    // Run only against a disposable database, with explicit opt-in.
+    exclude: process.env.RUN_DATABASE_TESTS === "1" ? [] : [
+      "test/auth-identity.test.ts", "test/authz-scope.test.ts",
+      "test/hierarchical-scope.test.ts", "test/portal-boundary.test.ts",
+    ],
     testTimeout: 30_000,
   },
   resolve: {

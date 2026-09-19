@@ -46,7 +46,7 @@ export interface UserDefaults {
 const SCOPE_EXPLAINER: Record<string, string> = {
   OWN: "Only records they own",
   TEAM: "Their team's records",
-  DEPARTMENT: "Their department's records",
+  DEPARTMENT: "Their own records and reporting subtree",
   ALL: "Every record in the system",
 };
 
@@ -86,6 +86,7 @@ export function UserForm({
     const base = {
       fullName: String(formData.get("fullName") ?? ""),
       email: String(formData.get("email") ?? ""),
+      notificationEmail: get("notificationEmail"),
       employeeNumber: isPartner ? null : get("employeeNumber"),
       jobTitle: get("jobTitle"),
       phone: get("phone"),
@@ -104,7 +105,7 @@ export function UserForm({
         : await createUser({ ...base, password: get("password") } as never);
 
       if (result.ok) {
-        router.push("/users");
+        router.push(defaults ? "/users" : `/users/${result.data.id}${isPartner ? "" : "/teams"}`);
         router.refresh();
       } else {
         setError(result.error);
@@ -121,7 +122,7 @@ export function UserForm({
         <CardHeader>
           <CardTitle>Access</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            The role is the only thing that decides what this person can do and how much they can see.
+            The role grants permissions and a data scope. Ownership, team membership and project assignments determine which records they can access.
           </p>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -133,6 +134,7 @@ export function UserForm({
                 <button
                   key={r.id}
                   type="button"
+                  aria-pressed={selected}
                   onClick={() => setRoleId(r.id)}
                   className={cn(
                     "flex gap-3 rounded-lg border p-3 text-left transition-colors",
@@ -262,7 +264,7 @@ export function UserForm({
             help="Your internal staff reference, if you use one.">
                 <Input name="employeeNumber" defaultValue={defaults?.employeeNumber ?? ""} />
               </Field>
-              <Field label="Department"
+              <Field label="Department" error={fieldErrors.departmentId?.[0]}
             help="Which part of the business they belong to.">
                 <Select name="departmentId" defaultValue={defaults?.departmentId ?? ""}>
                   <option value="">None</option>
@@ -271,7 +273,7 @@ export function UserForm({
                   ))}
                 </Select>
               </Field>
-              <Field label="Reports to"
+              <Field label="Reports to" error={fieldErrors.managerUserId?.[0]}
             help="Their manager. This is not decoration - it decides what a manager can see. Anyone on Department scope sees their own records plus everyone beneath them in this line.">
                 <Select name="managerUserId" defaultValue={defaults?.managerUserId ?? ""}>
                   <option value="">Nobody</option>
@@ -295,7 +297,7 @@ export function UserForm({
             <CardTitle>Rates</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
               Used as the default when this person is booked onto a project. Without them their time
-              costs nothing and their utilisation reads zero.
+              has no default cost or billing value. Utilisation is calculated from hours, independently of rates.
             </p>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

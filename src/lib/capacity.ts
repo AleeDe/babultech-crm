@@ -63,7 +63,7 @@ export type CapacityWindow = { from: string; to: string };
  * Work already done is excluded via completionPercent, so a task half finished
  * only carries its remaining half forward.
  */
-export function taskHoursInWindow(task: PlannedTask, window: CapacityWindow): number {
+export function taskHoursInWindow(task: PlannedTask, window: CapacityWindow, asOf?: string): number {
   if (task.estimatedHours == null || task.estimatedHours <= 0) return 0;
   if (["COMPLETED", "CANCELLED"].includes(task.status)) return 0;
 
@@ -76,16 +76,18 @@ export function taskHoursInWindow(task: PlannedTask, window: CapacityWindow): nu
 
   // Without a start date, treat the work as landing on its due date: that is
   // the only day we actually know about.
-  const start = task.startDate && task.startDate <= task.dueDate ? task.startDate : task.dueDate;
-  const totalDays = workingDaysBetween(start, task.dueDate);
+  const originalStart = task.startDate && task.startDate <= task.dueDate ? task.startDate : task.dueDate;
+  const start = asOf && originalStart < asOf ? asOf : originalStart;
+  const due = asOf && task.dueDate < asOf ? asOf : task.dueDate;
+  const totalDays = workingDaysBetween(start, due);
   if (totalDays === 0) {
     // The whole span is a weekend. Count it on the due date so the work does
     // not silently vanish from the forecast.
-    return start <= window.to && task.dueDate >= window.from ? remaining : 0;
+    return due <= window.to && due >= window.from ? remaining : 0;
   }
 
   const overlapFrom = start > window.from ? start : window.from;
-  const overlapTo = task.dueDate < window.to ? task.dueDate : window.to;
+  const overlapTo = due < window.to ? due : window.to;
   if (overlapTo < overlapFrom) return 0;
 
   const daysInWindow = workingDaysBetween(overlapFrom, overlapTo);
@@ -101,8 +103,9 @@ export type PersonCapacity = {
   availableHours: number;
   /** Planned as a percentage of available. Null when they have no availability. */
   loadPercent: number | null;
-  /** Over 100% of available hours. */
+  /** Over capacity for the whole window or for any individual day. */
   overloaded: boolean;
+  overloadedDays: { date: string; plannedHours: number; availableHours: number }[];
   /** Assigned, open, and carrying no estimate - invisible to the forecast. */
   unestimatedTasks: number;
   /** Open tasks assigned to them with no due date, which cannot be scheduled. */
@@ -120,6 +123,7 @@ export function capacityForWindow(
   people: { id: string; fullName: string; dailyHours?: number | null }[],
   tasks: PlannedTask[],
   window: CapacityWindow,
+  asOf?: string,
 ): PersonCapacity[] {
   const days = workingDaysBetween(window.from, window.to);
 
@@ -128,12 +132,20 @@ export function capacityForWindow(
     const open = theirs.filter((t) => !["COMPLETED", "CANCELLED"].includes(t.status));
 
     const withHours = theirs
-      .map((task) => ({ task, hours: taskHoursInWindow(task, window) }))
+      .map((task) => ({ task, hours: taskHoursInWindow(task, window, asOf) }))
       .filter((entry) => entry.hours > 0)
       .sort((a, b) => b.hours - a.hours);
 
     const plannedHours = Math.round(withHours.reduce((sum, e) => sum + e.hours, 0) * 10) / 10;
     const availableHours = days * (person.dailyHours ?? DEFAULT_DAILY_HOURS);
+    const overloadedDays: PersonCapacity["overloadedDays"] = [];
+    for (let date = window.from; date <= window.to; date = addDays(date, 1)) {
+      const dailyPlanned = open.reduce((sum, task) => sum + taskHoursInWindow(task, { from: date, to: date }, asOf), 0);
+      const dailyAvailable = isWorkingDay(date) ? (person.dailyHours ?? DEFAULT_DAILY_HOURS) : 0;
+      if (dailyPlanned > dailyAvailable) overloadedDays.push({
+        date, plannedHours: Math.round(dailyPlanned * 10) / 10, availableHours: dailyAvailable,
+      });
+    }
 
     return {
       userId: person.id,
@@ -141,7 +153,8 @@ export function capacityForWindow(
       plannedHours,
       availableHours,
       loadPercent: availableHours > 0 ? Math.round((plannedHours / availableHours) * 100) : null,
-      overloaded: availableHours > 0 && plannedHours > availableHours,
+      overloaded: plannedHours > availableHours || overloadedDays.length > 0,
+      overloadedDays,
       unestimatedTasks: open.filter((t) => t.estimatedHours == null || t.estimatedHours <= 0).length,
       undatedTasks: open.filter((t) => !t.dueDate).length,
       tasks: withHours.map(({ task, hours }) => ({
@@ -159,6 +172,7 @@ export function capacityForWindow(
 /** Most loaded first: the point of the page is to find who cannot take more. */
 export function byLoad(rows: PersonCapacity[]) {
   return [...rows].sort((a, b) =>
+    Number(b.overloaded) - Number(a.overloaded) ||
     (b.loadPercent ?? -1) - (a.loadPercent ?? -1) || a.fullName.localeCompare(b.fullName),
   );
 }

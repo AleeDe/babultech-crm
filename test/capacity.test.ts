@@ -45,6 +45,19 @@ describe("working days", () => {
 });
 
 describe("hours landing in a window", () => {
+  it("carries overdue remaining work forward rather than hiding it", () => {
+    expect(taskHoursInWindow(task({ estimatedHours: 40, completionPercent: 50 }), { from: "2026-06-08", to: "2026-06-12" }, "2026-06-08")).toBe(20);
+  });
+
+  it("spreads all remaining work over the remaining days", () => {
+    expect(taskHoursInWindow(task(), { from: "2026-06-03", to: FRIDAY }, "2026-06-03")).toBe(10);
+  });
+
+  it("does not count weekend-only work twice in separate day windows", () => {
+    const weekend = task({ startDate: "2026-06-06", dueDate: "2026-06-07" });
+    expect(taskHoursInWindow(weekend, { from: "2026-06-06", to: "2026-06-06" })).toBe(0);
+    expect(taskHoursInWindow(weekend, { from: "2026-06-07", to: "2026-06-07" })).toBe(10);
+  });
   it("spreads a task evenly across its working days", () => {
     // 10 hours over Mon-Fri, all inside the window.
     expect(taskHoursInWindow(task(), week)).toBeCloseTo(10);
@@ -102,6 +115,20 @@ describe("hours landing in a window", () => {
 });
 
 describe("capacity per person", () => {
+  it("detects a busy day even when total weekly capacity is sufficient", () => {
+    const row = capacityForWindow([{ id: "u1", fullName: "Sami" }], [task({ startDate: FRIDAY, estimatedHours: 16 })], week)[0];
+    expect(row.loadPercent).toBe(40);
+    expect(row.overloaded).toBe(true);
+    expect(row.overloadedDays).toEqual([{ date: FRIDAY, plannedHours: 16, availableHours: 8 }]);
+  });
+
+  it("flags weekend work against zero weekday capacity", () => {
+    const row = capacityForWindow([{ id: "u1", fullName: "Sami" }], [task({ startDate: "2026-06-06", dueDate: "2026-06-07" })], week)[0];
+    expect(row.overloadedDays).toEqual([{ date: "2026-06-07", plannedHours: 10, availableHours: 0 }]);
+  });
+  it("flags planned work against zero availability", () => {
+    expect(capacityForWindow([{ id: "u1", fullName: "Sami", dailyHours: 0 }], [task()], week)[0].overloaded).toBe(true);
+  });
   const people = [
     { id: "u1", fullName: "Sami" },
     { id: "u2", fullName: "Ali" },

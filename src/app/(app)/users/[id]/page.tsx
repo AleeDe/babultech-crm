@@ -19,7 +19,7 @@ import {
 const SCOPE_EXPLAINER: Record<string, string> = {
   OWN: "Only records they own",
   TEAM: "Their team's records",
-  DEPARTMENT: "Their department's records",
+  DEPARTMENT: "Their own records and reporting subtree",
   ALL: "Every record in the system",
 };
 
@@ -61,6 +61,7 @@ export default async function UserDetailPage({
       >
         <Badge tone={isAdmin ? "danger" : isPartner ? "warning" : "neutral"}>{(user.role?.name ?? "—")}</Badge>
         <Badge tone={statusTone(user.status)}>{humanize(user.status)}</Badge>
+        <Button asChild variant="outline"><Link href={`/users/${user.id}/teams`}>Manage teams</Link></Button>
         <Button asChild variant="outline">
           <Link href={`/users/${user.id}/edit`}>Edit</Link>
         </Button>

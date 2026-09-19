@@ -45,7 +45,7 @@ export default async function SettingsPage() {
         <NamedList
           kind="department"
           title="Departments"
-          description="Used on user records and for department-scoped visibility."
+          description="Organizational labels on user records. Reporting-line visibility is controlled by Reports to, not this department label."
           rows={departments}
         />
         <NamedList

@@ -18,7 +18,7 @@ export default async function ContentVersionsPage({ params, searchParams }: { pa
  const current = v.versionNumber === data.latest && v.planRevision === data.plan?.revision;
  const internal = v.reviews.find(r => r.stage === "INTERNAL"); const client = v.reviews.find(r => r.stage === "CLIENT");
  const ready = current && internal?.decision === "APPROVED" && (!v.planSnapshot.clientApprovalRequired || client?.decision === "APPROVED");
- const reviewer = current && data.canManage && v.createdById !== data.userId && !["COMPLETED", "CANCELLED"].includes(data.task.status);
+ const reviewer = current && data.canReview && v.createdById !== data.userId && !["COMPLETED", "CANCELLED"].includes(data.task.status);
  return <article className="rounded-xl border bg-card p-5" key={v.id}>
  <h2 className="font-semibold">Version {v.versionNumber} · {current ? "Current plan/version" : "Historical or plan changed"}</h2>
  <p className="text-sm">{v.author?.fullName ?? "Project staff"} · {dates.format(new Date(v.createdAt))} PKT · Plan revision {v.planRevision}</p>
@@ -28,7 +28,7 @@ export default async function ContentVersionsPage({ params, searchParams }: { pa
  <div className="space-y-3 my-4">{v.reviews.map(r => <div key={r.id} className="border-l-2 pl-3 text-sm"><p>{r.stage} · {r.decision} · {r.reviewer?.fullName ?? "Reviewer"} · {dates.format(new Date(r.createdAt))} PKT</p>{r.clientApprover && <p>Client approver: {r.clientApprover}{r.viaLinkId ? " (recorded by the client)" : " (recorded by staff)"}</p>}<p className="whitespace-pre-wrap">{r.evidence}</p></div>)}</div>
  {reviewer && !internal && <VersionActionForm kind="review" versionId={v.id} />}
  {internal?.decision === "APPROVED" && v.planSnapshot.clientApprovalRequired && !client && <ReviewLinkPanel versionId={v.id} links={data.links.get(v.id) ?? []} canSend={Boolean(current && data.canManage && !["COMPLETED", "CANCELLED"].includes(data.task.status))} />}
- {reviewer && internal?.decision === "APPROVED" && v.planSnapshot.clientApprovalRequired && !client && <VersionActionForm kind="review" versionId={v.id} stage="CLIENT" />}
+ {reviewer && data.canManage && internal?.decision === "APPROVED" && v.planSnapshot.clientApprovalRequired && !client && <VersionActionForm kind="review" versionId={v.id} stage="CLIENT" />}
  {(internal?.decision === "CHANGES_REQUESTED" || client?.decision === "CHANGES_REQUESTED") && <p className="text-sm">Changes requested. Submit a new version for another review.</p>}
  {v.publications.map(p => <p key={p.id} className="text-sm mt-3">Publication evidence: <a href={p.liveUrl} target="_blank" rel="noopener noreferrer" className="underline text-primary">Live URL</a> · {dates.format(new Date(p.publishedAt))} PKT</p>)}
  {ready && data.canWrite && data.task.status !== "CANCELLED" && !v.publications.length && <details className="mt-4"><summary className="cursor-pointer font-medium">Record publication evidence</summary><VersionActionForm kind="publication" versionId={v.id} /></details>}
