@@ -89,10 +89,22 @@ try {
  process.exitCode = 1;
 } finally {
  if (browser) await browser.close();
- if (ids.user) { await db.from("app_user").delete().eq("id", ids.user); await db.auth.admin.deleteUser(ids.user); }
- await db.from("security_role").delete().eq("id", ids.role);
+ // Cleanup has to be loud. A fixture left in the live database looks like a
+ // real member of staff to everything that counts users.
+ if (ids.user) {
+  const profile = await db.from("app_user").delete().eq("id", ids.user);
+  if (profile.error) console.error(`CLEANUP FAILED, profile: ${profile.error.message}`);
+  const auth = await db.auth.admin.deleteUser(ids.user);
+  if (auth.error) console.error(`CLEANUP FAILED, auth: ${auth.error.message}`);
+ }
+ const role = await db.from("security_role").delete().eq("id", ids.role);
+ if (role.error) console.error(`CLEANUP FAILED, role: ${role.error.message}`);
  const residue = await db.from("app_user").select("id").eq("id", ids.user ?? "00000000-0000-0000-0000-000000000000");
  report.fixtureUserRemaining = residue.data?.length ?? null;
+ if (report.fixtureUserRemaining) {
+  console.error(`CLEANUP FAILED: the temporary user ${ids.user} is still in the database.`);
+  process.exitCode = 1;
+ }
  await writeFile(`${output}/page-sweep-report.json`, JSON.stringify(report, null, 2));
  console.log(`\n${report.ok.length} ok, ${report.broken.length} broken, of ${report.checked} pages.`);
  if (report.browserErrors.length) console.log(`${report.browserErrors.length} browser runtime errors.`);
