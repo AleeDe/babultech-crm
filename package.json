@@ -13,6 +13,7 @@
     "db:seed:demo": "node scripts/seed-demo.mjs",
     "db:preflight": "node scripts/preflight-supabase.mjs",
     "access:audit": "tsx scripts/audit-access.ts",
+    "pilot:readiness": "tsx scripts/pilot-readiness.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "check:port": "node scripts/check-port.mjs"

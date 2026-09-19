@@ -3,7 +3,7 @@
 For the people who will actually use these workflows. Written 19 September 2026.
 
 Everything built so far has been checked against synthetic data by automated
-tests — 85 browser checks and 518 unit tests. None of it has been used by a
+tests — 85 browser checks and 537 unit tests. None of it has been used by a
 real person doing real work. That is what this pilot is for, and it is the only
 thing that can tell us whether these workflows fit how the team actually works.
 
@@ -14,8 +14,9 @@ or asks for something you do not have, that is the finding. Write it down.
 
 ## Before you start: what is actually blocked today
 
-Three of the five workflows cannot be piloted yet. This is not a fault in the
-software; it is that the access grants and the data are not there.
+Most of the workflows cannot be piloted yet — `npm run pilot:readiness` says
+which, and is the thing to trust. This is not a fault in the software; it is
+that the access grants and the data are not there.
 
 ### 1. Nobody except the administrator can open the leads workflows
 
@@ -43,20 +44,24 @@ them.
 until it does? Do not create fake leads or invoices to exercise the screens.
 A pilot on invented data tells you what the automated tests already told you.
 
-### 3. Some steps need a second person, and there is only one
+### 3. Some steps need a second person
 
-Two rules deliberately require two different people:
+Two rules deliberately require two different people, and both are satisfied
+today only because the administrator counts as the second person:
 
-- **Content review.** Whoever wrote a version cannot approve it. Only Sami Ullah
-  and the administrator hold `project:manage`, so if Sami writes it, only the
-  administrator can review it, and the other way round.
-- **Issuing an invoice.** Whoever prepared an invoice cannot issue it. Only
-  Hassan Shamsi and the administrator can issue, so if Hassan prepares it, only
-  the administrator can issue it.
+- **Content review.** Whoever wrote a version cannot approve it. Sami Ullah and
+  the administrator hold `project:manage`, so if Sami writes it the
+  administrator reviews it, and the other way round.
+- **Issuing an invoice.** Whoever prepared an invoice cannot issue it. Hassan
+  Shamsi and the administrator can issue, so if Hassan prepares it the
+  administrator issues it.
+- **Sales handoff.** The sender and the recipient must be different people, and
+  today only the administrator qualifies for both ends — so this one is genuinely
+  blocked, not merely dependent on the administrator.
 
-These are working as intended — one person should not be able to both raise and
-approve the same thing. But it means the pilot needs the administrator to take
-part, or a second person granted the same rights.
+These are working as intended: one person should not be able to both raise and
+approve the same thing. But it means the administrator has to take part in the
+pilot, or a second person needs the same rights.
 
 ### Who can reach what, today
 
@@ -77,10 +82,27 @@ have.
 
 ## What can be piloted now
 
-Only the content workflow, and only between Sami Ullah and the administrator,
-because the projects and tasks already exist.
+Run this to see the current position rather than trusting the paragraph below,
+which was true on the day it was written:
 
-Everything else is waiting on the grants and the data above.
+```
+npm run pilot:readiness
+```
+
+It reads grants and record counts only — no record content, no emails, no
+credentials — and says which workflows can be run and who by.
+
+As of 19 September 2026 it reports **2 of 10 workflows runnable**:
+
+- **Content: plan, review, publish** — Sami Ullah and the administrator. Two
+  people hold `project:manage`, which is what this needs, because whoever writes
+  a version cannot approve it.
+- **Delivery handoff** — the administrator submits (needs `opportunity:write`)
+  and Sami Ullah accepts (needs `project:manage`).
+
+Everything else is waiting on the grants and the data above. Note that the
+client review link is only blocked because no content plan exists yet: run the
+content workflow first and it unblocks itself.
 
 ---
 
@@ -243,6 +265,12 @@ actually struggling? If a customer you know is fine reads RED, the weights are
 wrong and should be changed.
 
 ---
+
+## Check the position again whenever something changes
+
+`npm run pilot:readiness` after granting a role, or once real leads, contracts
+or customers arrive. It will say what has unblocked. `--json` gives the same
+thing in a form you can keep.
 
 ## How to report what you find
 
