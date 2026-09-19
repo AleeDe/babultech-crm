@@ -18,3 +18,9 @@ scripts/clickup-export.json
 # Database password for the Mumbai project — never commit
 .db-password-mumbai.txt
 backups/mumbai-migration/.env.sydney
+
+# local secrets
+.env
+.env.local
+.env*.local
+/env
