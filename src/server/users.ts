@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs";
 import { supabaseServer, supabaseAdmin, supabaseAnon } from "@/lib/supabase";
 import { createRecord, updateRecord, LIST_LIMIT } from "@/lib/db";
 import { one, toDecimal, type Decimal } from "@/lib/decimal";
+import { MEMBER_PUBLIC_COLUMNS } from "@/lib/rate-snapshots";
 import { PERMISSIONS, authorize, requirePermission, requireUser } from "@/lib/authz";
 import { writeAudit } from "@/lib/audit";
 import type { ActionResult } from "./partners";
@@ -478,6 +479,9 @@ export async function listUsers(filters?: { search?: string; roleId?: string; st
   // user administration is exactly the screen allowed to see pay rates.
   const db = supabaseAdmin();
 
+  // projectMemberships selects ids rather than using count(): project_member
+  // has had no table-level SELECT grant since 20260918000003, which is what
+  // PostgREST's count() needs. The rows are counted in rowsOf below.
   let query = db
     .from("app_user")
     .select(
@@ -486,7 +490,7 @@ export async function listUsers(filters?: { search?: string; roleId?: string; st
        department:app_user_departmentId_fkey ( id, name ),
        manager:managerUserId ( id, fullName ),
        partner:app_user_partnerId_fkey ( id, partnerNumber, displayName ),
-       projectMemberships:project_member ( count ),
+       projectMemberships:project_member ( id ),
        ownedAccounts:account!account_ownerUserId_fkey ( count ),
        assignedTasks:project_task!project_task_assignedUserId_fkey ( count )`,
     )
@@ -507,6 +511,8 @@ export async function listUsers(filters?: { search?: string; roleId?: string; st
   if (error) throw new Error(`Could not load users: ${error.message}`);
 
   const countOf = (v: unknown) => (v as { count: number }[] | undefined)?.[0]?.count ?? 0;
+  /** For embeds returned as rows rather than an aggregate. */
+  const rowsOf = (v: unknown) => (Array.isArray(v) ? v.length : 0);
 
   return (data ?? []).map((u) => ({
     ...u,
@@ -515,7 +521,7 @@ export async function listUsers(filters?: { search?: string; roleId?: string; st
     manager: one(u.manager as never),
     partner: one(u.partner as never),
     _count: {
-      projectMemberships: countOf(u.projectMemberships),
+      projectMemberships: rowsOf(u.projectMemberships),
       ownedAccounts: countOf(u.ownedAccounts),
       assignedTasks: countOf(u.assignedTasks),
     },
@@ -539,7 +545,7 @@ export async function getUser(id: string) {
        partner:app_user_partnerId_fkey ( id, partnerNumber, displayName ),
        teamMemberships:team_member ( *, team ( id, name ) ),
        projectMemberships:project_member (
-         *,
+         ${MEMBER_PUBLIC_COLUMNS},
          project ( id, name, projectNumber, status )
        )`,
     )

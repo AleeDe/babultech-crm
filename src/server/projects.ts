@@ -284,13 +284,17 @@ export async function listProjects(filters?: {
 
   const db = await supabaseServer();
 
+  // members selects ids rather than using count(): 20260918000003 removed the
+  // table-level SELECT grant on project_member so the rate columns stay
+  // unreadable, and PostgREST's count() needs that grant. Column-level SELECT
+  // still permits reading id, so the rows are counted in rowsOf below.
   let query = db
     .from("project")
     .select(
       `*,
        account ( id, name ),
        projectManager:app_user!project_projectManagerId_fkey ( id, fullName ),
-       members:project_member ( count ),
+       members:project_member ( id ),
        tasks:project_task ( count ),
        milestones:milestone ( count ),
        issues:project_issue ( count ),
@@ -325,13 +329,15 @@ export async function listProjects(filters?: {
   if (error) throw new Error(`Could not load projects: ${error.message}`);
 
   const countOf = (v: unknown) => (v as { count: number }[] | undefined)?.[0]?.count ?? 0;
+  /** For embeds returned as rows rather than an aggregate. */
+  const rowsOf = (v: unknown) => (Array.isArray(v) ? v.length : 0);
 
   return (data ?? []).map((p) => ({
     ...p,
     account: one(p.account as never),
     projectManager: one(p.projectManager as never),
     _count: {
-      members: countOf(p.members),
+      members: rowsOf(p.members),
       tasks: countOf(p.tasks),
       milestones: countOf(p.milestones),
       issues: countOf(p.issues),
