@@ -16,6 +16,7 @@ const ids = {
  managerRole: randomUUID(), outsiderRole: randomUUID(), manager: null, outsider: null, formerOwner: null,
  healthyAccount: randomUUID(), troubledAccount: randomUUID(), unownedAccount: randomUUID(),
  healthyContract: randomUUID(), lapsedContract: randomUUID(), farContract: randomUUID(), unownedContract: randomUUID(),
+ product: randomUUID(), subscription: randomUUID(), openEnded: randomUUID(),
  overdueInvoice: randomUUID(), breachedCase: randomUUID(), activity: randomUUID(), category: null,
 };
 const output = "artifacts/browser-qa";
@@ -60,6 +61,26 @@ try {
   { id: ids.farContract, contractNumber: `QAREN-C3-${run}`, name: `QA Far Future ${run}`, accountId: ids.unownedAccount, ownerUserId: ids.manager, contractType: "Retainer", status: "ACTIVE", startDate: day(-30), endDate: day(300), contractValue: 6000, currencyCode: "PKR", renewalType: "MANUAL", noticePeriodDays: 30, updatedAt: now() },
   { id: ids.unownedContract, contractNumber: `QAREN-C4-${run}`, name: `QA Unowned Soon ${run}`, accountId: ids.unownedAccount, ownerUserId: ids.manager, contractType: "Retainer", status: "ACTIVE", startDate: day(-200), endDate: day(45), contractValue: 9000, currencyCode: "PKR", renewalType: "MANUAL", noticePeriodDays: 30, updatedAt: now() },
  ]), "Create temporary contracts");
+
+ // A subscription ending inside the window, and one with no end date at all.
+ // The second must never appear: an open-ended agreement has no renewal to chase.
+ await check(db.from("product").insert({ id: ids.product, productCode: `QAREN-P-${run}`, name: `QA POS ${run}`, productType: "SUBSCRIPTION", billingType: "MONTHLY", standardPrice: 500, active: true, updatedAt: now() }), "Create temporary product");
+ await check(db.from("customer_subscription").insert([
+  {
+   id: ids.subscription, subscriptionNumber: `SUB-QA-${run}`, accountId: ids.healthyAccount,
+   productId: ids.product, plan: { id: randomUUID(), name: "Pro Monthly", billingType: "MONTHLY", unitOfMeasure: "user" },
+   quantity: 10, unitPrice: 500, currencyCode: "PKR", billingFrequency: "MONTHLY",
+   startDate: day(-300), endDate: day(25), autoRenew: false, status: "ACTIVE",
+   createdById: ids.manager, updatedAt: now(),
+  },
+  {
+   id: ids.openEnded, subscriptionNumber: `SUB-QA-OPEN-${run}`, accountId: ids.healthyAccount,
+   productId: ids.product, plan: { id: randomUUID(), name: "Basic Monthly", billingType: "MONTHLY", unitOfMeasure: "user" },
+   quantity: 5, unitPrice: 200, currencyCode: "PKR", billingFrequency: "MONTHLY",
+   startDate: day(-100), endDate: null, autoRenew: true, status: "ACTIVE",
+   createdById: ids.manager, updatedAt: now(),
+  },
+ ]), "Create temporary subscriptions");
 
  // An overdue invoice and a breached case, so the troubled account has something real to score on.
  await check(db.from("invoice").insert({
@@ -137,6 +158,29 @@ try {
  await soonRow.getByText(`QA ren manager`, { exact: false }).waitFor();
  await passed("An active account manager is named on the row");
 
+ // --- Subscriptions in the same queue ---
+ await manager.goto(`${base}/accounts/renewals?window=30`);
+ const subRow = manager.locator("article").filter({ hasText: `SUB-QA-${run}` }).first();
+ await subRow.waitFor({ timeout: 30000 });
+ const subText = await subRow.innerText();
+ assert.ok(subText.includes("Subscription"), "The row does not say it is a subscription");
+ assert.ok(subText.includes("QA POS"), "The product name is not shown");
+ assert.ok(subText.includes("per period"), "A subscription's value is not marked as per period");
+ assert.ok(subText.includes("No notice period agreed"), "A subscription was given a notice deadline it never agreed");
+ await manager.screenshot({ path: `${output}/renewals-with-subscriptions.png`, fullPage: true });
+ await passed("A subscription appears in the renewal queue, labelled and valued per period");
+
+ assert.equal(await manager.getByText(`SUB-QA-OPEN-${run}`, { exact: false }).count(), 0);
+ await passed("An open-ended subscription is left out: there is no renewal to chase");
+
+ // Ordering is by urgency across both kinds, not grouped by type.
+ const queueOrder = await manager.locator("article").allInnerTexts();
+ const subIndex = queueOrder.findIndex((t) => t.includes(`SUB-QA-${run}`));
+ const lapsedIndex = queueOrder.findIndex((t) => t.includes("QA Already Ended"));
+ assert.ok(lapsedIndex >= 0 && lapsedIndex < subIndex,
+  "A lapsed contract should still come before a subscription ending later");
+ await passed("Contracts and subscriptions are ordered together by urgency");
+
  // --- Account health ---
  await manager.goto(`${base}/accounts/health?show=all`);
  await manager.getByRole("heading", { name: "Account health", exact: true }).waitFor();
@@ -209,6 +253,8 @@ try {
  await clean("Support case", db.from("support_case").delete().eq("id", ids.breachedCase));
  await clean("Invoice lines", db.from("invoice_line").delete().eq("invoiceId", ids.overdueInvoice));
  await clean("Invoice", db.from("invoice").delete().eq("id", ids.overdueInvoice));
+ await clean("Subscriptions", db.from("customer_subscription").delete().in("id", [ids.subscription, ids.openEnded]));
+ await clean("Product", db.from("product").delete().eq("id", ids.product));
  await clean("Contracts", db.from("contract").delete().in("id", [ids.healthyContract, ids.lapsedContract, ids.farContract, ids.unownedContract]));
  await clean("Accounts", db.from("account").delete().in("id", accountIds));
  for (const key of ["outsider", "manager", "formerOwner"]) if (ids[key]) {

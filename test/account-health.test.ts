@@ -21,9 +21,16 @@ describe("date helpers", () => {
 });
 
 const contract = (overrides: Record<string, unknown> = {}) => ({
-  id: "c1", contractNumber: "CTR-1", name: "Retainer", accountId: "a1",
+  source: "CONTRACT" as const, id: "c1", reference: "CTR-1", name: "Retainer", accountId: "a1",
   endDate: "2026-07-15", renewalType: "MANUAL", noticePeriodDays: 30,
-  contractValue: 12000, currencyCode: "PKR", ...overrides,
+  value: 12000, currencyCode: "PKR", ...overrides,
+});
+
+/** A subscription has no agreed notice period, so it has no notice deadline. */
+const subscription = (overrides: Record<string, unknown> = {}) => ({
+  source: "SUBSCRIPTION" as const, id: "s1", reference: "SUB-1", name: "BabulPOS — 10 users",
+  accountId: "a1", endDate: "2026-07-15", renewalType: "AUTO_RENEW", noticePeriodDays: null,
+  value: 5000, currencyCode: "PKR", ...overrides,
 });
 const account = { name: "Shop", ownerUserId: "u1", ownerName: "Ayesha" };
 
@@ -43,6 +50,13 @@ describe("renewal rows", () => {
     const row = renewalRow(contract({ noticePeriodDays: null }), account, TODAY);
     expect(row.noticeBy).toBeNull();
     expect(row.noticeUrgent).toBe(false);
+  });
+
+  it("gives a subscription no notice deadline, because none is agreed", () => {
+    const row = renewalRow(subscription(), account, TODAY);
+    expect(row.source).toBe("SUBSCRIPTION");
+    expect(row.noticeBy).toBeNull();
+    expect(renewalStage(row)).not.toBe("NOTICE_DUE");
   });
 
   it("keeps a contract that has already ended, with a negative day count", () => {
@@ -71,16 +85,24 @@ describe("renewal windows and ordering", () => {
   ];
 
   it("includes only what falls inside the window", () => {
-    expect(withinWindow(rows, 30).map((r) => r.contractId)).toEqual(["b", "c"]);
-    expect(withinWindow(rows, 90).map((r) => r.contractId).sort()).toEqual(["a", "b", "c"]);
+    expect(withinWindow(rows, 30).map((r) => r.id)).toEqual(["b", "c"]);
+    expect(withinWindow(rows, 90).map((r) => r.id).sort()).toEqual(["a", "b", "c"]);
   });
 
   it("always keeps a lapsed contract in view, whatever the window", () => {
-    expect(withinWindow(rows, 30).some((r) => r.contractId === "c")).toBe(true);
+    expect(withinWindow(rows, 30).some((r) => r.id === "c")).toBe(true);
   });
 
   it("puts the most urgent first", () => {
-    expect(byUrgency(rows).map((r) => r.contractId)).toEqual(["c", "b", "a", "d"]);
+    expect(byUrgency(rows).map((r) => r.id)).toEqual(["c", "b", "a", "d"]);
+  });
+
+  it("keeps subscriptions and contracts in one queue, ordered together", () => {
+    const mixed = [
+      renewalRow(contract({ id: "later", endDate: "2026-08-01" }), account, TODAY),
+      renewalRow(subscription({ id: "sooner", endDate: "2026-06-20" }), account, TODAY),
+    ];
+    expect(byUrgency(mixed).map((r) => r.id)).toEqual(["sooner", "later"]);
   });
 
   it("names each stage", () => {

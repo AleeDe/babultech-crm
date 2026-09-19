@@ -122,7 +122,9 @@ A subscription is created as a draft and only bills once activated. Status moves
 
 Validated by 59 unit tests and 15 browser checks, including the catalogue-price snapshot, finance being unable to create an agreement, a draft not billing, three periods billed at the agreed price, a second run billing nothing twice, the database refusing a duplicate period directly, a backdated quantity change being refused, existing invoices not changing when the quantity does, and a cancelled agreement refusing to restart. The pilot also surfaced an interface gap: a change agreed for a future period was invisible until it took effect, which is exactly when somebody would want to check it, so the list now shows the pending change and its date.
 
-Subscriptions do not yet feed the renewal queue or account health, which still read contracts only. Proration, upgrades between plans, and credit handling are not implemented. Nothing runs on a schedule: every billing run is started by a person.
+Subscriptions now feed the renewal queue and account health alongside contracts. `RenewalRow` carries a `source` of CONTRACT or SUBSCRIPTION and generic `id`, `reference`, `name` and `value` fields, so both kinds sort together by urgency rather than sitting in two lists nobody checks - a subscription nobody renewed is lost revenue in exactly the way a lapsed contract is. A subscription's value is shown per period, and it is given no notice deadline because none was agreed; inventing one would imply a commitment the customer never made. Open-ended subscriptions are excluded: there is no renewal to chase. Cancelled and ended ones are excluded too, having already been dealt with. Account health counts a subscription running out as the same signal as a contract running out.
+
+Proration, upgrades between plans, and credit handling are not implemented. Nothing runs on a schedule: every billing run is started by a person.
 
 Reconciliation against bank records, approval thresholds, second-person authorization for payouts, and the split between a finance operator and an authorized payer remain proposals.
 

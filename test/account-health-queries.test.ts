@@ -23,13 +23,31 @@ function builder(rows: unknown[]) {
 
 const TODAY = "2026-06-15";
 
+const embeddedAccount = { name: "Shop", ownerUserId: "u1", owner: { fullName: "Ayesha", status: "ACTIVE" } };
+
 const contractRow = (overrides: Record<string, unknown> = {}) => ({
   id: "c1", contractNumber: "CTR-1", name: "Retainer", accountId: "a1",
   endDate: "2026-07-01", renewalType: "MANUAL", noticePeriodDays: 30,
   contractValue: 12000, currencyCode: "PKR",
-  account: { name: "Shop", ownerUserId: "u1", owner: { fullName: "Ayesha", status: "ACTIVE" } },
+  account: embeddedAccount,
   ...overrides,
 });
+
+const subscriptionRow = (overrides: Record<string, unknown> = {}) => ({
+  id: "s1", subscriptionNumber: "SUB-1", accountId: "a1", endDate: "2026-07-01",
+  autoRenew: true, quantity: 10, unitPrice: 500, currencyCode: "PKR",
+  plan: { name: "Pro Monthly" }, product: { name: "BabulPOS" },
+  account: embeddedAccount,
+  ...overrides,
+});
+
+/** The renewal queue reads two tables, so the mock has to tell them apart. */
+function renewalTables(contracts: unknown[], subscriptions: unknown[] = []) {
+  return {
+    from: (table: string) =>
+      builder(table === "customer_subscription" ? subscriptions : contracts),
+  };
+}
 
 describe("renewal queue", () => {
   beforeEach(() => {
@@ -46,48 +64,75 @@ describe("renewal queue", () => {
   });
 
   it("names the account manager on each row", async () => {
-    mocks.server.mockResolvedValue({ from: () => builder([contractRow()]) });
+    mocks.server.mockResolvedValue(renewalTables([contractRow()]));
     const { rows } = await getRenewalQueue(90);
     expect(rows[0].ownerName).toBe("Ayesha");
   });
 
   it("treats a deactivated owner as nobody, so the gap is visible", async () => {
-    mocks.server.mockResolvedValue({
-      from: () => builder([contractRow({
-        account: { name: "Shop", ownerUserId: "u1", owner: { fullName: "Ayesha", status: "INACTIVE" } },
-      })]),
-    });
+    mocks.server.mockResolvedValue(renewalTables([contractRow({
+      account: { name: "Shop", ownerUserId: "u1", owner: { fullName: "Ayesha", status: "INACTIVE" } },
+    })]));
     const { rows } = await getRenewalQueue(90);
     expect(rows[0].ownerName).toBeNull();
     expect(rows[0].ownerUserId).toBe("u1");
   });
 
   it("keeps a contract that already lapsed, and puts it first", async () => {
-    mocks.server.mockResolvedValue({
-      from: () => builder([
-        contractRow({ id: "soon", endDate: "2026-07-01" }),
-        contractRow({ id: "lapsed", endDate: "2026-05-01" }),
-      ]),
-    });
+    mocks.server.mockResolvedValue(renewalTables([
+      contractRow({ id: "soon", endDate: "2026-07-01" }),
+      contractRow({ id: "lapsed", endDate: "2026-05-01" }),
+    ]));
     const { rows } = await getRenewalQueue(90);
-    expect(rows[0].contractId).toBe("lapsed");
+    expect(rows[0].id).toBe("lapsed");
   });
 
   it("leaves out contracts beyond the chosen window", async () => {
-    mocks.server.mockResolvedValue({
-      from: () => builder([
-        contractRow({ id: "near", endDate: "2026-07-01" }),
-        contractRow({ id: "far", endDate: "2026-12-01" }),
-      ]),
-    });
+    mocks.server.mockResolvedValue(renewalTables([
+      contractRow({ id: "near", endDate: "2026-07-01" }),
+      contractRow({ id: "far", endDate: "2026-12-01" }),
+    ]));
     const { rows } = await getRenewalQueue(30);
-    expect(rows.map((r) => r.contractId)).toEqual(["near"]);
+    expect(rows.map((r) => r.id)).toEqual(["near"]);
   });
 
   it("survives a contract whose account embed is missing", async () => {
-    mocks.server.mockResolvedValue({ from: () => builder([contractRow({ account: null })]) });
+    mocks.server.mockResolvedValue(renewalTables([contractRow({ account: null })]));
     const { rows } = await getRenewalQueue(90);
     expect(rows[0].accountName).toBe("Unknown account");
+  });
+
+  it("includes subscriptions alongside contracts, ordered together", async () => {
+    mocks.server.mockResolvedValue(renewalTables(
+      [contractRow({ id: "contract", endDate: "2026-07-10" })],
+      [subscriptionRow({ id: "subscription", endDate: "2026-06-20" })],
+    ));
+    const { rows } = await getRenewalQueue(90);
+    expect(rows.map((r) => r.id)).toEqual(["subscription", "contract"]);
+    expect(rows[0].source).toBe("SUBSCRIPTION");
+  });
+
+  it("values a subscription at one period, and names its product and plan", async () => {
+    mocks.server.mockResolvedValue(renewalTables([], [subscriptionRow()]));
+    const { rows } = await getRenewalQueue(90);
+    expect(rows[0].value).toBe(5000);
+    expect(rows[0].name).toBe("BabulPOS — Pro Monthly");
+    expect(rows[0].reference).toBe("SUB-1");
+  });
+
+  it("gives a subscription no notice deadline, since none was agreed", async () => {
+    mocks.server.mockResolvedValue(renewalTables([], [subscriptionRow()]));
+    const { rows } = await getRenewalQueue(90);
+    expect(rows[0].noticeBy).toBeNull();
+    expect(rows[0].noticeUrgent).toBe(false);
+  });
+
+  it("reads an auto-renewing subscription as auto-renewing", async () => {
+    mocks.server.mockResolvedValue(renewalTables([], [
+      subscriptionRow({ id: "manual", autoRenew: false }),
+    ]));
+    const { rows } = await getRenewalQueue(90);
+    expect(rows[0].renewalType).toBe("MANUAL");
   });
 
   it("does not leak the database's wording when the query fails", async () => {
@@ -108,7 +153,8 @@ describe("account health", () => {
 
   function tables(overrides: Record<string, unknown[]> = {}) {
     const data: Record<string, unknown[]> = {
-      account: [account], invoice: [], support_case: [], activity: [], contract: [], ...overrides,
+      account: [account], invoice: [], support_case: [], activity: [], contract: [],
+      customer_subscription: [], ...overrides,
     };
     return { from: (table: string) => builder(data[table] ?? []) };
   }
@@ -208,6 +254,15 @@ describe("account health", () => {
     }));
     const { rows } = await getAccountHealth();
     expect(rows[0].accountId).toBe("bad");
+  });
+
+  it("counts a lapsed subscription as a health signal, like a lapsed contract", async () => {
+    mocks.server.mockResolvedValue(tables({
+      customer_subscription: [{ accountId: "a1", endDate: "2026-05-01" }],
+      activity: [{ relatedEntityId: "a1", completedAt: `${TODAY}T09:00:00Z`, createdAt: `${TODAY}T09:00:00Z` }],
+    }));
+    const { rows } = await getAccountHealth();
+    expect(rows[0].derived.signals.some((s) => s.label === "Contract lapsed")).toBe(true);
   });
 
   it("does not leak the database's wording when the query fails", async () => {

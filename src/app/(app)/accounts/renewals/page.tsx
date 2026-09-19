@@ -33,7 +33,7 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
     <>
       <PageHeader
         title="Renewals"
-        description="Contracts ending soon, and any that have already run out. Dates come from each contract; nothing here renews anything on its own."
+        description="Contracts and subscriptions ending soon, and any that have already run out. Dates come from each agreement; nothing here renews anything on its own."
       >
         <Button asChild variant="outline"><Link href="/contracts">All contracts</Link></Button>
       </PageHeader>
@@ -49,23 +49,27 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
       </nav>
 
       <p className="mb-4 text-sm text-muted-foreground">
-        {rows.length} contract{rows.length === 1 ? "" : "s"} within {window} days, out of {scanned} scanned.
-        {truncated && " More contracts exist than were scanned; narrow the window or review the contract list directly."}
+        {rows.length} agreement{rows.length === 1 ? "" : "s"} within {window} days, out of {scanned} scanned.
+        {truncated && " More exist than were scanned; narrow the window or review the contract and subscription lists directly."}
       </p>
 
       <div className="space-y-4">
         {rows.map((row) => {
           const stage = renewalStage(row);
           return (
-            <article key={row.contractId} className="rounded-xl border bg-card p-5">
+            <article key={`${row.source}-${row.id}`} className="rounded-xl border bg-card p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <Link className="font-semibold text-primary" href={`/contracts/${row.contractId}`}>
-                    {row.contractName}
+                  <Link
+                    className="font-semibold text-primary"
+                    href={row.source === "CONTRACT" ? `/contracts/${row.id}` : `/subscriptions/${row.id}`}
+                  >
+                    {row.name}
                   </Link>
                   <p className="text-sm text-muted-foreground">
                     <Link className="underline" href={`/accounts/${row.accountId}`}>{row.accountName}</Link>
-                    {" · "}{row.contractNumber}
+                    {" · "}{row.reference}
+                    {" · "}{row.source === "CONTRACT" ? "Contract" : "Subscription"}
                   </p>
                 </div>
                 <Badge tone={stageTones[stage]}>{stageLabels[stage]}</Badge>
@@ -95,7 +99,11 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Value</dt>
-                  <dd>{money(row.contractValue, row.currencyCode)} · {row.renewalType === "AUTO_RENEW" ? "Auto-renews" : "Manual renewal"}</dd>
+                  <dd>
+                    {money(row.value, row.currencyCode)}
+                    {row.source === "SUBSCRIPTION" ? " per period" : ""}
+                    {" · "}{row.renewalType === "AUTO_RENEW" ? "Auto-renews" : "Manual renewal"}
+                  </dd>
                 </div>
               </dl>
             </article>
@@ -105,7 +113,8 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
 
       {rows.length === 0 && (
         <p className="rounded-xl border p-6">
-          No contract ends within {window} days. Try a wider window, or check that contracts carry an end date.
+          Nothing ends within {window} days. Try a wider window, or check that contracts and
+          subscriptions carry an end date - an open-ended subscription has no renewal to chase.
         </p>
       )}
 

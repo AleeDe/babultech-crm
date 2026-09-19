@@ -44,32 +44,85 @@ export async function getRenewalQueue(window: RenewalWindow = 90) {
 
   if (error) throw new Error("Could not load the renewal queue.");
 
-  const rows: RenewalRow[] = (data ?? []).map((raw) => {
-    const contract = raw as unknown as ContractRow;
-    const account = one(contract.account as never) as ContractRow["account"];
+  // Subscriptions end on a date and need renewing too. One that nobody renewed
+  // is lost revenue in exactly the way a lapsed contract is, so both belong in
+  // the same queue rather than in two places nobody checks.
+  const subscriptions = await db
+    .from("customer_subscription")
+    .select(
+      `id, subscriptionNumber, accountId, endDate, autoRenew, quantity, unitPrice, currencyCode, plan,
+       product:product ( name ),
+       account:account!inner ( name, ownerUserId, owner:app_user ( fullName, status ) )`,
+    )
+    // Only agreements that can still lapse: a cancelled or ended one has
+    // already been dealt with, and an open-ended one has nothing to renew.
+    .in("status", ["ACTIVE", "PAUSED"])
+    .not("endDate", "is", null)
+    .is("deletedAt", null)
+    .order("endDate", { ascending: true })
+    .limit(SCAN_LIMIT);
+
+  if (subscriptions.error) throw new Error("Could not load the renewal queue.");
+
+  const accountOf = (raw: unknown) => {
+    const account = one(raw as never) as
+      { name: string; ownerUserId: string | null; owner: unknown } | null;
     const owner = account ? (one(account.owner as never) as { fullName: string; status: string } | null) : null;
+    return {
+      name: account?.name ?? "Unknown account",
+      ownerUserId: account?.ownerUserId ?? null,
+      // A former or deactivated owner is the same as no owner for the purpose
+      // of knowing who will actually pick this up.
+      ownerName: owner && owner.status === "ACTIVE" ? owner.fullName : null,
+    };
+  };
+
+  const contractRows: RenewalRow[] = (data ?? []).map((raw) => {
+    const contract = raw as unknown as ContractRow;
     return renewalRow(
       {
-        id: contract.id, contractNumber: contract.contractNumber, name: contract.name,
+        source: "CONTRACT",
+        id: contract.id, reference: contract.contractNumber, name: contract.name,
         accountId: contract.accountId, endDate: contract.endDate,
         renewalType: contract.renewalType, noticePeriodDays: contract.noticePeriodDays,
-        contractValue: Number(contract.contractValue ?? 0), currencyCode: contract.currencyCode,
+        value: Number(contract.contractValue ?? 0), currencyCode: contract.currencyCode,
       },
-      {
-        name: account?.name ?? "Unknown account",
-        ownerUserId: account?.ownerUserId ?? null,
-        // A former or deactivated owner is the same as no owner for the purpose
-        // of knowing who will actually pick this up.
-        ownerName: owner && owner.status === "ACTIVE" ? owner.fullName : null,
-      },
+      accountOf(contract.account),
       now,
     );
   });
 
+  const subscriptionRows: RenewalRow[] = (subscriptions.data ?? []).map((raw) => {
+    const row = raw as Record<string, unknown>;
+    const product = one(row.product as never) as { name: string } | null;
+    const plan = row.plan as { name?: string } | null;
+    return renewalRow(
+      {
+        source: "SUBSCRIPTION",
+        id: row.id as string,
+        reference: row.subscriptionNumber as string,
+        name: `${product?.name ?? "Subscription"}${plan?.name ? ` — ${plan.name}` : ""}`,
+        accountId: row.accountId as string,
+        endDate: row.endDate as string,
+        renewalType: row.autoRenew ? "AUTO_RENEW" : "MANUAL",
+        // A subscription carries no agreed notice period, so it has no notice
+        // deadline. Showing one would invent a commitment nobody made.
+        noticePeriodDays: null,
+        // What one period is worth, which is the comparable figure next to a
+        // contract's total value.
+        value: Number(row.quantity ?? 0) * Number(row.unitPrice ?? 0),
+        currencyCode: row.currencyCode as string,
+      },
+      accountOf(row.account),
+      now,
+    );
+  });
+
+  const rows = [...contractRows, ...subscriptionRows];
   return {
     rows: byUrgency(withinWindow(rows, window)),
     scanned: rows.length,
-    truncated: rows.length >= SCAN_LIMIT,
+    truncated: contractRows.length >= SCAN_LIMIT || subscriptionRows.length >= SCAN_LIMIT,
     window,
     today: now,
   };
@@ -113,7 +166,7 @@ export async function getAccountHealth(): Promise<{
   if (ids.length === 0) return { rows: [], scanned: 0, truncated: false, today: now };
 
   // Everything the score needs, in one round trip each rather than per account.
-  const [invoices, cases, activities, contracts] = await Promise.all([
+  const [invoices, cases, activities, contracts, subscriptions] = await Promise.all([
     db.from("invoice")
       .select("accountId, dueDate, outstandingAmount")
       .in("accountId", ids)
@@ -135,6 +188,14 @@ export async function getAccountHealth(): Promise<{
       .in("accountId", ids)
       .in("status", ["ACTIVE", "EXPIRED"])
       .is("deletedAt", null),
+    // A subscription running out is the same kind of signal as a contract
+    // running out, so health counts both.
+    db.from("customer_subscription")
+      .select("accountId, endDate")
+      .in("accountId", ids)
+      .in("status", ["ACTIVE", "PAUSED"])
+      .not("endDate", "is", null)
+      .is("deletedAt", null),
   ]);
 
   const byAccount = <T extends Record<string, unknown>>(rows: T[] | null, key: string) => {
@@ -152,6 +213,7 @@ export async function getAccountHealth(): Promise<{
   const casesBy = byAccount(cases.data, "accountId");
   const activitiesBy = byAccount(activities.data, "relatedEntityId");
   const contractsBy = byAccount(contracts.data, "accountId");
+  const subscriptionsBy = byAccount(subscriptions.data, "accountId");
 
   const ninetyDaysAgo = new Date(Date.now() - 90 * 86_400_000).toISOString();
 
@@ -182,7 +244,7 @@ export async function getAccountHealth(): Promise<{
         .filter((c) => c.satisfactionScore != null && (c.closedAt as string | null) && (c.closedAt as string) >= ninetyDaysAgo)
         .map((c) => Number(c.satisfactionScore)),
       lastActivityAt: latest,
-      renewalDaysToEnd: (contractsBy.get(id) ?? []).map((c) =>
+      renewalDaysToEnd: [...(contractsBy.get(id) ?? []), ...(subscriptionsBy.get(id) ?? [])].map((c) =>
         Math.round((Date.parse(`${c.endDate as string}T00:00:00Z`) - Date.parse(`${now}T00:00:00Z`)) / 86_400_000),
       ),
       today: now,

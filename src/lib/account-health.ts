@@ -5,20 +5,31 @@ import { addMonths, monthStart } from "./recurring-billing";
 export const RENEWAL_WINDOWS = [30, 60, 90] as const;
 export type RenewalWindow = (typeof RENEWAL_WINDOWS)[number];
 
-export type RenewalSource = "CONTRACT";
+/**
+ * What kind of agreement is coming up for renewal. Both end on a date and both
+ * need somebody to act, so they belong in one queue - a subscription nobody
+ * renewed is lost revenue in exactly the way a lapsed contract is.
+ */
+export type RenewalSource = "CONTRACT" | "SUBSCRIPTION";
 
 export type RenewalRow = {
-  contractId: string;
-  contractNumber: string;
-  contractName: string;
+  source: RenewalSource;
+  /** The contract or subscription id, for linking to the right page. */
+  id: string;
+  /** Its human reference: a contract number or a subscription number. */
+  reference: string;
+  name: string;
   accountId: string;
   accountName: string;
   ownerUserId: string | null;
   ownerName: string | null;
   endDate: string;
+  /** MANUAL or AUTO_RENEW for a contract; a subscription's autoRenew flag. */
   renewalType: string | null;
+  /** Contracts carry an agreed notice period; subscriptions do not. */
   noticePeriodDays: number | null;
-  contractValue: number;
+  /** The contract value, or the subscription's period total. */
+  value: number;
   currencyCode: string;
   /** Days from today to the end date. Negative once it has already lapsed. */
   daysToEnd: number;
@@ -44,31 +55,33 @@ export function addDays(date: string, days: number) {
  * exactly the thing this queue exists to surface.
  */
 export function renewalRow(
-  contract: {
-    id: string; contractNumber: string; name: string; accountId: string;
+  agreement: {
+    source: RenewalSource;
+    id: string; reference: string; name: string; accountId: string;
     endDate: string; renewalType: string | null; noticePeriodDays: number | null;
-    contractValue: number; currencyCode: string;
+    value: number; currencyCode: string;
   },
   account: { name: string; ownerUserId: string | null; ownerName: string | null },
   today: string,
 ): RenewalRow {
-  const daysToEnd = daysBetween(today, contract.endDate);
-  const noticeBy = contract.noticePeriodDays != null
-    ? addDays(contract.endDate, -contract.noticePeriodDays)
+  const daysToEnd = daysBetween(today, agreement.endDate);
+  const noticeBy = agreement.noticePeriodDays != null
+    ? addDays(agreement.endDate, -agreement.noticePeriodDays)
     : null;
   return {
-    contractId: contract.id,
-    contractNumber: contract.contractNumber,
-    contractName: contract.name,
-    accountId: contract.accountId,
+    source: agreement.source,
+    id: agreement.id,
+    reference: agreement.reference,
+    name: agreement.name,
+    accountId: agreement.accountId,
     accountName: account.name,
     ownerUserId: account.ownerUserId,
     ownerName: account.ownerName,
-    endDate: contract.endDate,
-    renewalType: contract.renewalType,
-    noticePeriodDays: contract.noticePeriodDays,
-    contractValue: contract.contractValue,
-    currencyCode: contract.currencyCode,
+    endDate: agreement.endDate,
+    renewalType: agreement.renewalType,
+    noticePeriodDays: agreement.noticePeriodDays,
+    value: agreement.value,
+    currencyCode: agreement.currencyCode,
     daysToEnd,
     noticeBy,
     noticeUrgent: noticeBy != null && daysBetween(today, noticeBy) <= 7,
@@ -86,7 +99,10 @@ export function withinWindow(rows: RenewalRow[], window: RenewalWindow) {
  * month.
  */
 export function byUrgency(rows: RenewalRow[]) {
-  return [...rows].sort((a, b) => a.daysToEnd - b.daysToEnd || a.endDate.localeCompare(b.endDate));
+  return [...rows].sort((a, b) =>
+    a.daysToEnd - b.daysToEnd
+    || a.endDate.localeCompare(b.endDate)
+    || a.reference.localeCompare(b.reference));
 }
 
 export function renewalStage(row: RenewalRow): "LAPSED" | "NOTICE_DUE" | "DUE_SOON" | "UPCOMING" {
@@ -109,7 +125,7 @@ export type HealthInput = {
   recentSatisfaction: number[];
   /** The last time anyone logged an activity against the account. */
   lastActivityAt: string | null;
-  /** Contracts ending soon, as day counts. */
+  /** Contracts and subscriptions ending soon, as day counts. */
   renewalDaysToEnd: number[];
   today: string;
 };
