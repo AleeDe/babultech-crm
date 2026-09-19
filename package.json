@@ -14,6 +14,7 @@
     "db:preflight": "node scripts/preflight-supabase.mjs",
     "access:audit": "tsx scripts/audit-access.ts",
     "pilot:readiness": "tsx scripts/pilot-readiness.ts",
+    "check:pages": "node scripts/test-all-pages-browser.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "check:port": "node scripts/check-port.mjs"
