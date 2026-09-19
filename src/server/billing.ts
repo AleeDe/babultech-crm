@@ -4,6 +4,7 @@ import { commercialPlanSchema } from "@/lib/product-plans";
 import { withRateSnapshots } from "@/lib/rate-snapshots";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { picklistCode } from "@/lib/picklists";
 import Decimal from "decimal.js";
 import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
@@ -614,7 +615,7 @@ const paymentSchema = z.object({
   paymentDate: z.coerce.date(),
   amount: z.coerce.number().positive(),
   currencyCode: z.string().length(3).default("PKR"),
-  paymentMethod: z.enum(["BANK", "CHEQUE", "CASH", "CARD", "WALLET"]),
+  paymentMethod: picklistCode,
   referenceNumber: z.string().max(100).optional().nullable(),
   status: z.enum(["PENDING", "CLEARED"]).default("CLEARED"),
   notes: z.string().optional().nullable(),

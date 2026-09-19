@@ -19,6 +19,7 @@ import { RecordTabs } from "@/components/record-tabs";
 import { WorkLogPanel } from "./work-log";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { ProjectManagementProvider } from "./management-context";
+import { DeleteProjectButton } from "./delete-project-button";
 
 export default async function ProjectWorkspacePage({
   params,
@@ -94,6 +95,7 @@ export default async function ProjectWorkspacePage({
         {canManage && <Button asChild variant="outline">
           <Link href={`/projects/${project.id}/edit`}>Edit</Link>
         </Button>}
+        {canManage && <DeleteProjectButton projectId={project.id} name={`${project.projectNumber} ${project.name}`} />}
         <Button asChild variant="outline"><Link href={`/projects/${id}/content`}>Content calendar</Link></Button>
       </PageHeader>
 
@@ -121,6 +123,29 @@ export default async function ProjectWorkspacePage({
           sublabel="Approved time only"
           tone={margin >= 0 ? "success" : "danger"}
         /></>}
+      </div>
+
+      {/* Hours x rate - discount of the tasks in each category. These are what
+          the deal's Implementation and Training costs are made of. */}
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatTile
+          label="Implementation total"
+          value={formatMoney(project.implementationTotal ?? 0, project.currencyCode)}
+          sublabel={`${project.tasks.filter((t: Record<string, any>) => t.taskCategory === "IMPLEMENTATION" && t.status !== "CANCELLED").length} implementation task(s)`}
+        />
+        <StatTile
+          label="Training total"
+          value={formatMoney(project.trainingTotal ?? 0, project.currencyCode)}
+          sublabel={`${project.tasks.filter((t: Record<string, any>) => t.taskCategory === "TRAINING" && t.status !== "CANCELLED").length} training task(s)`}
+        />
+        {project.opportunity && (
+          <StatTile
+            label="Deal"
+            value={project.opportunity.opportunityNumber}
+            sublabel="Its implementation and training costs follow these totals"
+            href={`/opportunities/${project.opportunity.id}`}
+          />
+        )}
       </div>
 
       {(overBudget || overdueTasks.length > 0) && (

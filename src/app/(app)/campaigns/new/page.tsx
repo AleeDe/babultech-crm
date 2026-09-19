@@ -4,6 +4,7 @@ import { PageHeader, Forbidden, Input, Select, Textarea } from "@/components/ui"
 import { SelectWithAdd } from "@/components/select-with-add";
 import { DateRange, RangeStart, RangeEnd } from "@/components/date-range-fields";
 import { RecordForm, FormField } from "@/components/record-form";
+import { PicklistOptions } from "@/components/picklist";
 
 export default async function NewCampaignPage() {
   const me = await requireUser();
@@ -54,10 +55,7 @@ export default async function NewCampaignPage() {
                 <FormField label="Status" name="status"
             help="Where the campaign is up to. Only active campaigns appear when attributing new leads.">
                   <Select name="status" defaultValue="PLANNED">
-                    <option value="PLANNED">Planned</option>
-                    <option value="ACTIVE">Active</option>
-                    <option value="PAUSED">Paused</option>
-                    <option value="COMPLETED">Completed</option>
+                    <PicklistOptions list="campaign_status" fallback={["PLANNED", "ACTIVE", "PAUSED", "COMPLETED"]} within={["PLANNED", "ACTIVE", "PAUSED", "COMPLETED"]} current={"PLANNED"} />
                   </Select>
                 </FormField>
 

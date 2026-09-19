@@ -6,6 +6,8 @@ import { EmailSettingsPanel } from "./email-settings";
 import { getEmailSettings } from "@/server/email";
 import { SlaPolicies } from "./sla-policies";
 import { listSlaPolicies, listBusinessHours } from "@/server/sla";
+import { getPicklistsForAdmin } from "@/server/picklists";
+import { PicklistEditor } from "./picklist-editor";
 
 export default async function SettingsPage() {
   const me = await requireUser();
@@ -16,7 +18,10 @@ export default async function SettingsPage() {
     emailSettings,
     slaPolicies,
     businessHours,
-  ] = await Promise.all([getSettings(), getEmailSettings(), listSlaPolicies(), listBusinessHours()]);
+    picklists,
+  ] = await Promise.all([
+    getSettings(), getEmailSettings(), listSlaPolicies(), listBusinessHours(), getPicklistsForAdmin(),
+  ]);
 
   const everythingEmpty =
     currencies.length === 0 && taxRates.length === 0 && departments.length === 0;
@@ -38,6 +43,7 @@ export default async function SettingsPage() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
+        <PicklistEditor lists={picklists} />
         <SlaPolicies policies={slaPolicies} businessHours={businessHours} />
         <EmailSettingsPanel values={emailSettings} />
         <CurrencyList rows={currencies} />

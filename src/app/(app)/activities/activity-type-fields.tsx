@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Select } from "@/components/ui";
 import { FormField } from "@/components/record-form";
+import { PicklistOptions } from "@/components/picklist";
 import { MESSAGE_CHANNELS, type MessageChannel } from "@/lib/types";
 
 /** "SMS" wants expanding and "WhatsApp" has capitals humanize() would lose. */
@@ -40,11 +41,7 @@ export function ActivityTypeFields({
           value={type}
           onChange={(e) => setType(e.target.value)}
         >
-          <option value="TASK">Task</option>
-          <option value="CALL">Call</option>
-          <option value="MEETING">Meeting</option>
-          <option value="MESSAGE_SENT">Message sent</option>
-          <option value="REMINDER">Reminder</option>
+          <PicklistOptions list="activity_type" fallback={["TASK", "CALL", "MEETING", "MESSAGE_SENT", "REMINDER"]} current={type} />
         </Select>
       </FormField>
 

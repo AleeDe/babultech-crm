@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { picklistCode } from "@/lib/picklists";
 import Decimal from "decimal.js";
 import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
@@ -203,7 +204,7 @@ export async function approvePayout(payoutId: string): Promise<ActionResult> {
 const markPaidSchema = z.object({
   payoutId: z.string().uuid(),
   paymentDate: z.coerce.date(),
-  paymentMethod: z.enum(["BANK", "CHEQUE", "CASH", "CARD", "WALLET"]),
+  paymentMethod: picklistCode,
   bankAccountId: z.string().uuid().optional().nullable(),
   referenceNumber: z.string().max(100).optional().nullable(),
 });

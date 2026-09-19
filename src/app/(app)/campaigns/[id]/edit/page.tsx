@@ -3,6 +3,7 @@ import { getCampaign, updateCampaign, getCreateFormOptions } from "@/server/crm"
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { PageHeader, Forbidden, Input, Select, Textarea } from "@/components/ui";
 import { RecordForm, FormField } from "@/components/record-form";
+import { PicklistOptions } from "@/components/picklist";
 import { DateRange, RangeStart, RangeEnd } from "@/components/date-range-fields";
 
 const dateInput = (v: unknown) => (v ? String(v).slice(0, 10) : "");
@@ -60,10 +61,7 @@ export default async function EditCampaignPage({
             <FormField label="Status" name="status"
             help="Where the campaign is up to. Only active campaigns appear when attributing new leads.">
               <Select name="status" defaultValue={campaign.status}>
-                <option value="PLANNED">Planned</option>
-                <option value="ACTIVE">Active</option>
-                <option value="PAUSED">Paused</option>
-                <option value="COMPLETED">Completed</option>
+                <PicklistOptions list="campaign_status" fallback={["PLANNED", "ACTIVE", "PAUSED", "COMPLETED"]} within={["PLANNED", "ACTIVE", "PAUSED", "COMPLETED"]} current={campaign.status} />
               </Select>
             </FormField>
 

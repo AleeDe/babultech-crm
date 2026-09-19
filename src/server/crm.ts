@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { withRateSnapshots } from "@/lib/rate-snapshots";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { picklistCode } from "@/lib/picklists";
 import { supabaseServer } from "@/lib/supabase";
 import { createRecord, updateRecord, applyScope, applySearch, LIST_LIMIT } from "@/lib/db";
 import { one, toDecimal } from "@/lib/decimal";
@@ -24,7 +25,7 @@ import type { ActionResult } from "./partners";
 
 const accountSchema = z.object({
   name: z.string().min(1).max(200),
-  accountType: z.enum(["PROSPECT", "CUSTOMER", "PARTNER", "VENDOR", "COMPETITOR", "OTHER"]).default("PROSPECT"),
+  accountType: picklistCode.default("PROSPECT"),
   customerStatus: z.enum(["ONBOARDING", "ACTIVE", "AT_RISK", "CHURNED"]).optional().nullable(),
   parentAccountId: z.string().uuid().optional().nullable(),
   ownerUserId: z.string().uuid(),
@@ -239,7 +240,7 @@ const contactSchema = z.object({
   whatsapp: z.string().max(50).optional().nullable(),
   contactRole: z.string().max(100).optional().nullable(),
   isPrimary: z.boolean().default(false),
-  preferredChannel: z.enum(["EMAIL", "PHONE", "WHATSAPP"]).optional().nullable(),
+  preferredChannel: picklistCode.optional().nullable(),
   communicationConsent: z.boolean().default(false),
 });
 
@@ -403,7 +404,7 @@ const leadSchema = z.object({
   /** Credits a partner for the referral — carries through to the opportunity. */
   referredByPartnerId: z.string().uuid().optional().nullable(),
   ownerUserId: z.string().uuid(),
-  rating: z.enum(["HOT", "WARM", "COLD"]).optional().nullable(),
+  rating: picklistCode.optional().nullable(),
   estimatedValue: z.coerce.number().min(0).optional().nullable(),
   description: z.string().optional().nullable(),
   nextFollowUpAt: z.coerce.date().optional().nullable(),
@@ -849,7 +850,7 @@ export async function getFormOptions() {
 
   const db = await supabaseServer();
 
-  const [users, accounts, campaigns, plans, currencies, partners, contacts, products, taxRates] =
+  const [users, accounts, campaigns, plans, currencies, partners, contacts, products, taxRates, priceBooks] =
     await Promise.all([
       db
         .from("app_user")
@@ -898,6 +899,13 @@ export async function getFormOptions() {
         .select("id, name, ratePercent")
         .eq("active", true)
         .order("name"),
+      // Inactive books are included so a deal priced from one still shows it;
+      // the form offers only active ones for a new choice.
+      db
+        .from("price_book")
+        .select("id, productId, name, currencyCode, licenseCost, maintenanceCost, cloudCost, aiCost, active")
+        .is("deletedAt", null)
+        .order("name"),
     ]);
 
   return {
@@ -910,6 +918,7 @@ export async function getFormOptions() {
     contacts: contacts.data ?? [],
     products: products.data ?? [],
     taxRates: taxRates.data ?? [],
+    priceBooks: priceBooks.data ?? [],
   };
 }
 
@@ -1166,7 +1175,7 @@ export async function createProduct(
 }
 
 const activityBase = z.object({
-  activityType: z.enum(["TASK", "CALL", "MEETING", "REMINDER", "MESSAGE_SENT"]),
+  activityType: picklistCode,
   subject: z.string().min(1, "Give the activity a subject.").max(255),
   ownerUserId: z.string().uuid("Choose an owner."),
   description: z.string().optional().nullable(),

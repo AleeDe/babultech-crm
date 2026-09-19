@@ -7,6 +7,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
+import { PicklistOptions } from "@/components/picklist";
 import { humanize } from "@/lib/utils";
 
 const STATUSES = ["DRAFT", "PLANNING", "ACTIVE", "ON_HOLD", "AT_RISK", "COMPLETED", "CANCELLED"];
@@ -254,17 +255,13 @@ export function ProjectForm({
           <Field label="Status" required
             help="Where the project stands. Planning, active, on hold, or finished.">
             <Select name="status" required defaultValue={defaults?.status ?? "DRAFT"}>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>{humanize(s)}</option>
-              ))}
+              <PicklistOptions list="project_status" fallback={STATUSES} within={STATUSES} current={defaults?.status ?? "DRAFT"} />
             </Select>
           </Field>
           <Field label="Health" required hint="Your judgement, not a calculation."
             help="A traffic light for how delivery is actually going, separate from status. A project can be Active and Red at the same time - that is the point.">
             <Select name="health" required defaultValue={defaults?.health ?? "GREEN"}>
-              {HEALTH.map((h) => (
-                <option key={h} value={h}>{humanize(h)}</option>
-              ))}
+              <PicklistOptions list="health_status" fallback={HEALTH} within={HEALTH} current={defaults?.health ?? "GREEN"} />
             </Select>
           </Field>
           <Field label="Start date"
@@ -296,9 +293,7 @@ export function ProjectForm({
                 value={billingType}
                 onChange={(e) => setBillingType(e.target.value)}
               >
-                {BILLING.map((b) => (
-                  <option key={b} value={b}>{humanize(b)}</option>
-                ))}
+                <PicklistOptions list="billing_type" fallback={BILLING} within={BILLING} current={billingType} />
               </Select>
             </Field>
           )}

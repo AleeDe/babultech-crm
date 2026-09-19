@@ -8,6 +8,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
+import { PicklistOptions } from "@/components/picklist";
 import { humanize } from "@/lib/utils";
 
 const TYPES = ["INCIDENT", "REQUEST", "QUESTION", "PROBLEM"];
@@ -247,9 +248,7 @@ export function CaseForm({
             <Field label="Type" required
             help="The kind of issue - a fault, a question, a request. Decides how it is routed and reported.">
               <Select name="caseType" required defaultValue={defaults?.caseType ?? "INCIDENT"}>
-                {TYPES.map((t) => (
-                  <option key={t} value={t}>{humanize(t)}</option>
-                ))}
+                <PicklistOptions list="case_type" fallback={TYPES} current={defaults?.caseType ?? "INCIDENT"} />
               </Select>
             </Field>
             <Field label="Priority" required
@@ -260,17 +259,13 @@ export function CaseForm({
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
               >
-                {PRIORITIES.map((p) => (
-                  <option key={p} value={p}>{humanize(p)}</option>
-                ))}
+                <PicklistOptions list="priority" fallback={PRIORITIES} within={PRIORITIES} current={priority} />
               </Select>
             </Field>
             <Field label="Came in via" required
             help="How the customer reported it - email, phone, the portal. Useful for knowing which channels to staff.">
               <Select name="source" required defaultValue={defaults?.source ?? "EMAIL"}>
-                {SOURCES.map((s) => (
-                  <option key={s} value={s}>{humanize(s)}</option>
-                ))}
+                <PicklistOptions list="case_source" fallback={SOURCES} current={defaults?.source ?? "EMAIL"} />
               </Select>
             </Field>
             <Field
@@ -340,9 +335,7 @@ export function CaseForm({
             <Field label="Status" required
             help="Where the case stands. Moving it to Resolved stops the SLA timer.">
               <Select name="status" required value={status} onChange={(e) => setStatus(e.target.value)}>
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>{humanize(s)}</option>
-                ))}
+                <PicklistOptions list="case_status" fallback={STATUSES} within={STATUSES} current={status} />
               </Select>
             </Field>
           )}

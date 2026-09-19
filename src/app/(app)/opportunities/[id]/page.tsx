@@ -216,6 +216,48 @@ export default async function OpportunityDetailPage({
 
           <Card>
             <CardHeader>
+              <CardTitle>Product &amp; pricing</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <Row label="Product">
+                {opp.product ? (
+                  <Link href={`/products/${opp.product.id}`} className="hover:underline">{opp.product.name}</Link>
+                ) : "—"}
+              </Row>
+              <Row label="Price book">
+                {opp.priceBook ? (
+                  <>{opp.priceBook.name}{!opp.priceBook.active && <span className="text-muted-foreground"> (inactive)</span>}</>
+                ) : "—"}
+              </Row>
+              <Row label="License cost">{formatMoney(opp.licenseCost ?? 0, opp.currencyCode)}</Row>
+              <Row label="Maintenance cost">{formatMoney(opp.maintenanceCost ?? 0, opp.currencyCode)}</Row>
+              <Row label="Cloud cost">{formatMoney(opp.cloudCost ?? 0, opp.currencyCode)}</Row>
+              <Row label="AI cost">{formatMoney(opp.aiCost ?? 0, opp.currencyCode)}</Row>
+              <Row label="Implementation cost">{formatMoney(opp.implementationCost ?? 0, opp.currencyCode)}</Row>
+              <Row label="Training cost">{formatMoney(opp.trainingCost ?? 0, opp.currencyCode)}</Row>
+              <Row label="Discount %">{Number(opp.discountPercent ?? 0)}%</Row>
+              <div className="border-t pt-3">
+                <Row label="Total amount">
+                  <span className="font-semibold">{formatMoney(opp.totalAmount ?? 0, opp.currencyCode)}</span>
+                </Row>
+              </div>
+              {opp.projects.length > 0 && (
+                <Row label={opp.projects.length === 1 ? "Project" : "Projects"}>
+                  {opp.projects.map((p: Record<string, any>) => (
+                    <Link key={p.id} href={`/projects/${p.id}`} className="block hover:underline">
+                      {p.projectNumber} · {p.name}
+                    </Link>
+                  ))}
+                </Row>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Implementation and training costs follow the project&apos;s tasks.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">

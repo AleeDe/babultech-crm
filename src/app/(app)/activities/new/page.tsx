@@ -2,6 +2,7 @@ import { createActivity, getCreateFormOptions } from "@/server/crm";
 import { requireUser } from "@/lib/authz";
 import { PageHeader, Input, Select, Textarea } from "@/components/ui";
 import { RecordForm, FormField } from "@/components/record-form";
+import { PicklistOptions } from "@/components/picklist";
 import { ActivityTypeFields } from "../activity-type-fields";
 
 /**
@@ -117,10 +118,7 @@ export default async function NewActivityPage({
             <FormField label="Priority" name="priority"
             help="How urgent it is, which decides where it sorts in the owner's list.">
               <Select name="priority" defaultValue="MEDIUM">
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="CRITICAL">Critical</option>
+                <PicklistOptions list="priority" fallback={["LOW", "MEDIUM", "HIGH", "CRITICAL"]} within={["LOW", "MEDIUM", "HIGH", "CRITICAL"]} current={"MEDIUM"} />
               </Select>
             </FormField>
 

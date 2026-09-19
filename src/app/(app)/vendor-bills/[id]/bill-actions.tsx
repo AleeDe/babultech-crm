@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Send, Check, X, Banknote } from "lucide-react";
 import { Button, Alert, Input, Select, Field } from "@/components/ui";
+import { PicklistOptions } from "@/components/picklist";
 import { setVendorBillStatus, recordVendorPayment } from "@/server/payables";
 
 /**
@@ -145,11 +146,7 @@ export function BillActions({
 
             <Field label="Method" required>
               <Select name="paymentMethod" defaultValue="BANK">
-                <option value="BANK">Bank transfer</option>
-                <option value="CHEQUE">Cheque</option>
-                <option value="CASH">Cash</option>
-                <option value="CARD">Card</option>
-                <option value="WALLET">Wallet</option>
+                <PicklistOptions list="payment_method" fallback={["BANK", "CHEQUE", "CASH", "CARD", "WALLET"]} />
               </Select>
             </Field>
 

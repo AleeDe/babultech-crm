@@ -10,7 +10,14 @@ import {
   Button, Card, CardHeader, CardTitle, CardContent, Field, Input,
   Select, Badge, Alert, Table, THead, TBody, TR, TH, TD,
 } from "@/components/ui";
+import { PicklistOptions } from "@/components/picklist";
 import { formatPercent, formatMoney, humanize } from "@/lib/utils";
+
+const ALL_STAGES = [
+  "DISCOVERY", "QUALIFICATION", "REQUIREMENTS", "SOLUTION_PROPOSED",
+  "QUOTE_SUBMITTED", "NEGOTIATION", "VERBAL_CONFIRMATION",
+  "CLOSED_WON", "CLOSED_LOST", "ON_HOLD",
+];
 
 interface PartnerLink {
   id: string;
@@ -280,11 +287,17 @@ export function StageControl({
       });
 
       if (result.ok) {
-        setSuccess(
-          result.data.commissionsCreated > 0
-            ? `Stage updated. ${result.data.commissionsCreated} commission record${result.data.commissionsCreated === 1 ? "" : "s"} accrued.`
-            : "Stage updated.",
-        );
+        const parts = ["Stage updated."];
+        if (result.data.commissionsCreated > 0) {
+          parts.push(`${result.data.commissionsCreated} commission record${result.data.commissionsCreated === 1 ? "" : "s"} accrued.`);
+        }
+        if (result.data.project) {
+          parts.push(`Project ${result.data.project.projectNumber} created for delivery.`);
+        }
+        if (result.data.projectError) {
+          parts.push(`The delivery project could not be created: ${result.data.projectError}`);
+        }
+        setSuccess(parts.join(" "));
         router.refresh();
       } else {
         setError(result.error);
@@ -307,13 +320,7 @@ export function StageControl({
           <Field label="Stage"
             help="Where the deal stands from the partner's point of view.">
             <Select name="stage" value={stage} onChange={(e) => setStage(e.target.value)}>
-              {[
-                "DISCOVERY", "QUALIFICATION", "REQUIREMENTS", "SOLUTION_PROPOSED",
-                "QUOTE_SUBMITTED", "NEGOTIATION", "VERBAL_CONFIRMATION",
-                "CLOSED_WON", "CLOSED_LOST", "ON_HOLD",
-              ].map((s) => (
-                <option key={s} value={s}>{humanize(s)}</option>
-              ))}
+              <PicklistOptions list="opportunity_stage" fallback={ALL_STAGES} within={ALL_STAGES} current={stage} />
             </Select>
           </Field>
 

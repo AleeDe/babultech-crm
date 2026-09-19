@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { PageGuide } from "@/components/page-guide";
 import { requireUser, can, AuthorizationError, PERMISSIONS } from "@/lib/authz";
+import { PicklistProvider } from "@/components/picklist";
+import { getPicklistMap } from "@/server/picklists";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   try {
@@ -10,6 +12,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // External partner logins never see the internal app, whatever they type
     // in the address bar. The portal layout enforces the reverse.
     if (user.partnerId) redirect("/portal");
+
+    // The configurable dropdown values, loaded once for every form.
+    const picklists = await getPicklistMap();
 
     return (
       <AppShell
@@ -22,7 +27,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             forgotten. The guide keys off the pathname, so it knows which screen
             it is on without being told. */}
         <PageGuide />
-        {children}
+        <PicklistProvider value={picklists}>{children}</PicklistProvider>
       </AppShell>
     );
   } catch (err) {

@@ -7,6 +7,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
 } from "@/components/ui";
+import { PicklistOptions } from "@/components/picklist";
 import { cn, formatMoney, formatDate, humanize } from "@/lib/utils";
 
 const METHODS = ["BANK", "CHEQUE", "CASH", "CARD", "WALLET"];
@@ -163,9 +164,7 @@ export function PaymentForm({
           <Field label="Method" required
             help="How it arrived - bank transfer, cheque, cash. Helps when reconciling the statement.">
             <Select name="paymentMethod" required defaultValue="BANK">
-              {METHODS.map((m) => (
-                <option key={m} value={m}>{humanize(m)}</option>
-              ))}
+              <PicklistOptions list="payment_method" fallback={METHODS} />
             </Select>
           </Field>
           <Field label="Reference"

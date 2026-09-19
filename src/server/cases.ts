@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { picklistCode } from "@/lib/picklists";
 import { supabaseServer } from "@/lib/supabase";
 import { createRecord, updateRecord } from "@/lib/db";
 import { one } from "@/lib/decimal";
@@ -37,9 +38,9 @@ const caseSchema = z.object({
   slaPolicyId: z.string().uuid().optional().nullable(),
   projectId: z.string().uuid().optional().nullable(),
   contractId: z.string().uuid().optional().nullable(),
-  caseType: z.enum(["INCIDENT", "REQUEST", "QUESTION", "PROBLEM"]).default("INCIDENT"),
+  caseType: picklistCode.default("INCIDENT"),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
-  source: z.enum(["EMAIL", "PORTAL", "PHONE", "WHATSAPP", "INTERNAL"]).default("EMAIL"),
+  source: picklistCode.default("EMAIL"),
 });
 
 /**

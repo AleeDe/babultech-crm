@@ -7,6 +7,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
+import { PicklistOptions } from "@/components/picklist";
 import { formatMoney, humanize } from "@/lib/utils";
 
 const STATUSES = ["DRAFT", "UNDER_REVIEW", "SENT_FOR_SIGNATURE", "ACTIVE", "EXPIRED", "TERMINATED", "RENEWED"];
@@ -245,9 +246,7 @@ export function ContractForm({
           <Field label="Status" required
             help="Where the contract stands. Only an active contract should be billed against.">
             <Select name="status" required value={status} onChange={(e) => setStatus(e.target.value)}>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>{humanize(s)}</option>
-              ))}
+              <PicklistOptions list="contract_status" fallback={STATUSES} within={STATUSES} current={status} />
             </Select>
           </Field>
           <Field label="Start date" required
@@ -291,18 +290,14 @@ export function ContractForm({
             help="How often the customer is invoiced under it - monthly, quarterly, annually, or once.">
             <Select name="billingFrequency" defaultValue={defaults?.billingFrequency ?? ""}>
               <option value="">Not set</option>
-              {FREQUENCIES.map((f) => (
-                <option key={f} value={f}>{humanize(f)}</option>
-              ))}
+              <PicklistOptions list="billing_frequency" fallback={FREQUENCIES} within={FREQUENCIES} current={defaults?.billingFrequency ?? ""} />
             </Select>
           </Field>
           <Field label="Renewal"
             help="Whether it renews automatically or has to be re-signed each term.">
             <Select name="renewalType" defaultValue={defaults?.renewalType ?? ""}>
               <option value="">Not set</option>
-              {RENEWALS.map((r) => (
-                <option key={r} value={r}>{humanize(r)}</option>
-              ))}
+              <PicklistOptions list="renewal_type" fallback={RENEWALS} within={RENEWALS} current={defaults?.renewalType ?? ""} />
             </Select>
           </Field>
           <Field label="Notice period (days)" hint="Drives the renewal warning on the contract."

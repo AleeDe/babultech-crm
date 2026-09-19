@@ -3,6 +3,7 @@ import { getActivity, updateActivity, getCreateFormOptions } from "@/server/crm"
 import { requireUser } from "@/lib/authz";
 import { PageHeader, Input, Select, Textarea, Forbidden } from "@/components/ui";
 import { RecordForm, FormField } from "@/components/record-form";
+import { PicklistOptions } from "@/components/picklist";
 import { ActivityTypeFields } from "../../activity-type-fields";
 
 /** datetime-local wants "YYYY-MM-DDTHH:mm", not a full ISO string. */
@@ -56,19 +57,14 @@ export default async function EditActivityPage({
           <div className="grid gap-5 sm:grid-cols-2">
             <FormField label="Status" name="status">
               <Select name="status" defaultValue={activity.status}>
-                <option value="OPEN">Open</option>
-                <option value="COMPLETED">Completed</option>
-                <option value="CANCELLED">Cancelled</option>
+                <PicklistOptions list="activity_status" fallback={["OPEN", "COMPLETED", "CANCELLED"]} within={["OPEN", "COMPLETED", "CANCELLED"]} current={activity.status} />
               </Select>
             </FormField>
 
             <FormField label="Priority" name="priority"
             help="How urgent it is, which decides where it sorts in the owner's list.">
               <Select name="priority" defaultValue={activity.priority}>
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="CRITICAL">Critical</option>
+                <PicklistOptions list="priority" fallback={["LOW", "MEDIUM", "HIGH", "CRITICAL"]} within={["LOW", "MEDIUM", "HIGH", "CRITICAL"]} current={activity.priority} />
               </Select>
             </FormField>
           </div>

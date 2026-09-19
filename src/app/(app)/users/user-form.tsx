@@ -8,6 +8,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Alert, Badge,
 } from "@/components/ui";
+import { PicklistOptions } from "@/components/picklist";
 import { cn, humanize } from "@/lib/utils";
 
 const STATUSES = ["ACTIVE", "INACTIVE", "SUSPENDED"];
@@ -188,9 +189,7 @@ export function UserForm({
           <Field label="Status" required
             help="Active people can sign in. Set to Inactive to cut off access without deleting their history.">
             <Select name="status" required defaultValue={defaults?.status ?? "ACTIVE"} className="sm:w-56">
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>{humanize(s)}</option>
-              ))}
+              <PicklistOptions list="user_status" fallback={STATUSES} within={STATUSES} current={defaults?.status ?? "ACTIVE"} />
             </Select>
           </Field>
         </CardContent>

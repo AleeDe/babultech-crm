@@ -8,6 +8,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
+import { PicklistOptions } from "@/components/picklist";
 import { formatMoney, humanize } from "@/lib/utils";
 
 const STAGES = [
@@ -32,6 +33,17 @@ export interface OpportunityFormOptions {
     defaultTaxRateId: string | null;
   }[];
   taxRates: { id: string; name: string; ratePercent: string }[];
+  priceBooks: {
+    id: string;
+    productId: string;
+    name: string;
+    currencyCode: string;
+    licenseCost: string;
+    maintenanceCost: string;
+    cloudCost: string;
+    aiCost: string;
+    active: boolean;
+  }[];
 }
 
 export interface LineDefaults {
@@ -57,8 +69,24 @@ export interface OpportunityDefaults {
   leadSource: string | null;
   nextStep: string | null;
   description: string | null;
+  productId: string | null;
+  priceBookId: string | null;
+  discountPercent: string;
+  licenseCost: string;
+  maintenanceCost: string;
+  cloudCost: string;
+  aiCost: string;
+  implementationCost: string;
+  trainingCost: string;
   lines: LineDefaults[];
 }
+
+const BOOK_COSTS = [
+  ["licenseCost", "License cost"],
+  ["maintenanceCost", "Maintenance cost"],
+  ["cloudCost", "Cloud cost"],
+  ["aiCost", "AI cost"],
+] as const;
 
 interface LineRow {
   key: string;
@@ -111,6 +139,46 @@ export function OpportunityForm({
   );
 
   const editing = Boolean(defaults);
+
+  const [productId, setProductId] = useState(defaults?.productId ?? "");
+  const [priceBookId, setPriceBookId] = useState(defaults?.priceBookId ?? "");
+  const [discountPercent, setDiscountPercent] = useState(
+    defaults ? String(Number(defaults.discountPercent)) : "0",
+  );
+
+  // Books for the chosen product. Inactive ones are only listed when this deal
+  // already uses them - a new choice is always from the current offers.
+  const booksForProduct = options.priceBooks.filter(
+    (b) => b.productId === productId && (b.active || b.id === defaults?.priceBookId),
+  );
+
+  // The deal keeps the costs it was priced at. Only a different book shows,
+  // and on save copies, that book's current costs.
+  const bookCosts = useMemo(() => {
+    if (!priceBookId) return { licenseCost: 0, maintenanceCost: 0, cloudCost: 0, aiCost: 0 };
+    if (defaults && priceBookId === defaults.priceBookId) {
+      return {
+        licenseCost: Number(defaults.licenseCost),
+        maintenanceCost: Number(defaults.maintenanceCost),
+        cloudCost: Number(defaults.cloudCost),
+        aiCost: Number(defaults.aiCost),
+      };
+    }
+    const book = options.priceBooks.find((b) => b.id === priceBookId);
+    return {
+      licenseCost: Number(book?.licenseCost ?? 0),
+      maintenanceCost: Number(book?.maintenanceCost ?? 0),
+      cloudCost: Number(book?.cloudCost ?? 0),
+      aiCost: Number(book?.aiCost ?? 0),
+    };
+  }, [priceBookId, defaults, options.priceBooks]);
+
+  const implementationCost = Number(defaults?.implementationCost ?? 0);
+  const trainingCost = Number(defaults?.trainingCost ?? 0);
+  const costSum =
+    bookCosts.licenseCost + bookCosts.maintenanceCost + bookCosts.cloudCost + bookCosts.aiCost +
+    implementationCost + trainingCost;
+  const totalAmount = Math.round(costSum * (1 - (Number(discountPercent) || 0) / 100) * 100) / 100;
 
   const contactsForAccount = useMemo(
     () => options.contacts.filter((c) => c.accountId === accountId),
@@ -171,6 +239,9 @@ export function OpportunityForm({
       leadSource: get("leadSource"),
       nextStep: get("nextStep"),
       description: get("description"),
+      productId: productId || null,
+      priceBookId: priceBookId || null,
+      discountPercent: discountPercent === "" ? 0 : discountPercent,
       lines: usable.map((l) => ({
         productId: l.productId,
         quantity: l.quantity,
@@ -252,9 +323,7 @@ export function OpportunityForm({
             <Field label="Stage" required hint="After this, the stage moves only from the deal page - the close rules live there."
             help="How far along the deal is. Moving it to Closed Won is what makes it count as revenue.">
               <Select name="stage" required defaultValue="DISCOVERY">
-                {STAGES.map((s) => (
-                  <option key={s} value={s}>{humanize(s)}</option>
-                ))}
+                <PicklistOptions list="opportunity_stage" fallback={STAGES} within={STAGES} />
               </Select>
             </Field>
           )}
@@ -262,9 +331,7 @@ export function OpportunityForm({
           <Field label="Deal type" required
             help="Whether this is new business or expansion of an existing customer. Worth splitting in reporting.">
             <Select name="opportunityType" required defaultValue={defaults?.opportunityType ?? "NEW"}>
-              {TYPES.map((t) => (
-                <option key={t} value={t}>{humanize(t)}</option>
-              ))}
+              <PicklistOptions list="opportunity_type" fallback={TYPES} current={defaults?.opportunityType ?? "NEW"} />
             </Select>
           </Field>
           <Field label="Expected close date" required error={fieldErrors.expectedCloseDate?.[0]}
@@ -297,8 +364,88 @@ export function OpportunityForm({
           </Field>
           <Field label="Lead source"
             help="Where the deal originally came from. Carried over automatically if it started as a lead.">
-            <Input name="leadSource" defaultValue={defaults?.leadSource ?? ""} />
+            <Select name="leadSource" defaultValue={defaults?.leadSource ?? ""}>
+              <option value="">Not set</option>
+              <PicklistOptions list="lead_source" current={defaults?.leadSource} />
+            </Select>
           </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Product &amp; pricing</CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Pick the product and the price book this customer is on. Implementation and training
+            costs come from the project&apos;s tasks once the deal is won.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label="Product" error={fieldErrors.productId?.[0]}
+              help="The product being sold. Winning the deal creates its delivery project.">
+              <Select
+                value={productId}
+                onChange={(e) => { setProductId(e.target.value); setPriceBookId(""); }}
+              >
+                <option value="">None</option>
+                {options.products.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name} ({p.productCode})</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Price book" error={fieldErrors.priceBookId?.[0]}
+              hint={productId && booksForProduct.length === 0 ? "This product has no active price books yet." : undefined}
+              help="Which of the product's price books this customer gets. Its costs are fixed on the deal when chosen.">
+              <Select
+                value={priceBookId}
+                disabled={!productId}
+                onChange={(e) => setPriceBookId(e.target.value)}
+              >
+                <option value="">None</option>
+                {booksForProduct.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}{b.active ? "" : " (inactive)"}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Discount %" error={fieldErrors.discountPercent?.[0]}
+              help="Taken off the sum of all six costs.">
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                value={discountPercent}
+                onChange={(e) => setDiscountPercent(e.target.value)}
+              />
+            </Field>
+          </div>
+
+          <dl className="grid gap-x-6 gap-y-2 rounded-md border bg-muted/30 p-4 text-sm sm:grid-cols-2">
+            {BOOK_COSTS.map(([key, label]) => (
+              <div key={key} className="flex justify-between gap-4">
+                <dt className="text-muted-foreground">{label}</dt>
+                <dd className="tabular">{formatMoney(bookCosts[key], currencyCode)}</dd>
+              </div>
+            ))}
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">Implementation cost</dt>
+              <dd className="tabular">{formatMoney(implementationCost, currencyCode)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">Training cost</dt>
+              <dd className="tabular">{formatMoney(trainingCost, currencyCode)}</dd>
+            </div>
+            <div className="flex justify-between gap-4 border-t pt-2 sm:col-span-2">
+              <dt className="font-medium">
+                Total amount
+                {Number(discountPercent) > 0 && (
+                  <span className="ml-1 font-normal text-muted-foreground">(after {Number(discountPercent)}% discount)</span>
+                )}
+              </dt>
+              <dd className="font-semibold tabular">{formatMoney(totalAmount, currencyCode)}</dd>
+            </div>
+          </dl>
         </CardContent>
       </Card>
 
@@ -332,7 +479,7 @@ export function OpportunityForm({
               ))}
             </Select>
           </Field>
-          <div className="flex items-end">
+          <div className="flex flex-wrap items-end gap-2">
             <Button
               type="button"
               variant="outline"
@@ -340,6 +487,14 @@ export function OpportunityForm({
               onClick={() => setAmount(linesTotal.toFixed(2))}
             >
               Use line total ({formatMoney(linesTotal, currencyCode)})
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={totalAmount <= 0}
+              onClick={() => setAmount(totalAmount.toFixed(2))}
+            >
+              Use total amount ({formatMoney(totalAmount, currencyCode)})
             </Button>
           </div>
         </CardContent>

@@ -6,6 +6,8 @@ import { priceBasis } from "@/lib/product-options";
 import type { ProductPlan } from "@/lib/product-plans";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { getProductEconomics } from "@/server/crm";
+import { listPriceBooks } from "@/server/price-books";
+import { PriceBooksPanel } from "./price-books";
 import {
   PageHeader, Button, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Forbidden
@@ -24,7 +26,11 @@ export default async function ProductDetailPage({
 
   // What this product cost to build against what it has earned — the question
   // the project/product link exists to answer.
-  const economics = await getProductEconomics(id);
+  const [economics, priceBooks, currencyRes] = await Promise.all([
+    getProductEconomics(id),
+    listPriceBooks(id),
+    db.from("currency").select("code, name").eq("active", true).order("code"),
+  ]);
 
   const { data: productRow } = await db
     .from("product")
@@ -111,6 +117,13 @@ export default async function ProductDetailPage({
         <StatTile label="In open pipeline" value={formatMoney(pipelineValue)} sublabel={`${product.opportunityLines.length} deal line(s)`} tone="info" />
         <StatTile label="Invoiced" value={formatMoney(invoicedValue)} sublabel={`${product.invoiceLines.length} invoice line(s)`} />
       </div>
+
+      <PriceBooksPanel
+        productId={product.id}
+        books={priceBooks}
+        currencies={currencyRes.data ?? []}
+        canEdit={can(_me, PERMISSIONS.OPPORTUNITY_WRITE)}
+      />
 
       <Card className="mt-6">
         <CardHeader><CardTitle>Pricing plans</CardTitle></CardHeader>

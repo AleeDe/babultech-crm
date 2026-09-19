@@ -7,6 +7,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
+import { PicklistOptions } from "@/components/picklist";
 import { humanize } from "@/lib/utils";
 
 const ACCOUNT_TYPES = ["PROSPECT", "CUSTOMER", "PARTNER", "VENDOR", "COMPETITOR", "OTHER"];
@@ -123,9 +124,7 @@ export function AccountForm({
           <Field label="Account type" required hint="Setting this to Partner is what allows a partner record against it."
             help="Whether this is a prospect you are selling to, an existing customer, a partner or a supplier. It decides where the account shows up.">
             <Select name="accountType" required defaultValue={defaults?.accountType ?? "PROSPECT"}>
-              {ACCOUNT_TYPES.map((t) => (
-                <option key={t} value={t}>{humanize(t)}</option>
-              ))}
+              <PicklistOptions list="account_type" fallback={ACCOUNT_TYPES} current={defaults?.accountType ?? "PROSPECT"} />
             </Select>
           </Field>
           <Field label="Owner" required error={fieldErrors.ownerUserId?.[0]}
@@ -149,7 +148,10 @@ export function AccountForm({
           </Field>
           <Field label="Industry"
             help="The sector they operate in. Used for reporting and for finding similar customers.">
-            <Input name="industry" defaultValue={defaults?.industry ?? ""} placeholder="Manufacturing" />
+            <Select name="industry" defaultValue={defaults?.industry ?? ""}>
+              <option value="">Not set</option>
+              <PicklistOptions list="industry" current={defaults?.industry} />
+            </Select>
           </Field>
           <Field label="Main phone"
             help="The company's general number, not a personal mobile. Contacts hold individual numbers.">
@@ -175,18 +177,14 @@ export function AccountForm({
             help="For customers only: how healthy the relationship is - onboarding, active, at risk, or gone.">
             <Select name="customerStatus" defaultValue={defaults?.customerStatus ?? ""}>
               <option value="">Not set</option>
-              {CUSTOMER_STATUSES.map((s) => (
-                <option key={s} value={s}>{humanize(s)}</option>
-              ))}
+              <PicklistOptions list="customer_status" fallback={CUSTOMER_STATUSES} within={CUSTOMER_STATUSES} current={defaults?.customerStatus ?? ""} />
             </Select>
           </Field>
           <Field label="Health"
             help="A traffic light for how the relationship is going. Amber and red are worth a conversation well before renewal.">
             <Select name="customerHealth" defaultValue={defaults?.customerHealth ?? ""}>
               <option value="">Not set</option>
-              {HEALTH.map((h) => (
-                <option key={h} value={h}>{humanize(h)}</option>
-              ))}
+              <PicklistOptions list="health_status" fallback={HEALTH} within={HEALTH} current={defaults?.customerHealth ?? ""} />
             </Select>
           </Field>
           <Field label="Credit limit"

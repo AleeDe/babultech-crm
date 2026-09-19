@@ -4,7 +4,10 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 import { Select, Input, Button, Alert } from "@/components/ui";
+import { PicklistOptions } from "@/components/picklist";
 import { updateMyTaskProgress } from "@/server/my-work";
+
+const MY_TASK_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "UNDER_REVIEW", "COMPLETED"];
 
 /**
  * Inline status and percentage editor for a task on the My Work list.
@@ -54,11 +57,7 @@ export function TaskProgress({
   return (
     <form action={save} className="flex flex-wrap items-center gap-2">
       <Select name="status" defaultValue={status} className="h-8 w-40 text-xs">
-        <option value="NOT_STARTED">Not started</option>
-        <option value="IN_PROGRESS">In progress</option>
-        <option value="BLOCKED">Blocked</option>
-        <option value="UNDER_REVIEW">Under review</option>
-        <option value="COMPLETED">Completed</option>
+        <PicklistOptions list="task_status" fallback={MY_TASK_STATUSES} within={MY_TASK_STATUSES} current={status} />
       </Select>
       <Input
         name="completionPercent"

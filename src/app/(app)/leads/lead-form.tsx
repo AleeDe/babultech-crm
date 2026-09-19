@@ -7,6 +7,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
+import { PicklistOptions } from "@/components/picklist";
 import { humanize } from "@/lib/utils";
 
 /** CONVERTED is absent by design — a lead becomes converted only through conversion. */
@@ -161,7 +162,10 @@ export function LeadForm({
           </Field>
           <Field label="Industry"
             help="The sector they operate in. Used for reporting on where your leads come from.">
-            <Input name="industry" defaultValue={defaults?.industry ?? ""} />
+            <Select name="industry" defaultValue={defaults?.industry ?? ""}>
+              <option value="">Not set</option>
+              <PicklistOptions list="industry" current={defaults?.industry} />
+            </Select>
           </Field>
         </CardContent>
       </Card>
@@ -175,9 +179,7 @@ export function LeadForm({
             help="How they first reached you - a referral, the website, an event. This is what tells you which channels are worth the spend.">
             <Select name="leadSource" defaultValue={defaults?.leadSource ?? ""}>
               <option value="">Not stated</option>
-              {SOURCES.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
+              <PicklistOptions list="lead_source" fallback={SOURCES} current={defaults?.leadSource ?? ""} />
             </Select>
           </Field>
           <Field label="Campaign"
@@ -228,9 +230,7 @@ export function LeadForm({
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
               >
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>{humanize(s)}</option>
-                ))}
+                <PicklistOptions list="lead_status" fallback={STATUSES} within={STATUSES} current={status} />
               </Select>
             </Field>
           )}
@@ -239,9 +239,7 @@ export function LeadForm({
             help="Your own judgement of how promising this is. Hot, Warm and Cold are a rough sort, not a formula.">
             <Select name="rating" defaultValue={defaults?.rating ?? ""}>
               <option value="">Not rated</option>
-              {RATINGS.map((r) => (
-                <option key={r} value={r}>{humanize(r)}</option>
-              ))}
+              <PicklistOptions list="lead_rating" fallback={RATINGS} current={defaults?.rating ?? ""} />
             </Select>
           </Field>
           <Field label="Estimated value"

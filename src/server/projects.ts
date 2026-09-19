@@ -13,6 +13,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionResult } from "./partners";
 import { MEMBER_PUBLIC_COLUMNS, TIME_PUBLIC_COLUMNS, withRateSnapshots } from "@/lib/rate-snapshots";
 import { getProjectPeople } from "./project-directory";
+import { TASK_CATEGORIES } from "@/lib/picklists";
 
 /** The slice of the Supabase client the roll-up helper needs. */
 type Db = Pick<SupabaseClient, "from">;
@@ -274,6 +275,55 @@ export async function updateProject(
   }
 }
 
+/**
+ * Deletes a project.
+ *
+ * A soft delete, recorded in the project's history: its tasks, time and
+ * documents stay in the database, so nothing that referenced it breaks, and the
+ * deal's implementation and training costs drop it straight away.
+ *
+ * Refused once money has been raised against it - an invoice pointing at a
+ * vanished project is a hole in the books. Cancel the project instead.
+ */
+export async function deleteProject(id: string): Promise<ActionResult> {
+  const _auth = await authorize(PERMISSIONS.PROJECT_MANAGE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const user = _auth.user;
+
+  try {
+    const db = await supabaseServer();
+
+    const { data: project } = await db
+      .from("project")
+      .select("id, deletedAt")
+      .eq("id", id)
+      .maybeSingle();
+    if (!project || project.deletedAt) return { ok: false, error: "That project no longer exists." };
+
+    const { count: invoices } = await db
+      .from("invoice")
+      .select("id", { count: "exact", head: true })
+      .eq("projectId", id)
+      .is("deletedAt", null)
+      .neq("status", "CANCELLED");
+
+    if ((invoices ?? 0) > 0) {
+      return {
+        ok: false,
+        error: `${invoices} invoice(s) were raised on this project, so it cannot be deleted. Set its status to Cancelled instead.`,
+      };
+    }
+
+    await updateRecord("project", id, { deletedAt: new Date().toISOString() }, "Project", user.id);
+
+    revalidatePath("/projects");
+    revalidatePath("/opportunities");
+    return { ok: true, data: undefined };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Could not delete the project." };
+  }
+}
+
 export async function listProjects(filters?: {
   status?: string;
   search?: string;
@@ -382,6 +432,7 @@ export async function getProject(id: string) {
        cases:support_case ( id, caseNumber, subject, status, priority )`,
     )
     .eq("id", id)
+    .is("deletedAt", null)
     .maybeSingle();
 
   if (error) throw new Error(`Could not load project: ${error.message}`);
@@ -703,7 +754,27 @@ const taskSchema = z.object({
   completionPercent: z.coerce.number().min(0).max(100).optional().nullable(),
   billable: z.boolean().default(true),
   acceptanceCriteria: z.string().optional().nullable(),
+  // Costing. Hours is estimatedHours; the line total (hours x rate - discount)
+  // is computed by the database, and the Implementation / Training totals on
+  // the project and its deal follow from it.
+  taskType: z.string().trim().max(100).optional().nullable(),
+  taskCategory: z.enum(TASK_CATEGORIES).optional().nullable(),
+  rate: z.coerce.number().min(0, "Rate cannot be negative.").optional().nullable(),
+  discountAmount: z.coerce.number().min(0, "Discount cannot be negative.").optional().nullable(),
 });
+
+/** A discount larger than the work it is taken from would make a negative cost. */
+function discountProblem(data: { estimatedHours?: number | null; rate?: number | null; discountAmount?: number | null }) {
+  const gross = (data.estimatedHours ?? 0) * (data.rate ?? 0);
+  if ((data.discountAmount ?? 0) > gross) {
+    return {
+      ok: false as const,
+      error: "The discount is larger than hours x rate.",
+      fieldErrors: { discountAmount: ["Cannot exceed hours x rate."] },
+    };
+  }
+  return null;
+}
 
 async function assertAssigneeIsOnProject(
   db: Db,
@@ -782,6 +853,9 @@ export async function createTask(
     };
   }
 
+  const discountError = discountProblem(data);
+  if (discountError) return discountError;
+
   try {
     const db = await supabaseServer();
 
@@ -841,6 +915,9 @@ export async function updateTask(
       fieldErrors: { dueDate: ["Must be on or after the start date."] },
     };
   }
+
+  const discountError = discountProblem(data);
+  if (discountError) return discountError;
 
   try {
     const db = await supabaseServer();

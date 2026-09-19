@@ -15,6 +15,8 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert, Badge, statusTone, Table, THead, TBody, TR, TH, TD,
 } from "@/components/ui";
+import { PicklistOptions } from "@/components/picklist";
+import { TASK_CATEGORIES } from "@/lib/picklists";
 import { cn, formatDate, formatMoney, formatPercent, humanize } from "@/lib/utils";
 import { FormDialog } from "@/components/form-dialog";
 import { RichTextEditor } from "@/components/rich-text-editor";
@@ -56,6 +58,11 @@ export interface Task {
   completionPercent: string;
   billable: boolean;
   acceptanceCriteria: string | null;
+  taskType: string | null;
+  taskCategory: string | null;
+  rate: string | null;
+  discountAmount: string | null;
+  lineTotal: string | null;
   _count: { subtasks: number };
 }
 
@@ -93,6 +100,37 @@ interface UserOption {
 }
 
 const dateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
+
+/**
+ * Hours, rate and discount, with the line total they make. The same sum the
+ * database stores in lineTotal and adds up into the project's Implementation
+ * and Training totals.
+ */
+function TaskCosting({ task }: { task: Task | null }) {
+  const [hours, setHours] = useState(task?.estimatedHours ?? "");
+  const [rate, setRate] = useState(task?.rate ?? "");
+  const [discount, setDiscount] = useState(task?.discountAmount ?? "");
+  const total = (Number(hours) || 0) * (Number(rate) || 0) - (Number(discount) || 0);
+
+  return (
+    <>
+      <Field label="Hours" hint="Also the weight used for progress roll-up."
+          help="How long it takes. Hours x rate - discount is this task's amount.">
+        <Input name="estimatedHours" type="number" step="0.5" min="0" value={hours} onChange={(e) => setHours(e.target.value)} />
+      </Field>
+      <Field label="Rate" help="Charge per hour.">
+        <Input name="rate" type="number" step="0.01" min="0" value={rate} onChange={(e) => setRate(e.target.value)} />
+      </Field>
+      <Field label="Discount" help="An amount taken off hours x rate.">
+        <Input name="discountAmount" type="number" step="0.01" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} />
+      </Field>
+      <div className="flex items-end pb-2 text-sm">
+        <span className="text-muted-foreground">Task total:</span>
+        <span className={cn("ml-2 font-semibold tabular", total < 0 && "text-destructive")}>{formatMoney(total)}</span>
+      </div>
+    </>
+  );
+}
 
 /** Shared shell for the "click Add, get a form" pattern used across the panels. */
 /**
@@ -212,6 +250,10 @@ export function TaskBoard({
       // relying on the markup.
       billable: isInternal ? false : formData.get("billable") === "on",
       acceptanceCriteria: get("acceptanceCriteria"),
+      taskType: get("taskType"),
+      taskCategory: get("taskCategory"),
+      rate: get("rate"),
+      discountAmount: get("discountAmount"),
     } as never;
 
     startTransition(async () => {
@@ -275,23 +317,30 @@ export function TaskBoard({
         <Field label="Status"
             help="Where this item stands.">
           <Select name="status" defaultValue={task?.status ?? "NOT_STARTED"}>
-            {ALL_TASK_STATUSES.map((s) => (
-              <option key={s} value={s}>{humanize(s)}</option>
-            ))}
+            <PicklistOptions list="task_status" fallback={ALL_TASK_STATUSES} within={ALL_TASK_STATUSES} current={task?.status ?? "NOT_STARTED"} />
           </Select>
         </Field>
         <Field label="Priority"
             help="How urgent it is relative to everything else here.">
           <Select name="priority" defaultValue={task?.priority ?? "MEDIUM"}>
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>{humanize(p)}</option>
-            ))}
+            <PicklistOptions list="priority" fallback={PRIORITIES} within={PRIORITIES} current={task?.priority ?? "MEDIUM"} />
           </Select>
         </Field>
-        <Field label="Estimated hours" hint="Also the weight used for progress roll-up."
-            help="How long you expect it to take. Compared against time actually booked.">
-          <Input name="estimatedHours" type="number" step="0.5" min="0" defaultValue={task?.estimatedHours ?? ""} />
+        <Field label="Task type"
+            help="The kind of work, e.g. Installation, Testing, Data migration. Configured in Settings.">
+          <Select name="taskType" defaultValue={task?.taskType ?? ""}>
+            <option value="">Not set</option>
+            <PicklistOptions list="task_type" current={task?.taskType} />
+          </Select>
         </Field>
+        <Field label="Task category"
+            help="Implementation or Training. Decides which project total, and which deal cost, this task's amount counts towards.">
+          <Select name="taskCategory" defaultValue={task?.taskCategory ?? ""}>
+            <option value="">Not costed</option>
+            <PicklistOptions list="task_category" fallback={TASK_CATEGORIES} within={TASK_CATEGORIES} current={task?.taskCategory} />
+          </Select>
+        </Field>
+        <TaskCosting task={task} />
         <Field label="Start date"
             help="When work on this begins.">
           <Input name="startDate" type="date" defaultValue={dateInput(task?.startDate ?? null)} />
@@ -429,12 +478,13 @@ export function TaskBoard({
               {/* Second line only when there is something to say. An
                   "Unassigned · non-billable" line under every card is noise
                   repeated nine times; absence carries the same meaning. */}
-              {(t.assignedUser || t.dueDate || t.estimatedHours) && (
+              {(t.assignedUser || t.dueDate || t.estimatedHours || (t.taskCategory && Number(t.lineTotal) > 0)) && (
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">
                   {[
                     t.assignedUser?.fullName,
                     t.dueDate && `due ${formatDate(t.dueDate)}`,
                     t.estimatedHours && `${Number(t.estimatedHours)}h`,
+                    t.taskCategory && Number(t.lineTotal) > 0 && `${humanize(t.taskCategory)} ${formatMoney(t.lineTotal)}`,
                   ]
                     .filter(Boolean)
                     .join(" · ")}
@@ -502,9 +552,7 @@ export function TaskBoard({
                 disabled={!canManage || pending}
                 onChange={(e) => quickStatus(t.id, e.target.value)}
               >
-                {ALL_TASK_STATUSES.map((st) => (
-                  <option key={st} value={st}>{humanize(st)}</option>
-                ))}
+                <PicklistOptions list="task_status" fallback={ALL_TASK_STATUSES} within={ALL_TASK_STATUSES} current={t.status} />
               </Select>
             )}
           </div>
@@ -1277,13 +1325,13 @@ export function RaidPanel({
                   <Field label="Probability" required
             help="How likely it is to happen. Multiplied by impact to score the risk.">
                     <Select name="probability" required defaultValue="MEDIUM">
-                      {LEVELS.map((l) => <option key={l} value={l}>{humanize(l)}</option>)}
+                      <PicklistOptions list="risk_level" fallback={LEVELS} within={LEVELS} />
                     </Select>
                   </Field>
                   <Field label="Impact" required
             help="How bad it would be if it did happen.">
                     <Select name="impact" required defaultValue="MEDIUM">
-                      {LEVELS.map((l) => <option key={l} value={l}>{humanize(l)}</option>)}
+                      <PicklistOptions list="risk_level" fallback={LEVELS} within={LEVELS} />
                     </Select>
                   </Field>
                   <Field label="Owner" required>
@@ -1351,7 +1399,7 @@ export function RaidPanel({
                   <Field label="Severity" required
             help="How much damage it is doing now.">
                     <Select name="severity" required defaultValue="MEDIUM">
-                      {LEVELS.map((l) => <option key={l} value={l}>{humanize(l)}</option>)}
+                      <PicklistOptions list="risk_level" fallback={LEVELS} within={LEVELS} />
                     </Select>
                   </Field>
                   <Field label="Owner" required>
