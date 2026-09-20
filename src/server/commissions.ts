@@ -562,3 +562,65 @@ export async function getCommission(id: string) {
     approvedBy: one(data.approvedBy as never),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Manual adjustment
+// ---------------------------------------------------------------------------
+
+const adjustmentSchema = z.object({
+  partnerId: z.string().uuid(),
+  opportunityId: z.string().uuid(),
+  /** The accrual this corrects, when it corrects one. */
+  adjustsRecordId: z.string().uuid().optional().nullable(),
+  /** Positive adds to what the partner earns, negative takes it away. */
+  amount: z.coerce.number().refine((n) => n !== 0, "An adjustment of zero would change nothing."),
+  currencyCode: z.string().length(3),
+  reason: z.string().trim().min(3, "Say why the commission is being adjusted."),
+});
+
+/**
+ * Add to or take away from what a partner has earned on a deal.
+ *
+ * A second record rather than an edit of the first: editing would erase what
+ * was originally earned and why, and the reason for an adjustment is usually
+ * the most important thing about it. The ledger still sums correctly because
+ * the adjustment carries a signed amount.
+ *
+ * Gated on COMMISSION_APPROVE rather than COMMISSION_WRITE. Writing a
+ * commission is recording what the plan produced; adjusting one is deciding
+ * that the plan was wrong, which is the same authority as approving a payout.
+ */
+export async function adjustCommission(
+  input: z.infer<typeof adjustmentSchema>,
+): Promise<ActionResult<{ id: string; commissionNumber: string }>> {
+  const _auth = await authorize(PERMISSIONS.COMMISSION_APPROVE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  const parsed = adjustmentSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Check the form.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const data = parsed.data;
+
+  const db = await supabaseServer();
+  const { data: record, error } = await db.rpc("adjust_commission", {
+    p_partner_id: data.partnerId,
+    p_opportunity_id: data.opportunityId,
+    p_adjusts_record_id: data.adjustsRecordId ?? null,
+    p_amount: data.amount.toFixed(2),
+    p_currency: data.currencyCode,
+    p_reason: data.reason,
+    p_actor_id: _auth.user.id,
+  });
+
+  if (error) return { ok: false, error: error.message };
+  if (!record) return { ok: false, error: "The adjustment was not recorded." };
+
+  revalidatePath("/commissions");
+  revalidatePath("/partners");
+  return { ok: true, data: record as { id: string; commissionNumber: string } };
+}

@@ -65,6 +65,7 @@ export default async function PortalDealsPage() {
                 <TH>Customer</TH>
                 <TH>Your role</TH>
                 <TH className="text-right">Your share</TH>
+                <TH className="text-right">Your rate</TH>
                 <TH className="text-right">Deal value</TH>
                 <TH className="text-right">Earned</TH>
                 <TH>Close date</TH>
@@ -102,6 +103,20 @@ export default async function PortalDealsPage() {
                       )}
                     </TD>
                     <TD className="text-right tabular">{formatPercent(d.revenueSharePercent, 0)}</TD>
+                    <TD className="text-right text-sm">
+                      {d.commissionPlanName ? (
+                        <span className="text-muted-foreground">{d.commissionPlanName}</span>
+                      ) : d.effectiveCommissionPercent !== null ? (
+                        <>
+                          <span className="tabular">{formatPercent(d.effectiveCommissionPercent)}</span>
+                          {d.isRateOverridden && (
+                            <p className="text-xs text-muted-foreground">agreed for this deal</p>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TD>
                     <TD className="text-right tabular">
                       {formatMoney(d.opportunity?.amount, d.opportunity?.currencyCode)}
                     </TD>

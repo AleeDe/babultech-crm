@@ -7,6 +7,7 @@ import {
   StatTile, DetailRow, Alert, Forbidden,
 } from "@/components/ui";
 import { formatMoney, formatDate, formatDateTime, formatPercent, humanize } from "@/lib/utils";
+import { AdjustPanel } from "./adjust-panel";
 
 export default async function CommissionDetailPage({
   params,
@@ -23,6 +24,9 @@ export default async function CommissionDetailPage({
   const gross = Number(commission.commissionAmount ?? 0);
   const withheld = Number(commission.withholdingTaxAmount ?? 0);
   const net = Number(commission.netPayableAmount ?? 0);
+  // Adjusting is deciding the plan was wrong, which is the approver's call
+  // rather than anyone who may record commission.
+  const canAdjust = can(me, PERMISSIONS.COMMISSION_APPROVE);
 
   return (
     <>
@@ -156,6 +160,16 @@ export default async function CommissionDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {canAdjust && commission.partnerId && commission.opportunityId && (
+        <AdjustPanel
+          partnerId={commission.partnerId}
+          opportunityId={commission.opportunityId}
+          recordId={commission.id}
+          currencyCode={commission.currencyCode ?? "PKR"}
+          partnerName={commission.partner?.displayName ?? "The partner"}
+        />
+      )}
 
       {commission.calculationNotes && (
         <Card className="mt-6">

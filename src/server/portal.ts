@@ -220,6 +220,20 @@ export async function getPortalDeals() {
 
   const db = await supabaseServer();
 
+  // The rate the partner is on, so the portal can say what a deal will pay
+  // rather than only what it has already paid. Precedence matches the
+  // engine: a per-deal override beats the partner default, and a commission
+  // plan beats both. Where a plan applies the plan is named instead of a
+  // number, because a tiered plan has no single rate until the deal lands.
+  const { data: terms } = await db
+    .from("partner")
+    .select("defaultCommissionPercent, commissionPlanId, commissionPlan:commission_plan ( name )")
+    .eq("id", partnerId)
+    .maybeSingle();
+
+  const planName = terms ? (one(terms.commissionPlan) as { name?: string } | null)?.name ?? null : null;
+  const partnerDefault = terms?.defaultCommissionPercent ?? null;
+
   const { data: links, error } = await db
     .from("opportunity_partner")
     .select(
@@ -263,10 +277,22 @@ export async function getPortalDeals() {
     // Keep the whole opportunity shape the pages read (stage, amount,
     // currencyCode, account…); only its id is needed for the lookup here.
     const opp = one(l.opportunity)!;
+    // An override of 0 is a real decision - this deal pays nothing - so it
+    // must not fall through to the partner default. Hence a null check
+    // rather than ??, which would treat 0 as absent.
+    const override = l.commissionPercentOverride;
+    const rate = override !== null && override !== undefined ? override : partnerDefault;
+
     return {
       ...l,
       opportunity: { ...opp, account: one(opp.account) },
       earnedAmount: earnedByOpportunity.get(opp.id) ?? new Decimal(0),
+      /** The rate that applies, or null when a plan decides it instead. */
+      effectiveCommissionPercent: planName ? null : rate,
+      /** Set when a commission plan overrides any flat rate. */
+      commissionPlanName: planName,
+      /** True when this deal carries a rate agreed just for it. */
+      isRateOverridden: override !== null && override !== undefined,
     };
   });
 }
