@@ -64,7 +64,7 @@ export async function getPartnerProfile() {
          name, rateType, flatPercent, fixedAmount, basis, trigger,
          tiers:commission_tier ( fromAmount, toAmount, ratePercent )
        ),
-       account ( id, name ),
+       account!partner_accountId_fkey ( id, name ),
        contact ( id, firstName, lastName )`,
     )
     .eq("id", partnerId)

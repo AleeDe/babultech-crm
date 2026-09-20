@@ -106,7 +106,7 @@ export async function listAccounts(filters?: { search?: string; accountType?: st
     .select(
       `*,
        owner:app_user!account_ownerUserId_fkey ( id, fullName ),
-       partner ( id, partnerNumber, partnerType, tier ),
+       partner!partner_accountId_fkey ( id, partnerNumber, partnerType, tier ),
        contacts:contact ( count ),
        opportunities:opportunity ( count ),
        cases:support_case ( count ),
@@ -157,7 +157,7 @@ export async function getAccount(id: string) {
       `*,
        owner:app_user!account_ownerUserId_fkey ( id, fullName, email ),
        parentAccount:parentAccountId ( id, name ),
-       partner ( *, commissionPlan:commission_plan ( name ) ),
+       partner!partner_accountId_fkey ( *, commissionPlan:commission_plan ( name ) ),
        contacts:contact ( * ),
        opportunities:opportunity ( id, opportunityNumber, name, stage, amount, currencyCode, expectedCloseDate, deletedAt ),
        contracts:contract ( *, deletedAt ),

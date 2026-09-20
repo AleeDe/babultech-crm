@@ -332,7 +332,7 @@ export async function listPartners(filters?: {
     .from("partner")
     .select(
       `*,
-       account ( id, name ),
+       account!partner_accountId_fkey ( id, name ),
        contact ( id, firstName, lastName, email ),
        partnerManager:app_user!partner_partnerManagerId_fkey ( id, fullName ),
        commissionPlan:commission_plan ( id, name ),
@@ -381,7 +381,7 @@ export async function getPartner(id: string) {
     .from("partner")
     .select(
       `*,
-       account ( * ),
+       account!partner_accountId_fkey ( * ),
        contact ( * ),
        partnerManager:app_user!partner_partnerManagerId_fkey ( id, fullName, email ),
        commissionPlan:commission_plan ( *, tiers:commission_tier ( * ) ),
