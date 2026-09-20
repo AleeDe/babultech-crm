@@ -77,7 +77,7 @@ export function AddContactForm({
 
       <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={pending}>
-          {pending ? "Adding…" : "Add person"}
+          {pending ? "Adding…" : "Add employee"}
         </Button>
         <Button type="button" variant="ghost" onClick={() => router.push("/portal/customers")} disabled={pending}>
           Cancel

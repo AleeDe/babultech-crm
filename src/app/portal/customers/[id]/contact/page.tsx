@@ -28,8 +28,8 @@ export default async function AddPartnerContactPage({
       <PageHeader
         backTo="/portal/customers"
         backLabel="Back to your customers"
-        title={`Add a person at ${account.name}`}
-        description="Someone else you deal with there. They will not get a login."
+        title={`Add an employee at ${account.name}`}
+        description="Someone who works there and you deal with. They will not get a login."
       />
       <AddContactForm accountId={account.id} accountName={account.name} />
     </>

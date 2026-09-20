@@ -5,9 +5,9 @@ import { PartnerCustomerForm } from "./customer-form";
 /**
  * Registering a customer the partner has won.
  *
- * Distinct from /portal/register, which registers a deal as a lead for us to
- * work. This is the other case: the partner has done the selling and wants the
- * customer on our books under their name.
+ * The partner has done the selling and wants the customer on our books under
+ * their name, so the account, the contact and optionally the first deal are all
+ * created together.
  */
 export default async function NewPartnerCustomerPage() {
   const db = await supabaseServer();

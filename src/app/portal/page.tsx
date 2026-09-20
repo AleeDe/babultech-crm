@@ -38,7 +38,7 @@ export default async function PortalHomePage() {
           </Link>
         </Button>
         <Button asChild>
-          <Link href="/portal/register">Register a deal</Link>
+          <Link href="/portal/customers/new">Add a customer</Link>
         </Button>
       </PageHeader>
 

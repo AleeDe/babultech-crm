@@ -10,10 +10,9 @@ import { formatMoney, formatDate, humanize } from "@/lib/utils";
 /**
  * The customers this partner brought us.
  *
- * Not the same list as /portal/accounts, which shows the customers behind deals
- * they are attached to. A partner can be on a deal at a customer that was
- * always ours; that customer appears there and not here, because only the ones
- * they sourced are theirs to add people and deals to.
+ * Only the customers they sourced. A partner can be attached to a deal at a
+ * customer that was always ours; that one shows on their deals but not here,
+ * because only the ones they brought are theirs to add people and deals to.
  */
 export default async function PortalCustomersPage({
   searchParams,
@@ -119,7 +118,7 @@ export default async function PortalCustomersPage({
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button asChild size="sm" variant="outline">
-                      <Link href={`/portal/customers/${customer.id}/contact`}>Add a person</Link>
+                      <Link href={`/portal/customers/${customer.id}/contact`}>Add employee</Link>
                     </Button>
                     <Button asChild size="sm" variant="secondary">
                       <Link href={`/portal/customers/${customer.id}/deal`}>Add a deal</Link>

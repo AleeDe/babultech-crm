@@ -148,7 +148,6 @@ export async function createPartnerCustomer(
   if (error) return { ok: false, error: error.message };
   if (!data) return { ok: false, error: "The customer was not created." };
 
-  revalidatePath("/portal/accounts");
   revalidatePath("/portal/deals");
   revalidatePath("/portal");
   return { ok: true, data: data as CreatedCustomer };
@@ -194,7 +193,6 @@ export async function addPartnerContact(
   });
 
   if (error) return { ok: false, error: error.message };
-  revalidatePath("/portal/accounts");
   return { ok: true, data: data as { contactId: string } };
 }
 
@@ -206,12 +204,27 @@ const dealSchema = z.object({
   currencyCode: z.string().trim().length(3).optional(),
   contactId: z.string().uuid().optional().or(z.literal("")),
   notes: z.string().trim().max(2000).optional(),
+  dealType: z.string().trim().max(50).optional(),
+  nextStep: z.string().trim().max(500).optional(),
+  competitorName: z.string().trim().max(200).optional(),
+  // A buyer typed in rather than chosen. Both names or neither — the
+  // database treats a half-filled person as no person at all.
+  newFirstName: z.string().trim().max(100).optional(),
+  newLastName: z.string().trim().max(100).optional(),
+  newJobTitle: z.string().trim().max(150).optional(),
+  newEmail: z.string().trim().email("That does not look like an email address.").optional().or(z.literal("")),
+  newPhone: z.string().trim().max(50).optional(),
+  street: z.string().trim().max(255).optional(),
+  city: z.string().trim().max(100).optional(),
+  state: z.string().trim().max(100).optional(),
+  postalCode: z.string().trim().max(30).optional(),
+  country: z.string().trim().max(100).optional(),
 });
 
 /** Add a deal against a customer this partner already brought. */
 export async function addPartnerOpportunity(
   input: z.infer<typeof dealSchema>,
-): Promise<ActionResult<{ opportunityId: string; opportunityNumber: string }>> {
+): Promise<ActionResult<{ opportunityId: string; opportunityNumber: string; contactId: string | null }>> {
   try {
     await requirePartnerId();
   } catch (err) {
@@ -237,12 +250,24 @@ export async function addPartnerOpportunity(
     p_currency: d.currencyCode || "PKR",
     p_contact_id: d.contactId || null,
     p_notes: d.notes || null,
+    p_deal_type: d.dealType || null,
+    p_next_step: d.nextStep || null,
+    p_competitor: d.competitorName || null,
+    p_new_first: d.newFirstName || null,
+    p_new_last: d.newLastName || null,
+    p_new_title: d.newJobTitle || null,
+    p_new_email: d.newEmail || null,
+    p_new_phone: d.newPhone || null,
+    p_street: d.street || null,
+    p_city: d.city || null,
+    p_state: d.state || null,
+    p_postal_code: d.postalCode || null,
+    p_country: d.country || null,
   });
 
   if (error) return { ok: false, error: error.message };
   revalidatePath("/portal/deals");
-  revalidatePath("/portal/accounts");
-  return { ok: true, data: data as { opportunityId: string; opportunityNumber: string } };
+  return { ok: true, data: data as { opportunityId: string; opportunityNumber: string; contactId: string | null } };
 }
 
 /**
