@@ -68,3 +68,11 @@ export function registrationExpiry(
   expiry.setDate(expiry.getDate() + days);
   return expiry;
 }
+
+/**
+ * Where a partner's email goes unless they change it.
+ *
+ * Here rather than in the server module that uses it: a "use server" file may
+ * only export async functions, and pages need this value to seed the form.
+ */
+export const DEFAULT_PARTNER_EMAIL_TO = "contact@babultech.com";

@@ -8,13 +8,16 @@ import { Building2, User, Mail, Phone, Globe, MapPin } from "lucide-react";
 import { getPartner, getPartnerSummary } from "@/server/partners";
 import { listPartnerPortalAccess } from "@/server/partner-access";
 import { PartnerPortalPanel } from "./portal-access-panel";
+import { PartnerThread } from "@/components/partner-thread";
+import { getPartnerThread } from "@/server/partner-activities";
+import { DEFAULT_PARTNER_EMAIL_TO } from "@/lib/partner-policy";
 import { getAuditTrail } from "@/lib/audit";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, EmptyState, Button, Alert, Forbidden
 } from "@/components/ui";
 import { protectionDaysFor } from "@/lib/partner-policy";
-import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
+import { formatMoney, formatDate, formatPercent, humanize, serialize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 export default async function PartnerDetailPage({
@@ -27,10 +30,11 @@ export default async function PartnerDetailPage({
 
   const { id } = await params;
 
-  const [notes, documents, portalPeople] = await Promise.all([
+  const [notes, documents, portalPeople, thread] = await Promise.all([
     listNotes("Partner", id),
     listDocuments("Partner", id),
     listPartnerPortalAccess(id),
+    getPartnerThread(id),
   ]);
   const [partner, summary] = await Promise.all([getPartner(id), getPartnerSummary(id)]);
   if (!partner) notFound();
@@ -220,6 +224,16 @@ export default async function PartnerDetailPage({
           partnerId={id}
           people={portalPeople}
           canManage={can(_me, PERMISSIONS.PARTNER_WRITE)}
+        />
+      </div>
+
+      <div className="mt-6">
+        <PartnerThread
+          partnerId={id}
+          messages={serialize(thread) as never}
+          side="INTERNAL"
+          otherPartyName={partner.displayName}
+          defaultEmailTo={partner.email ?? DEFAULT_PARTNER_EMAIL_TO}
         />
       </div>
 

@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { MessageSquare } from "lucide-react";
 import { getPortalSummary, getPartnerProfile, getPortalCommissions } from "@/server/portal";
+import { countUnreadPartnerMessages } from "@/server/partner-activities";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   StatTile, Button, Alert, Table, THead, TBody, TR, TH, TD, EmptyState,
@@ -7,10 +9,11 @@ import {
 import { formatMoney, formatDate, formatPercent, humanize, daysBetween } from "@/lib/utils";
 
 export default async function PortalHomePage() {
-  const [summary, partner, recent] = await Promise.all([
+  const [summary, partner, recent, unread] = await Promise.all([
     getPortalSummary(),
     getPartnerProfile(),
     getPortalCommissions(),
+    countUnreadPartnerMessages(),
   ]);
 
   const agreementDays = partner.agreementExpiryDate
@@ -26,6 +29,14 @@ export default async function PortalHomePage() {
       >
         <Badge tone={statusTone(partner.status)}>{humanize(partner.status)}</Badge>
         <Badge tone="neutral">{humanize(partner.tier)}</Badge>
+        <Button asChild variant="outline">
+          <Link href="/portal/activities">
+            <MessageSquare className="h-4 w-4" /> Contact
+            {unread > 0 && (
+              <Badge tone="warning" className="ml-1.5">{unread}</Badge>
+            )}
+          </Link>
+        </Button>
         <Button asChild>
           <Link href="/portal/register">Register a deal</Link>
         </Button>

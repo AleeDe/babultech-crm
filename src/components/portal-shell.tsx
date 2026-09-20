@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   LayoutDashboard, Target, Coins, Banknote, Building2, UserPlus,
-  Menu, X, LogOut, FilePlus2, Layers,
+  Menu, X, LogOut, FilePlus2, Layers, MessageSquare,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { signOutAction } from "@/lib/sign-out-action";
@@ -24,6 +24,7 @@ const NAV = [
   { href: "/portal/register", label: "Register a deal", icon: FilePlus2 },
   { href: "/portal/commissions", label: "Commission", icon: Coins },
   { href: "/portal/payouts", label: "Payouts", icon: Banknote },
+  { href: "/portal/activities", label: "Activities", icon: MessageSquare },
 ];
 
 export function PortalShell({

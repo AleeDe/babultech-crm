@@ -324,7 +324,75 @@ try {
   assert.deepEqual(seen.map((r) => r.partnerId), [ids.myPartner], "A partner must see only their own requests");
   pass("Sees their own rate requests, and no other partner's");
 
-  // --- 7. A lapsed partnership stops creating ------------------------------
+  // --- 7. The conversation -------------------------------------------------
+
+  const saidRaw = await check(asPartner.rpc("post_partner_message", {
+    p_partner_id: ids.myPartner,
+    p_body: "Can we talk about the timeline on this one?",
+    p_kind: "MESSAGE", p_subject: null, p_to: null, p_email_id: null,
+  }), "Post a message as the partner");
+  const said = typeof saidRaw === "string" ? JSON.parse(saidRaw) : saidRaw;
+  cleanup.push(() => db.from("partner_message").delete().eq("partnerId", ids.myPartner));
+
+  // The side is decided in the database from the session. A partner must not
+  // be able to post something that later reads as having come from us.
+  assert.equal(said.authorSide, "PARTNER", "A partner's message must be recorded as theirs");
+  pass("A partner can post to their own conversation");
+
+  const forged = await asPartner.rpc("post_partner_message", {
+    p_partner_id: ids.otherPartner,
+    p_body: "Posting into somebody else's thread.",
+    p_kind: "MESSAGE", p_subject: null, p_to: null, p_email_id: null,
+  });
+  assert.ok(forged.error, "Posting into another partnership must be refused");
+  assert.match(forged.error.message, /your own partnership/i, "The refusal should say why");
+  pass("Cannot post into another partner's conversation");
+
+  // Our reply, written with the service role the way the application does.
+  const ourReply = randomUUID();
+  await check(db.from("partner_message").insert({
+    id: ourReply, partnerId: ids.myPartner, kind: "MESSAGE",
+    authorSide: "INTERNAL", authorUserId: owner.id, authorName: "QA Colleague",
+    body: "Yes - let us set up a call this week.", updatedAt: now(),
+  }), "Reply as a colleague");
+
+  const otherThread = randomUUID();
+  await check(db.from("partner_message").insert({
+    id: otherThread, partnerId: ids.otherPartner, kind: "MESSAGE",
+    authorSide: "INTERNAL", authorUserId: owner.id, authorName: "QA Colleague",
+    body: "Private to the rival partner.", updatedAt: now(),
+  }), "Write into the rival's thread");
+  cleanup.push(() => db.from("partner_message").delete().eq("partnerId", ids.otherPartner));
+
+  const threadSeen = await check(asPartner.from("partner_message").select("id, partnerId, body"), "Read the thread as the partner");
+  assert.ok(threadSeen.every((m) => m.partnerId === ids.myPartner), "A partner must see only their own thread");
+  assert.ok(!threadSeen.some((m) => m.id === otherThread), "A partner must never see a rival's thread");
+  assert.equal(threadSeen.length, 2, "Their own message and our reply, and nothing else");
+  pass("Sees their own conversation only, both sides of it");
+
+  // Marking read only ever touches the OTHER side's messages: a partner
+  // opening the thread has not read their own, and counting it would make our
+  // unread badge wrong.
+  const marked = await check(asPartner.rpc("mark_partner_messages_read", { p_partner_id: ids.myPartner }), "Mark the thread read");
+  assert.equal(Number(marked), 1, "Only our message should be marked, not the partner's own");
+
+  const theirOwn = await check(
+    db.from("partner_message").select("readAt").eq("id", said.id ?? "").maybeSingle(),
+    "Re-read the partner's own message",
+  );
+  if (theirOwn) assert.equal(theirOwn.readAt, null, "A partner's own message must not be marked as read by them");
+  pass("Opening the thread marks only the other side's messages");
+
+  const notTheirs = await asPartner.rpc("mark_partner_messages_read", { p_partner_id: ids.otherPartner });
+  assert.ok(notTheirs.error, "Marking another partnership's thread must be refused");
+  pass("Cannot mark another partner's conversation as read");
+
+  const editAttempt = await asPartner.from("partner_message")
+    .update({ body: "Rewritten after the fact." }).eq("id", ourReply).select("id");
+  assert.equal((editAttempt.data ?? []).length, 0, "A partner must not edit what we said");
+  pass("Cannot rewrite a message from the other side");
+
+  // --- 8. A lapsed partnership stops creating ------------------------------
 
   await check(
     db.from("partner").update({ status: "INACTIVE", updatedAt: now() }).eq("id", ids.myPartner),
