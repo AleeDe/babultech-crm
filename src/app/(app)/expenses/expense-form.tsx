@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Input, Select, Textarea, Alert } from "@/components/ui";
+import { RecordLookup } from "@/components/record-lookup";
 import { RecordForm, FormField } from "@/components/record-form";
 import { FieldHelp } from "@/components/field-help";
 import { SelectWithAdd } from "@/components/select-with-add";
@@ -171,18 +172,7 @@ export function ExpenseForm({
             hint={billable ? "Required - this is what it gets billed through." : "Required if billing it on."}
             help="Attach the cost to a project when it was incurred for one specific customer. Leave it as None for general running costs like rent or internet."
           >
-            <Select
-              name="projectId"
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-            >
-              <option value="">None</option>
-              {options.projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
+            <RecordLookup entity="project" name="projectId" value={projectId} onChange={(id) => setProjectId((id ?? ""))} emptyLabel="None" />
           </FormField>
         </div>
 
@@ -193,18 +183,7 @@ export function ExpenseForm({
             hint={reimbursable ? "They get this money back." : "Optional - nobody is out of pocket."}
             help="The person who spent their own money and is owed it back. Set this to Nobody if the company paid directly, and untick paying it back below."
           >
-            <Select
-              name="employeeUserId"
-              value={employeeUserId}
-              onChange={(e) => setEmployeeUserId(e.target.value)}
-            >
-              <option value="">Nobody - the company paid directly</option>
-              {options.users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.fullName}
-                </option>
-              ))}
-            </Select>
+            <RecordLookup entity="user" name="employeeUserId" value={employeeUserId} onChange={(id) => setEmployeeUserId((id ?? ""))} emptyLabel="Nobody - the company paid directly" />
           </FormField>
 
           <FormField

@@ -7,6 +7,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
+import { RecordLookup } from "@/components/record-lookup";
 import { PicklistOptions } from "@/components/picklist";
 import { PicklistSelect } from "@/components/picklist-select";
 import { humanize } from "@/lib/utils";
@@ -128,11 +129,7 @@ export function AccountForm({
           </Field>
           <Field label="Owner" required error={fieldErrors.ownerUserId?.[0]}
             help="Whoever holds this relationship. They see the account in their own list, and it counts towards their pipeline.">
-            <Select name="ownerUserId" required defaultValue={defaults?.ownerUserId ?? currentUserId}>
-              {options.users.map((u) => (
-                <option key={u.id} value={u.id}>{u.fullName}</option>
-              ))}
-            </Select>
+            <RecordLookup entity="user" name="ownerUserId" defaultValue={defaults?.ownerUserId ?? currentUserId} required />
           </Field>
           <Field label="Parent account" hint="For subsidiaries and group companies."
             help="Set this when the account is a subsidiary or branch of another one already in the system. Leave it empty otherwise.">

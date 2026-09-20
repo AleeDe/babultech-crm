@@ -8,6 +8,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
+import { RecordLookup } from "@/components/record-lookup";
 import {
   LineEditor, newLine, documentTotals,
   type LineRow, type ProductOption, type TaxRateOption,
@@ -191,18 +192,7 @@ export function InvoiceForm({
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Customer" required error={fieldErrors.accountId?.[0]}
             help="The account being billed.">
-            <Select
-              name="accountId"
-              required
-              value={accountId}
-              disabled={editing || Boolean(lockedAccountId)}
-              onChange={(e) => { setAccountId(e.target.value); setProjectId(""); }}
-            >
-              <option value="">Select a customer…</option>
-              {options.accounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </Select>
+            <RecordLookup entity="account" name="accountId" value={accountId} onChange={(id) => { setAccountId((id ?? "")); setProjectId(""); }} required disabled={editing || Boolean(lockedAccountId)} emptyLabel="Select a customer…" />
           </Field>
           <Field label="Bill to" hint={accountId ? undefined : "Pick a customer first."}
             help="The contact who receives the invoice. Usually accounts payable rather than the person you sold to.">

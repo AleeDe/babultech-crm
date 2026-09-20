@@ -8,6 +8,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
+import { RecordLookup } from "@/components/record-lookup";
 import { humanize } from "@/lib/utils";
 
 const KINDS = [
@@ -232,17 +233,7 @@ export function SecretForm({
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Owner" required error={fieldErrors.ownerUserId?.[0]}
             help="Who is accountable for renewing and revoking it - not necessarily whoever typed it in here.">
-            <Select
-              name="ownerUserId"
-              required
-              defaultValue={defaults?.ownerUserId ?? currentUserId}
-            >
-              {options.users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.fullName}{u.jobTitle ? `, ${u.jobTitle}` : ""}
-                </option>
-              ))}
-            </Select>
+            <RecordLookup entity="user" name="ownerUserId" defaultValue={defaults?.ownerUserId ?? currentUserId} required />
           </Field>
           <Field label="Status" required
             help="Revoked means it has been turned off at the provider. The record stays so the access log still points at something.">

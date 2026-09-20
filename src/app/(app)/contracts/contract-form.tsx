@@ -7,6 +7,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
+import { RecordLookup } from "@/components/record-lookup";
 import { PicklistOptions } from "@/components/picklist";
 import { formatMoney, humanize } from "@/lib/utils";
 
@@ -173,18 +174,7 @@ export function ContractForm({
           </Field>
           <Field label="Customer" required
             help="The account the contract is with.">
-            <Select
-              name="accountId"
-              required
-              value={accountId}
-              disabled={editing}
-              onChange={(e) => setAccountId(e.target.value)}
-            >
-              <option value="">Select a customer…</option>
-              {options.accounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </Select>
+            <RecordLookup entity="account" name="accountId" value={accountId} onChange={(id) => setAccountId((id ?? ""))} required disabled={editing} emptyLabel="Select a customer…" />
           </Field>
           <Field label="Contract type" required
             help="The kind of agreement - a one-off, a subscription, a support agreement.">
@@ -192,11 +182,7 @@ export function ContractForm({
           </Field>
           <Field label="Owner" required
             help="Who is responsible for this agreement and its renewal.">
-            <Select name="ownerUserId" required defaultValue={defaults?.ownerUserId ?? currentUserId}>
-              {options.users.map((u) => (
-                <option key={u.id} value={u.id}>{u.fullName}</option>
-              ))}
-            </Select>
+            <RecordLookup entity="user" name="ownerUserId" defaultValue={defaults?.ownerUserId ?? currentUserId} required />
           </Field>
           <Field
             label="From accepted quote"

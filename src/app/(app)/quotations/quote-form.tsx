@@ -8,6 +8,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
+import { RecordLookup } from "@/components/record-lookup";
 import {
   LineEditor, newLine, documentTotals,
   type LineRow, type ProductOption, type TaxRateOption,
@@ -108,10 +109,9 @@ export function QuoteForm({
   const opportunity = options.opportunities.find((o) => o.id === opportunityId);
   const totals = useMemo(() => documentTotals(lines, options.taxRates), [lines, options.taxRates]);
 
-  const contactsForAccount = useMemo(
-    () => options.contacts.filter((c) => c.accountId === opportunity?.accountId),
-    [options.contacts, opportunity],
-  );
+  // The quote's contact belongs to the deal's customer, so changing the deal
+  // drops a contact who now works somewhere else.
+  const [contactId, setContactId] = useState(defaults?.contactId ?? "");
 
   /** Pulls the deal's product lines in, so a quote does not get retyped. */
   function importFromOpportunity() {
@@ -160,7 +160,7 @@ export function QuoteForm({
 
     const input = {
       opportunityId,
-      contactId: get("contactId"),
+      contactId: contactId || null,
       quoteDate: get("quoteDate"),
       expiryDate: get("expiryDate"),
       currencyCode: currency,
@@ -205,34 +205,17 @@ export function QuoteForm({
           <div className="lg:col-span-2">
             <Field label="Opportunity" required error={fieldErrors.opportunityId?.[0]}
             help="The deal this quote is for. It carries over the customer and contact.">
-              <Select
-                name="opportunityId"
-                required
-                value={opportunityId}
-                disabled={editing || Boolean(lockedOpportunityId)}
-                onChange={(e) => {
-                  setOpportunityId(e.target.value);
-                  const opp = options.opportunities.find((o) => o.id === e.target.value);
+              <RecordLookup entity="opportunity" name="opportunityId" value={opportunityId} onChange={(id) => {
+                  setOpportunityId(id ?? "");
+                  setContactId("");
+                  const opp = options.opportunities.find((o) => o.id === (id ?? ""));
                   if (opp) setCurrency(opp.currencyCode);
-                }}
-              >
-                <option value="">Select a deal…</option>
-                {options.opportunities.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.opportunityNumber} - {o.name} ({o.account?.name})
-                  </option>
-                ))}
-              </Select>
+                }} required disabled={editing || Boolean(lockedOpportunityId)} emptyLabel="Select a deal…" />
             </Field>
           </div>
           <Field label="Contact" hint={opportunityId ? undefined : "Pick a deal first."}
             help="Who receives the quotation when you send it.">
-            <Select name="contactId" defaultValue={defaults?.contactId ?? ""} disabled={!opportunityId}>
-              <option value="">None</option>
-              {contactsForAccount.map((c) => (
-                <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>
-              ))}
-            </Select>
+            <RecordLookup entity="contact" name="contactId" value={contactId} onChange={(id) => setContactId(id ?? "")} filters={{ accountId: opportunity?.accountId ?? null }} disabled={!opportunityId} emptyLabel="None" />
           </Field>
           <Field label="Currency" required
             help="The currency you are quoting in.">

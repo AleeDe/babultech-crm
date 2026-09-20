@@ -8,6 +8,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
+import { RecordLookup } from "@/components/record-lookup";
 import { PicklistOptions } from "@/components/picklist";
 import { PicklistSelect } from "@/components/picklist-select";
 import { formatMoney, humanize } from "@/lib/utils";
@@ -180,10 +181,7 @@ export function OpportunityForm({
     implementationCost + trainingCost;
   const totalAmount = Math.round(costSum * (1 - (Number(discountPercent) || 0) / 100) * 100) / 100;
 
-  const contactsForAccount = useMemo(
-    () => options.contacts.filter((c) => c.accountId === accountId),
-    [options.contacts, accountId],
-  );
+  const [primaryContactId, setPrimaryContactId] = useState(defaults?.primaryContactId ?? "");
 
   const linesTotal = useMemo(
     () =>
@@ -234,7 +232,7 @@ export function OpportunityForm({
     const base = {
       name: String(formData.get("name") ?? ""),
       accountId,
-      primaryContactId: get("primaryContactId"),
+      primaryContactId: primaryContactId || null,
       ownerUserId: String(formData.get("ownerUserId") ?? ""),
       campaignId: get("campaignId"),
       amount,
@@ -287,42 +285,18 @@ export function OpportunityForm({
           </Field>
           <Field label="Customer" required error={fieldErrors.accountId?.[0]}
             help="The account you are selling to. Everything downstream - quotes, contracts, invoices - inherits it from here.">
-            <Select
-              name="accountId"
-              required
-              value={accountId}
-              disabled={Boolean(lockedAccountId)}
-              onChange={(e) => setAccountId(e.target.value)}
-            >
-              <option value="">Select an account…</option>
-              {options.accounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </Select>
+            <RecordLookup entity="account" name="accountId" value={accountId} onChange={(id) => { setAccountId(id ?? ""); setPrimaryContactId(""); }} required disabled={Boolean(lockedAccountId)} emptyLabel="Select an account…" />
           </Field>
           <Field
             label="Primary contact"
             hint={accountId ? undefined : "Pick a customer first."}
             help="The person you are actually dealing with. They receive the quotation when you send it."
           >
-            <Select
-              name="primaryContactId"
-              defaultValue={defaults?.primaryContactId ?? ""}
-              disabled={!accountId}
-            >
-              <option value="">None</option>
-              {contactsForAccount.map((c) => (
-                <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>
-              ))}
-            </Select>
+            <RecordLookup entity="contact" name="primaryContactId" value={primaryContactId} onChange={(id) => setPrimaryContactId(id ?? "")} filters={{ accountId: accountId || null }} disabled={!accountId} emptyLabel="None" />
           </Field>
           <Field label="Owner" required error={fieldErrors.ownerUserId?.[0]}
             help="Whoever is running this deal. It appears in their pipeline and counts towards their numbers.">
-            <Select name="ownerUserId" required defaultValue={defaults?.ownerUserId ?? currentUserId}>
-              {options.users.map((u) => (
-                <option key={u.id} value={u.id}>{u.fullName}</option>
-              ))}
-            </Select>
+            <RecordLookup entity="user" name="ownerUserId" defaultValue={defaults?.ownerUserId ?? currentUserId} required />
           </Field>
 
           {!editing && (
@@ -359,12 +333,7 @@ export function OpportunityForm({
           </Field>
           <Field label="Campaign"
             help="The marketing push behind this deal, if there was one. Links spend to revenue.">
-            <Select name="campaignId" defaultValue={defaults?.campaignId ?? ""}>
-              <option value="">None</option>
-              {options.campaigns.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </Select>
+            <RecordLookup entity="campaign" name="campaignId" defaultValue={defaults?.campaignId ?? ""} emptyLabel="None" />
           </Field>
           <Field label="Lead source"
             help="Where the deal originally came from. Carried over automatically if it started as a lead.">
@@ -385,15 +354,7 @@ export function OpportunityForm({
           <div className="grid gap-4 sm:grid-cols-3">
             <Field label="Product" error={fieldErrors.productId?.[0]}
               help="The product being sold. Winning the deal creates its delivery project.">
-              <Select
-                value={productId}
-                onChange={(e) => { setProductId(e.target.value); setPriceBookId(""); }}
-              >
-                <option value="">None</option>
-                {options.products.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name} ({p.productCode})</option>
-                ))}
-              </Select>
+              <RecordLookup entity="product" value={productId} onChange={(id) => { setProductId((id ?? "")); setPriceBookId(""); }} emptyLabel="None" />
             </Field>
             <Field label="Price book" error={fieldErrors.priceBookId?.[0]}
               hint={productId && booksForProduct.length === 0 ? "This product has no active price books yet." : undefined}
@@ -526,15 +487,7 @@ export function OpportunityForm({
                   <div className="sm:col-span-4">
                     <Field label="Product"
             help="The item being sold on this line, priced from the catalogue.">
-                      <Select
-                        value={line.productId}
-                        onChange={(e) => onPickProduct(line.key, e.target.value)}
-                      >
-                        <option value="">Select…</option>
-                        {options.products.map((p) => (
-                          <option key={p.id} value={p.id}>{p.name} ({p.productCode})</option>
-                        ))}
-                      </Select>
+                      <RecordLookup entity="product" value={line.productId} onChange={(id) => onPickProduct(line.key, (id ?? ""))} emptyLabel="Select…" />
                     </Field>
                   </div>
                   <div className="sm:col-span-1">

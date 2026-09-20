@@ -7,6 +7,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
+import { RecordLookup } from "@/components/record-lookup";
 import { PicklistOptions } from "@/components/picklist";
 import { PicklistSelect } from "@/components/picklist-select";
 import { humanize } from "@/lib/utils";
@@ -179,25 +180,13 @@ export function LeadForm({
           </Field>
           <Field label="Campaign"
             help="The marketing push that produced this lead, if there was one. Links the cost of the campaign to what it returned.">
-            <Select name="campaignId" defaultValue={defaults?.campaignId ?? ""}>
-              <option value="">None</option>
-              {options.campaigns.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </Select>
+            <RecordLookup entity="campaign" name="campaignId" defaultValue={defaults?.campaignId ?? ""} emptyLabel="None" />
           </Field>
           <Field
             label="Referred by partner"
             hint="Credits the partner automatically when this lead converts to a deal."
           >
-            <Select name="referredByPartnerId" defaultValue={defaults?.referredByPartnerId ?? ""}>
-              <option value="">No referral</option>
-              {options.partners.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.displayName} ({p.partnerNumber})
-                </option>
-              ))}
-            </Select>
+            <RecordLookup entity="partner" name="referredByPartnerId" defaultValue={defaults?.referredByPartnerId ?? ""} emptyLabel="No referral" />
           </Field>
         </CardContent>
       </Card>
@@ -209,11 +198,7 @@ export function LeadForm({
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Owner" required error={fieldErrors.ownerUserId?.[0]}
             help="The person responsible for chasing this lead. They see it in their own list, and nobody else will act on it.">
-            <Select name="ownerUserId" required defaultValue={defaults?.ownerUserId ?? currentUserId}>
-              {options.users.map((u) => (
-                <option key={u.id} value={u.id}>{u.fullName}</option>
-              ))}
-            </Select>
+            <RecordLookup entity="user" name="ownerUserId" defaultValue={defaults?.ownerUserId ?? currentUserId} required />
           </Field>
 
           {editing && (

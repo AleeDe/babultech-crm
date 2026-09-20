@@ -8,6 +8,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
+import { RecordLookup } from "@/components/record-lookup";
 import { PicklistOptions } from "@/components/picklist";
 import { PicklistSelect } from "@/components/picklist-select";
 import { humanize } from "@/lib/utils";
@@ -164,18 +165,7 @@ export function CaseForm({
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <Field label="Customer" required error={fieldErrors.accountId?.[0]}
             help="The account reporting the issue.">
-            <Select
-              name="accountId"
-              required
-              value={accountId}
-              disabled={Boolean(lockedAccountId)}
-              onChange={(e) => onAccountChange(e.target.value)}
-            >
-              <option value="">Select a customer…</option>
-              {options.accounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </Select>
+            <RecordLookup entity="account" name="accountId" value={accountId} onChange={(id) => onAccountChange((id ?? ""))} required disabled={Boolean(lockedAccountId)} emptyLabel="Select a customer…" />
           </Field>
 
           <Field
@@ -300,12 +290,7 @@ export function CaseForm({
             hint="An open case needs an owner or a team."
             help="Who is handling it. It appears in their work list."
           >
-            <Select name="ownerUserId" defaultValue={defaults?.ownerUserId ?? ""}>
-              <option value="">Unassigned</option>
-              {options.users.map((u) => (
-                <option key={u.id} value={u.id}>{u.fullName}</option>
-              ))}
-            </Select>
+            <RecordLookup entity="user" name="ownerUserId" defaultValue={defaults?.ownerUserId ?? ""} emptyLabel="Unassigned" />
           </Field>
           <Field label="Team"
             help="The team responsible, when it is not down to one person.">

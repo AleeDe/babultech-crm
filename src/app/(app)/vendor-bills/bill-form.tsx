@@ -6,6 +6,7 @@ import { Plus, Trash2 } from "lucide-react";
 import {
   Card, CardContent, CardFooter, Input, Select, Textarea, Button, Alert, Field,
 } from "@/components/ui";
+import { RecordLookup } from "@/components/record-lookup";
 import { createVendorBill } from "@/server/payables";
 import { formatMoney } from "@/lib/utils";
 
@@ -158,14 +159,7 @@ export function BillForm({ options }: { options: BillFormOptions }) {
 
             <Field label="Project"
             help="The project the cost belongs to, if it was incurred for one.">
-              <Select name="projectId" defaultValue="">
-                <option value="">None</option>
-                {options.projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
+              <RecordLookup entity="project" name="projectId" emptyLabel="None" />
             </Field>
           </div>
 

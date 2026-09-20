@@ -8,6 +8,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
+import { RecordLookup } from "@/components/record-lookup";
 import { cn, humanize } from "@/lib/utils";
 import { TIER_PROTECTION_DAYS, DEAL_REGISTRATION_PROTECTION_DAYS } from "@/lib/partner-policy";
 
@@ -174,14 +175,7 @@ export function PartnerForm({ options }: { options: Options }) {
             linkExisting ? (
               <Field label="Existing account" required hint="Its type will be switched to Partner."
             help="Pick this if they are already in the system as an account, so you do not end up with two records for one company.">
-                <Select name="accountId" required>
-                  <option value="">Select an account…</option>
-                  {options.accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} ({humanize(a.accountType)})
-                    </option>
-                  ))}
-                </Select>
+                <RecordLookup entity="account" name="accountId" required emptyLabel="Select an account…" />
               </Field>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
@@ -210,15 +204,7 @@ export function PartnerForm({ options }: { options: Options }) {
           ) : linkExisting ? (
             <Field label="Existing contact" required
             help="Pick this if their main contact is already in the system.">
-              <Select name="contactId" required>
-                <option value="">Select a contact…</option>
-                {options.contacts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.firstName} {c.lastName}
-                    {c.email ? `, ${c.email}` : ""}
-                  </option>
-                ))}
-              </Select>
+              <RecordLookup entity="contact" name="contactId" required emptyLabel="Select a contact…" />
             </Field>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
@@ -274,12 +260,7 @@ export function PartnerForm({ options }: { options: Options }) {
           </Field>
           <Field label="Partner manager" hint="Who owns this relationship internally."
             help="Whoever owns this relationship on your side.">
-            <Select name="partnerManagerId">
-              <option value="">Unassigned</option>
-              {options.users.map((u) => (
-                <option key={u.id} value={u.id}>{u.fullName}</option>
-              ))}
-            </Select>
+            <RecordLookup entity="user" name="partnerManagerId" emptyLabel="Unassigned" />
           </Field>
           <Field label="Territory"
             help="The region they are allowed to sell in. Prevents two partners chasing the same customer.">

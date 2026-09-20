@@ -7,6 +7,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Alert,
 } from "@/components/ui";
+import { RecordLookup } from "@/components/record-lookup";
 import { PicklistSelect } from "@/components/picklist-select";
 import { humanize } from "@/lib/utils";
 
@@ -130,12 +131,7 @@ export function ContactForm({
               hint="Leave blank for an independent person - a contact does not need an account."
             help="The account they work for. A contact always belongs to one."
             >
-              <Select name="accountId" defaultValue={defaults?.accountId ?? ""}>
-                <option value="">Independent - no company</option>
-                {options.accounts.map((a) => (
-                  <option key={a.id} value={a.id}>{a.name}</option>
-                ))}
-              </Select>
+              <RecordLookup entity="account" name="accountId" defaultValue={defaults?.accountId ?? ""} emptyLabel="Independent - no company" />
             </Field>
           )}
 

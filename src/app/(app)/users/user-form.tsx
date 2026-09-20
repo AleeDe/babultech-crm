@@ -8,6 +8,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Alert, Badge,
 } from "@/components/ui";
+import { RecordLookup } from "@/components/record-lookup";
 import { PicklistOptions } from "@/components/picklist";
 import { cn, humanize } from "@/lib/utils";
 
@@ -175,14 +176,7 @@ export function UserForm({
               hint="Everything this login can see is scoped through this record."
             help="Only for external partner logins. Setting it makes this an outside user who sees only that partner's records, never your customer list."
             >
-              <Select name="partnerId" required defaultValue={defaults?.partnerId ?? ""}>
-                <option value="">Select a partner…</option>
-                {options.partners.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.displayName} ({p.partnerNumber}), {humanize(p.kind)}
-                  </option>
-                ))}
-              </Select>
+              <RecordLookup entity="partner" name="partnerId" defaultValue={defaults?.partnerId ?? ""} required emptyLabel="Select a partner…" />
             </Field>
           )}
 

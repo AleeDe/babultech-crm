@@ -7,6 +7,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
+import { RecordLookup } from "@/components/record-lookup";
 import { PicklistOptions } from "@/components/picklist";
 import { humanize } from "@/lib/utils";
 
@@ -169,34 +170,13 @@ export function ProjectForm({
           {!internal && (
             <Field label="Customer" required error={fieldErrors.accountId?.[0]}
               help="The account this work is delivered to.">
-              <Select
-                name="accountId"
-                required
-                value={accountId}
-                disabled={Boolean(lockedAccountId)}
-                onChange={(e) => setAccountId(e.target.value)}
-              >
-                <option value="">Select a customer…</option>
-                {options.accounts.map((a) => (
-                  <option key={a.id} value={a.id}>{a.name}</option>
-                ))}
-              </Select>
+              <RecordLookup entity="account" name="accountId" value={accountId} onChange={(id) => setAccountId((id ?? ""))} required disabled={Boolean(lockedAccountId)} emptyLabel="Select a customer…" />
             </Field>
           )}
           <Field label="Project manager" required error={fieldErrors.projectManagerId?.[0]}
             hint="Added to the team automatically so they can book time."
             help="Who runs the project. They see it in their own list and approve time booked against it.">
-            <Select
-              name="projectManagerId"
-              required
-              defaultValue={defaults?.projectManagerId ?? currentUserId}
-            >
-              {options.users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.fullName}{u.jobTitle ? `, ${u.jobTitle}` : ""}
-                </option>
-              ))}
-            </Select>
+            <RecordLookup entity="user" name="projectManagerId" defaultValue={defaults?.projectManagerId ?? currentUserId} required />
           </Field>
           {/* Outside the !internal block on purpose: an internal project building
               your own product is exactly the case this field is for, and hiding
@@ -206,14 +186,7 @@ export function ProjectForm({
             hint={internal ? "What this work is building." : "What this work delivers."}
             help="The catalogue product this project builds or delivers. Linking it is what lets the system add up what a product has cost to build against what it has earned. Leave it as None for work that is not about a product - a website refresh, a content team."
           >
-            <Select name="productId" defaultValue={defaults?.productId ?? ""}>
-              <option value="">None</option>
-              {options.products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.productCode})
-                </option>
-              ))}
-            </Select>
+            <RecordLookup entity="product" name="productId" defaultValue={defaults?.productId ?? ""} emptyLabel="None" />
             {options.products.length === 0 && (
               <p className="mt-1 text-xs text-muted-foreground">
                 No products in the catalogue yet. Add one under Products first, then
