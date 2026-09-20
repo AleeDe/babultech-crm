@@ -94,10 +94,10 @@ export function SupportShell({
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-secondary text-xs font-semibold">
               {initials(user.fullName)}
             </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{user.fullName}</p>
+            <Link href="/support/account" className="min-w-0 flex-1" onClick={() => setOpen(false)}>
+              <p className="truncate text-sm font-medium hover:underline">{user.fullName}</p>
               <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-            </div>
+            </Link>
             <form action={signOutAction}>
               <button type="submit" className="text-muted-foreground hover:text-foreground" aria-label="Sign out">
                 <LogOut className="h-4 w-4" />

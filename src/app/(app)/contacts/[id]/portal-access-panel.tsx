@@ -7,7 +7,10 @@ import {
   Alert, Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Select,
 } from "@/components/ui";
 import { formatDateTime } from "@/lib/utils";
-import { grantPortalAccess, revokePortalAccess, setPortalScope, type PortalAccess } from "@/server/customer-access";
+import {
+  grantPortalAccess, revokePortalAccess, setPortalScope, resetPortalPassword,
+  type PortalAccess,
+} from "@/server/customer-access";
 
 /**
  * Whether this contact may sign in to the customer portal.
@@ -32,6 +35,7 @@ export function PortalAccessPanel({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [granting, setGranting] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   function onGrant(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -46,7 +50,30 @@ export function PortalAccessPanel({
       });
       if (result.ok) {
         setGranting(false);
-        setNotice(`${result.data.email} can now sign in. Send them the password you just set - it is not shown again.`);
+        setNotice(
+          result.data.emailed
+            ? `${result.data.email} can now sign in. We have emailed them the password.`
+            : `${result.data.email} can now sign in, but the email did not go out (${result.data.emailError ?? "unknown reason"}). Send them the password yourself - it is not shown again.`,
+        );
+        router.refresh();
+      } else setError(result.error);
+    });
+  }
+
+  function onReset(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const fd = new FormData(event.currentTarget);
+    setError(null);
+    setNotice(null);
+    start(async () => {
+      const result = await resetPortalPassword({ contactId, password: String(fd.get("password") ?? "") });
+      if (result.ok) {
+        setResetting(false);
+        setNotice(
+          result.data.emailed
+            ? `A new password has been emailed to ${result.data.email}.`
+            : `The password was changed, but the email did not go out (${result.data.emailError ?? "unknown reason"}). Send it to them yourself.`,
+        );
         router.refresh();
       } else setError(result.error);
     });
@@ -104,18 +131,33 @@ export function PortalAccessPanel({
               </Select>
             </Field>
 
-            {canManage && (
-              <Button variant="outline" onClick={onRevoke} disabled={pending} className="text-destructive hover:text-destructive">
-                Remove access
-              </Button>
-            )}
+            {canManage && (resetting ? (
+              <form onSubmit={onReset} className="space-y-3 rounded-md border border-dashed p-3">
+                <Field label="New password" required help="At least 12 characters. We email it to them.">
+                  <Input name="password" type="text" minLength={12} required autoComplete="new-password" />
+                </Field>
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={pending}>{pending ? "Sending…" : "Set and email it"}</Button>
+                  <Button type="button" variant="ghost" onClick={() => setResetting(false)}>Cancel</Button>
+                </div>
+              </form>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => { setResetting(true); setError(null); setNotice(null); }} disabled={pending}>
+                  <KeyRound className="h-4 w-4" /> Send a new password
+                </Button>
+                <Button variant="outline" onClick={onRevoke} disabled={pending} className="text-destructive hover:text-destructive">
+                  Remove access
+                </Button>
+              </div>
+            ))}
           </>
         ) : granting ? (
           <form onSubmit={onGrant} className="space-y-3">
             <p className="text-muted-foreground">
               They will sign in with <span className="font-medium text-foreground">{contactEmail}</span>.
             </p>
-            <Field label="Temporary password" required help="At least 12 characters. Send it to them yourself; it is not shown again.">
+            <Field label="Temporary password" required help="At least 12 characters. We email it to them; it is not shown again here.">
               <Input name="password" type="text" minLength={12} required autoComplete="new-password" placeholder="e.g. autumn-kettle-97-rain" />
             </Field>
             <Field label="Which tickets they see">

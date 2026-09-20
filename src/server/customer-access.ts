@@ -5,6 +5,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { supabaseAdmin } from "@/lib/supabase";
 import { authorize, PERMISSIONS } from "@/lib/authz";
+import { sendPortalWelcome } from "./portal-invite";
 import type { ActionResult } from "./partners";
 
 /**
@@ -60,7 +61,7 @@ const grantSchema = z.object({
 
 export async function grantPortalAccess(
   input: z.infer<typeof grantSchema>,
-): Promise<ActionResult<{ email: string }>> {
+): Promise<ActionResult<{ email: string; emailed: boolean; emailError: string | null }>> {
   const auth = await authorize(PERMISSIONS.ACCOUNT_WRITE);
   if (!auth.ok) return { ok: false, error: auth.error };
 
@@ -150,8 +151,76 @@ export async function grantPortalAccess(
     return { ok: false, error: err instanceof Error ? err.message : "Could not create the login." };
   }
 
+  // Best-effort: the access is already real, so a mail failure is reported
+  // rather than undoing it. Whoever granted it can then pass the password on.
+  const sent = await sendPortalWelcome({
+    to: email,
+    fullName: `${contact.firstName} ${contact.lastName}`.trim(),
+    password: data.password,
+    contactId: contact.id,
+    kind: "welcome",
+  });
+
   revalidatePath(`/contacts/${contact.id}`);
-  return { ok: true, data: { email } };
+  return { ok: true, data: { email, emailed: sent.ok, emailError: sent.error ?? null } };
+}
+
+const resetSchema = z.object({
+  contactId: z.string().uuid(),
+  password: z.string().min(12, "Use at least 12 characters.").max(200),
+});
+
+/**
+ * Sets a new password for an existing customer login and emails it.
+ *
+ * The same path as granting, for the case this exists to serve: someone who
+ * never received the first email, or who has forgotten what they were sent.
+ */
+export async function resetPortalPassword(
+  input: z.infer<typeof resetSchema>,
+): Promise<ActionResult<{ email: string; emailed: boolean; emailError: string | null }>> {
+  const auth = await authorize(PERMISSIONS.ACCOUNT_WRITE);
+  if (!auth.ok) return { ok: false, error: auth.error };
+
+  const parsed = resetSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the password." };
+  }
+
+  const admin = supabaseAdmin();
+  const { data: user } = await admin
+    .from("app_user")
+    .select("id, email, fullName")
+    .eq("contactId", parsed.data.contactId)
+    .eq("userType", "CUSTOMER")
+    .is("deletedAt", null)
+    .maybeSingle();
+
+  if (!user) return { ok: false, error: "This contact has no portal access." };
+
+  const { error: authError } = await admin.auth.admin.updateUserById(user.id, {
+    password: parsed.data.password,
+  });
+  if (authError) return { ok: false, error: `Could not set the password: ${authError.message}` };
+
+  await admin
+    .from("app_user")
+    .update({
+      passwordHash: await bcrypt.hash(parsed.data.password, BCRYPT_ROUNDS),
+      updatedAt: new Date().toISOString(),
+    })
+    .eq("id", user.id);
+
+  const sent = await sendPortalWelcome({
+    to: user.email,
+    fullName: user.fullName,
+    password: parsed.data.password,
+    contactId: parsed.data.contactId,
+    kind: "reset",
+  });
+
+  revalidatePath(`/contacts/${parsed.data.contactId}`);
+  return { ok: true, data: { email: user.email, emailed: sent.ok, emailError: sent.error ?? null } };
 }
 
 /**
