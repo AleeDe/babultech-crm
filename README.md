@@ -2,7 +2,7 @@
 
 An internal CRM built from *BabulTech CRM — Complete Entity Relationship Diagram and Data Model* v1.0, plus a Partner Management and Commission module that the specification did not cover.
 
-Next.js 15 (App Router) · TypeScript · PostgreSQL + Prisma · Tailwind · Auth.js
+Next.js 15 (App Router) · TypeScript · PostgreSQL + Prisma · Tailwind · Auth.js..
 
 📄 **[docs/HANDOVER.md](docs/HANDOVER.md)** — everything built, what it enforces,
 what was verified and how, the bugs found along the way, and the known gaps.
