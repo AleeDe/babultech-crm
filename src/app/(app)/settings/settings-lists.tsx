@@ -217,7 +217,7 @@ export function NamedList({
   description,
   rows,
 }: {
-  kind: "department" | "caseCategory" | "expenseCategory";
+  kind: "department" | "caseCategory" | "expenseCategory" | "campaignType";
   title: string;
   description: string;
   rows: NamedRow[];

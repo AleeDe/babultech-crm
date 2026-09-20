@@ -14,7 +14,7 @@ export default async function SettingsPage() {
   if (!can(me, PERMISSIONS.ADMIN)) return <Forbidden what="settings" />;
 
   const [
-    { currencies, taxRates, departments, caseCategories, expenseCategories },
+    { currencies, taxRates, departments, caseCategories, expenseCategories, campaignTypes },
     emailSettings,
     slaPolicies,
     businessHours,
@@ -65,6 +65,12 @@ export default async function SettingsPage() {
           title="Expense categories"
           description="Applied when recording an expense."
           rows={expenseCategories}
+        />
+        <NamedList
+          kind="campaignType"
+          title="Campaign types"
+          description="The kinds of campaign you run. Also addable from the campaign form itself."
+          rows={campaignTypes}
         />
       </div>
     </>

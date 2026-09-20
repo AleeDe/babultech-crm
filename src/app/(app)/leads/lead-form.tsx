@@ -8,6 +8,7 @@ import {
   Select, Textarea, Alert,
 } from "@/components/ui";
 import { PicklistOptions } from "@/components/picklist";
+import { PicklistSelect } from "@/components/picklist-select";
 import { humanize } from "@/lib/utils";
 
 /** CONVERTED is absent by design — a lead becomes converted only through conversion. */
@@ -162,10 +163,7 @@ export function LeadForm({
           </Field>
           <Field label="Industry"
             help="The sector they operate in. Used for reporting on where your leads come from.">
-            <Select name="industry" defaultValue={defaults?.industry ?? ""}>
-              <option value="">Not set</option>
-              <PicklistOptions list="industry" current={defaults?.industry} />
-            </Select>
+            <PicklistSelect list="industry" name="industry" defaultValue={defaults?.industry ?? ""} addLabel="Add an industry" />
           </Field>
         </CardContent>
       </Card>
@@ -177,10 +175,7 @@ export function LeadForm({
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Lead source"
             help="How they first reached you - a referral, the website, an event. This is what tells you which channels are worth the spend.">
-            <Select name="leadSource" defaultValue={defaults?.leadSource ?? ""}>
-              <option value="">Not stated</option>
-              <PicklistOptions list="lead_source" fallback={SOURCES} current={defaults?.leadSource ?? ""} />
-            </Select>
+            <PicklistSelect list="lead_source" name="leadSource" emptyLabel="Not stated" fallback={SOURCES} defaultValue={defaults?.leadSource ?? ""} addLabel="Add a lead source" />
           </Field>
           <Field label="Campaign"
             help="The marketing push that produced this lead, if there was one. Links the cost of the campaign to what it returned.">
@@ -237,10 +232,7 @@ export function LeadForm({
 
           <Field label="Rating"
             help="Your own judgement of how promising this is. Hot, Warm and Cold are a rough sort, not a formula.">
-            <Select name="rating" defaultValue={defaults?.rating ?? ""}>
-              <option value="">Not rated</option>
-              <PicklistOptions list="lead_rating" fallback={RATINGS} current={defaults?.rating ?? ""} />
-            </Select>
+            <PicklistSelect list="lead_rating" name="rating" emptyLabel="Not rated" fallback={RATINGS} defaultValue={defaults?.rating ?? ""} addLabel="Add a rating" />
           </Field>
           <Field label="Estimated value"
             help="Roughly what the deal is worth if it lands. A guess is fine - it is for sizing the pipeline, not forecasting.">

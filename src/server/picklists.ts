@@ -76,21 +76,37 @@ const addSchema = z.object({
   label: z.string().trim().min(1, "Give the value a name.").max(100, "That name is too long."),
 });
 
-export async function addPicklistValue(list: string, label: string): Promise<Result> {
-  const auth = await authorize(PERMISSIONS.ADMIN);
+/**
+  * Adds a value to an open list, from Settings or from any form that uses it.
+  *
+  * Deliberately not admin-only: the person filling in a lead is the one who
+  * knows the source it came from, and sending them away to have it added is how
+  * "Other" ends up meaning six different things. The database refuses workflow
+  * lists at any permission level, and only someone who may write records at all
+  * gets this far.
+  */
+export async function addPicklistValue(
+  list: string,
+  label: string,
+): Promise<{ ok: true; value: { value: string; label: string } } | { ok: false; error: string }> {
+  // No permission argument: add_picklist_value applies the write check itself,
+  // against the caller's own session.
+  const auth = await authorize();
   if (!auth.ok) return { ok: false, error: auth.error };
 
   const parsed = addSchema.safeParse({ list, label });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the value." };
 
   const db = await supabaseServer();
-  const { error } = await db.rpc("add_picklist_value", {
+  const { data, error } = await db.rpc("add_picklist_value", {
     p_list: parsed.data.list,
     p_value: parsed.data.label,
     p_label: parsed.data.label,
   });
   if (error) return { ok: false, error: error.message };
-  return done();
+
+  revalidatePath("/", "layout");
+  return { ok: true, value: { value: String(data.value), label: String(data.label) } };
 }
 
 const updateSchema = z.object({

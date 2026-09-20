@@ -9,6 +9,7 @@ import {
   Select, Textarea, Alert,
 } from "@/components/ui";
 import { PicklistOptions } from "@/components/picklist";
+import { PicklistSelect } from "@/components/picklist-select";
 import { formatMoney, humanize } from "@/lib/utils";
 
 const STAGES = [
@@ -335,9 +336,7 @@ export function OpportunityForm({
 
           <Field label="Deal type" required
             help="Whether this is new business or expansion of an existing customer. Worth splitting in reporting.">
-            <Select name="opportunityType" required defaultValue={defaults?.opportunityType ?? "NEW"}>
-              <PicklistOptions list="opportunity_type" fallback={TYPES} current={defaults?.opportunityType ?? "NEW"} />
-            </Select>
+            <PicklistSelect list="opportunity_type" name="opportunityType" required emptyLabel={null} fallback={TYPES} defaultValue={defaults?.opportunityType ?? "NEW"} addLabel="Add a deal type" />
           </Field>
           <Field label="Expected close date" required error={fieldErrors.expectedCloseDate?.[0]}
             help="When you realistically expect a decision. Drives the forecast, so an honest date is worth more than an optimistic one.">
@@ -369,10 +368,7 @@ export function OpportunityForm({
           </Field>
           <Field label="Lead source"
             help="Where the deal originally came from. Carried over automatically if it started as a lead.">
-            <Select name="leadSource" defaultValue={defaults?.leadSource ?? ""}>
-              <option value="">Not set</option>
-              <PicklistOptions list="lead_source" current={defaults?.leadSource} />
-            </Select>
+            <PicklistSelect list="lead_source" name="leadSource" defaultValue={defaults?.leadSource ?? ""} addLabel="Add a lead source" />
           </Field>
         </CardContent>
       </Card>

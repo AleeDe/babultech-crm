@@ -7,7 +7,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
 } from "@/components/ui";
-import { PicklistOptions } from "@/components/picklist";
+import { PicklistSelect } from "@/components/picklist-select";
 import { cn, formatMoney, formatDate, humanize } from "@/lib/utils";
 
 const METHODS = ["BANK", "CHEQUE", "CASH", "CARD", "WALLET"];
@@ -163,9 +163,7 @@ export function PaymentForm({
           </Field>
           <Field label="Method" required
             help="How it arrived - bank transfer, cheque, cash. Helps when reconciling the statement.">
-            <Select name="paymentMethod" required defaultValue="BANK">
-              <PicklistOptions list="payment_method" fallback={METHODS} />
-            </Select>
+            <PicklistSelect list="payment_method" name="paymentMethod" required emptyLabel={null} fallback={METHODS} defaultValue="BANK" addLabel="Add a payment method" />
           </Field>
           <Field label="Reference"
             help="The bank reference or cheque number. This is what makes the payment findable on a statement later.">

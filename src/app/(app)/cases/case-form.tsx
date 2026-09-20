@@ -9,6 +9,7 @@ import {
   Select, Textarea, Alert,
 } from "@/components/ui";
 import { PicklistOptions } from "@/components/picklist";
+import { PicklistSelect } from "@/components/picklist-select";
 import { humanize } from "@/lib/utils";
 
 const TYPES = ["INCIDENT", "REQUEST", "QUESTION", "PROBLEM"];
@@ -247,9 +248,7 @@ export function CaseForm({
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Type" required
             help="The kind of issue - a fault, a question, a request. Decides how it is routed and reported.">
-              <Select name="caseType" required defaultValue={defaults?.caseType ?? "INCIDENT"}>
-                <PicklistOptions list="case_type" fallback={TYPES} current={defaults?.caseType ?? "INCIDENT"} />
-              </Select>
+              <PicklistSelect list="case_type" name="caseType" required emptyLabel={null} fallback={TYPES} defaultValue={defaults?.caseType ?? "INCIDENT"} addLabel="Add a case type" />
             </Field>
             <Field label="Priority" required
             help="How urgent this is. Combined with the SLA policy, it sets the clock you are working against.">
@@ -264,9 +263,7 @@ export function CaseForm({
             </Field>
             <Field label="Came in via" required
             help="How the customer reported it - email, phone, the portal. Useful for knowing which channels to staff.">
-              <Select name="source" required defaultValue={defaults?.source ?? "EMAIL"}>
-                <PicklistOptions list="case_source" fallback={SOURCES} current={defaults?.source ?? "EMAIL"} />
-              </Select>
+              <PicklistSelect list="case_source" name="source" required emptyLabel={null} fallback={SOURCES} defaultValue={defaults?.source ?? "EMAIL"} addLabel="Add a source" />
             </Field>
             <Field
               label="Category"

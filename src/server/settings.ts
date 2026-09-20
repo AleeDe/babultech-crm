@@ -48,13 +48,14 @@ export async function getSettings() {
   await requireAdmin();
   const db = await supabaseServer();
 
-  const [currencies, taxRates, departments, caseCategories, expenseCategories] =
+  const [currencies, taxRates, departments, caseCategories, expenseCategories, campaignTypes] =
     await Promise.all([
       db.from("currency").select("*").order("code"),
       db.from("tax_rate").select("*").order("name"),
       db.from("department").select("id, name").order("name"),
       db.from("case_category").select("id, name, active").order("name"),
       db.from("expense_category").select("id, name").order("name"),
+      db.from("campaign_type").select("id, name, active").order("name"),
     ]);
 
   return {
@@ -63,6 +64,7 @@ export async function getSettings() {
     departments: (departments.data ?? []) as NamedRow[],
     caseCategories: (caseCategories.data ?? []) as NamedRow[],
     expenseCategories: (expenseCategories.data ?? []) as NamedRow[],
+    campaignTypes: (campaignTypes.data ?? []) as NamedRow[],
   };
 }
 
@@ -188,6 +190,7 @@ const NAMED_TABLES = {
   department: "department",
   caseCategory: "case_category",
   expenseCategory: "expense_category",
+  campaignType: "campaign_type",
 } as const;
 
 export async function saveNamedRow(

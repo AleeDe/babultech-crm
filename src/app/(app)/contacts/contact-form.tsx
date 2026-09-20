@@ -7,7 +7,7 @@ import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Alert,
 } from "@/components/ui";
-import { PicklistOptions } from "@/components/picklist";
+import { PicklistSelect } from "@/components/picklist-select";
 import { humanize } from "@/lib/utils";
 
 const CHANNELS = ["EMAIL", "PHONE", "WHATSAPP"];
@@ -177,10 +177,7 @@ export function ContactForm({
           </Field>
           <Field label="Preferred channel"
             help="How they would rather be contacted. Following it gets faster replies.">
-            <Select name="preferredChannel" defaultValue={defaults?.preferredChannel ?? ""}>
-              <option value="">Not stated</option>
-              <PicklistOptions list="preferred_channel" fallback={CHANNELS} current={defaults?.preferredChannel ?? ""} />
-            </Select>
+            <PicklistSelect list="preferred_channel" name="preferredChannel" emptyLabel="Not stated" fallback={CHANNELS} defaultValue={defaults?.preferredChannel ?? ""} addLabel="Add a channel" />
           </Field>
           <div className="space-y-3 pt-6">
             <label className="flex items-center gap-2 text-sm">

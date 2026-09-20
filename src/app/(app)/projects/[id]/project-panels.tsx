@@ -16,6 +16,7 @@ import {
   Select, Textarea, Alert, Badge, statusTone, Table, THead, TBody, TR, TH, TD,
 } from "@/components/ui";
 import { PicklistOptions } from "@/components/picklist";
+import { PicklistSelect } from "@/components/picklist-select";
 import { TASK_CATEGORIES } from "@/lib/picklists";
 import { cn, formatDate, formatMoney, formatPercent, humanize } from "@/lib/utils";
 import { FormDialog } from "@/components/form-dialog";
@@ -327,11 +328,8 @@ export function TaskBoard({
           </Select>
         </Field>
         <Field label="Task type"
-            help="The kind of work, e.g. Installation, Testing, Data migration. Configured in Settings.">
-          <Select name="taskType" defaultValue={task?.taskType ?? ""}>
-            <option value="">Not set</option>
-            <PicklistOptions list="task_type" current={task?.taskType} />
-          </Select>
+            help="The kind of work, e.g. Installation, Testing, Data migration. Add one here if it is missing.">
+          <PicklistSelect list="task_type" name="taskType" defaultValue={task?.taskType ?? ""} addLabel="Add a task type" />
         </Field>
         <Field label="Task category"
             help="Implementation or Training. Decides which project total, and which deal cost, this task's amount counts towards.">
