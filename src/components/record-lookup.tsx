@@ -227,7 +227,9 @@ export function RecordLookup({
           <ul
             id={listId}
             role="listbox"
-            className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md"
+            // bg-card, not bg-popover: this theme defines no popover colour, so
+            // that class left the list transparent and the page showed through.
+            className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-card p-1 shadow-lg"
           >
             {error && <li className="px-3 py-2 text-sm text-destructive">{error}</li>}
 
