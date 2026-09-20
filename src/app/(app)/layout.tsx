@@ -9,9 +9,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   try {
     const user = await requireUser();
 
-    // External partner logins never see the internal app, whatever they type
-    // in the address bar. The portal layout enforces the reverse.
-    if (user.partnerId) redirect("/portal");
+    // External logins never see the internal app, whatever they type in the
+    // address bar. Each portal's layout enforces the reverse, and the database
+    // refuses them independently: both fail app_is_internal().
+    if (user.userType === "PARTNER" || user.partnerId) redirect("/portal");
+    if (user.userType === "CUSTOMER") redirect("/support");
 
     // The configurable dropdown values, loaded once for every form.
     const picklists = await getPicklistMap();

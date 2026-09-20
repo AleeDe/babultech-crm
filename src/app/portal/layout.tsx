@@ -8,6 +8,7 @@ import { getPartnerProfile } from "@/server/portal";
  * external users:
  *
  *   - no session          → /login
+ *   - session, customer   → /support
  *   - session, no partner → / (an employee wandered in)
  *   - session + partner   → the portal
  *
@@ -24,6 +25,7 @@ export default async function PortalLayout({ children }: { children: React.React
     throw err;
   }
 
+  if (user.userType === "CUSTOMER") redirect("/support");
   if (!user.partnerId) redirect("/");
 
   const partner = await getPartnerProfile();

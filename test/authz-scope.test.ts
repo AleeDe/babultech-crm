@@ -53,6 +53,10 @@ async function sessionUserFor(email: string): Promise<SessionUser> {
     dataScope: role.dataScope as DataScope,
     permissions: role.permissions,
     departmentId: user.departmentId,
+    userType: "INTERNAL" as const,
+    contactId: null,
+    customerAccountId: null,
+    portalScope: "ACCOUNT" as const,
     teamIds: (user.teamMemberships ?? []).map((m: { teamId: string }) => m.teamId),
     partnerId: user.partnerId,
   };

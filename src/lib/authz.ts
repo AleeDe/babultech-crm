@@ -21,6 +21,8 @@ type SupabaseLike = Pick<SupabaseClient, "from">;
 
 export type DataScope = "OWN" | "TEAM" | "DEPARTMENT" | "ALL";
 
+export type UserType = "INTERNAL" | "PARTNER" | "CUSTOMER";
+
 export interface SessionUser {
   id: string;
   fullName: string;
@@ -36,6 +38,21 @@ export interface SessionUser {
    * scopes through it. Never take this from a URL — only from the session.
    */
   partnerId: string | null;
+  /**
+   * Which of the three kinds of login this is. One identity table serves
+   * employees, partners and customers; this says which, and the database's
+   * app_is_internal() reads the same column. Everything about what an external
+   * login may see hangs off it and off the links below, never off a role: a
+   * role is data, and one wrong role assignment would otherwise hand a
+   * customer the company's pipeline.
+   */
+  userType: UserType;
+  /** The contact a customer login is, and nothing else may be. */
+  contactId: string | null;
+  /** That contact's account: what a customer's access is scoped to. */
+  customerAccountId: string | null;
+  /** Whether a customer sees their own tickets or their whole company's. */
+  portalScope: "OWN" | "ACCOUNT";
 }
 
 export class AuthorizationError extends Error {
@@ -104,6 +121,8 @@ async function loadUser(): Promise<SessionUser> {
     .from("app_user")
     .select(
       `id, fullName, email, status, deletedAt, departmentId, partnerId,
+       userType, contactId, portalScope,
+       contact:contact ( accountId ),
        role:security_role!inner ( name, dataScope, permissions ),
        teamMemberships:team_member ( teamId )`,
     )
@@ -132,6 +151,11 @@ async function loadUser(): Promise<SessionUser> {
     departmentId: user.departmentId,
     teamIds: (user.teamMemberships ?? []).map((m: { teamId: string }) => m.teamId),
     partnerId: user.partnerId,
+    userType: (user.userType ?? "INTERNAL") as UserType,
+    contactId: user.contactId ?? null,
+    customerAccountId:
+      (Array.isArray(user.contact) ? user.contact[0]?.accountId : (user.contact as { accountId: string } | null)?.accountId) ?? null,
+    portalScope: (user.portalScope ?? "ACCOUNT") as "OWN" | "ACCOUNT",
   };
 }
 

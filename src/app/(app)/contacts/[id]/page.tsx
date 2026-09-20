@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
 import { NotesSection } from "@/components/notes-section";
+import { PortalAccessPanel } from "./portal-access-panel";
+import { getPortalAccess } from "@/server/customer-access";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { Mail, Phone, MessageCircle, Star } from "lucide-react";
 import { getContact } from "@/server/crm";
@@ -23,9 +25,10 @@ export default async function ContactDetailPage({
 
   const { id } = await params;
 
-  const [notes, documents] = await Promise.all([
+  const [notes, documents, portalAccess] = await Promise.all([
     listNotes("Contact", id),
     listDocuments("Contact", id),
+    getPortalAccess(id),
   ]);
   const contact = await getContact(id);
   if (!contact) notFound();
@@ -137,6 +140,15 @@ export default async function ContactDetailPage({
             )}
           </CardContent>
         </Card>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <PortalAccessPanel
+          contactId={id}
+          contactEmail={contact.email ?? null}
+          access={portalAccess}
+          canManage={can(me, PERMISSIONS.ACCOUNT_WRITE)}
+        />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
