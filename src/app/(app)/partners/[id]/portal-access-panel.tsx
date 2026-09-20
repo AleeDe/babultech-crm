@@ -90,8 +90,8 @@ export function PartnerPortalPanel({
 
         {people.length === 0 ? (
           <p className="text-muted-foreground">
-            No contacts are linked to this partner yet. Add their people as contacts first, and they
-            can then be given access here.
+            Nobody is recorded at this partner yet. Add their people as contacts of the partner&apos;s
+            account, and they can be given access here.
           </p>
         ) : (
           <ul className="divide-y rounded-md border">

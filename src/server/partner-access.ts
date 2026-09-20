@@ -12,8 +12,9 @@ import type { ActionResult } from "./partners";
  * Logins for a partner's own people.
  *
  * The same shape as customer access: a login is a person acting for an
- * organisation. Here the organisation is the partner, and the people are the
- * contacts linked to it through partner_contact.
+ * organisation. Here the organisation is the partner, and the people are its
+ * contacts - of its account, of its partner_contact links, or the one contact
+ * an individual partner is. See partnerPeople() below.
  *
  * Partner logins could always be made from the Users screen by ticking a box.
  * That still works and older logins carry no contact, but it is the wrong
@@ -22,6 +23,83 @@ import type { ActionResult } from "./partners";
  */
 
 const BCRYPT_ROUNDS = 12;
+
+type ContactRow = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  deletedAt: string | null;
+};
+
+/**
+ * Everyone who counts as a person at this partner.
+ *
+ * Three ways they get there, because all three happen in practice:
+ *
+ *   * a contact of the partner's account - the usual one, and the one that
+ *     caught me out: linking an account to a partner does not write
+ *     partner_contact rows, so a panel reading only that join showed nobody
+ *     for a partner whose account plainly had contacts;
+ *   * an explicit partner_contact link, which also carries their role; and
+ *   * the single contact an INDIVIDUAL partner *is*.
+ *
+ * The union is what someone looking at the screen means by "their people".
+ */
+async function partnerPeople(
+  admin: ReturnType<typeof supabaseAdmin>,
+  partnerId: string,
+): Promise<{ contact: ContactRow; role: string | null }[]> {
+  const { data: partner } = await admin
+    .from("partner")
+    .select("id, accountId, contactId, deletedAt")
+    .eq("id", partnerId)
+    .maybeSingle();
+  if (!partner || partner.deletedAt) return [];
+
+  const [links, accountContacts, own] = await Promise.all([
+    admin
+      .from("partner_contact")
+      .select("role, isPrimary, contact:contact ( id, firstName, lastName, email, deletedAt )")
+      .eq("partnerId", partnerId)
+      .order("isPrimary", { ascending: false }),
+    partner.accountId
+      ? admin
+          .from("contact")
+          .select("id, firstName, lastName, email, deletedAt")
+          .eq("accountId", partner.accountId)
+          .is("deletedAt", null)
+          .eq("active", true)
+          .order("isPrimary", { ascending: false })
+          .order("lastName")
+      : Promise.resolve({ data: [] as ContactRow[] }),
+    partner.contactId
+      ? admin
+          .from("contact")
+          .select("id, firstName, lastName, email, deletedAt")
+          .eq("id", partner.contactId)
+          .maybeSingle()
+      : Promise.resolve({ data: null as ContactRow | null }),
+  ]);
+
+  const out: { contact: ContactRow; role: string | null }[] = [];
+  const seen = new Set<string>();
+  const add = (contact: ContactRow | null | undefined, role: string | null) => {
+    if (!contact || contact.deletedAt || seen.has(contact.id)) return;
+    seen.add(contact.id);
+    out.push({ contact, role });
+  };
+
+  // Linked contacts first: their role is the most specific thing known.
+  for (const row of links.data ?? []) {
+    const contact = (Array.isArray(row.contact) ? row.contact[0] : row.contact) as ContactRow | null;
+    add(contact, (row.role as string | null) ?? null);
+  }
+  add(own.data as ContactRow | null, "The partner");
+  for (const contact of (accountContacts.data ?? []) as ContactRow[]) add(contact, null);
+
+  return out;
+}
 
 export interface PartnerLoginPerson {
   contactId: string | null;
@@ -41,12 +119,8 @@ export async function listPartnerPortalAccess(partnerId: string): Promise<Partne
   if (!auth.ok) return [];
 
   const admin = supabaseAdmin();
-  const [contacts, logins] = await Promise.all([
-    admin
-      .from("partner_contact")
-      .select("role, isPrimary, contact:contact ( id, firstName, lastName, email, deletedAt )")
-      .eq("partnerId", partnerId)
-      .order("isPrimary", { ascending: false }),
+  const [people, logins] = await Promise.all([
+    partnerPeople(admin, partnerId),
     admin
       .from("app_user")
       .select("id, email, status, lastLoginAt, contactId")
@@ -59,27 +133,34 @@ export async function listPartnerPortalAccess(partnerId: string): Promise<Partne
   const unlinked: PartnerLoginPerson[] = [];
 
   for (const row of logins.data ?? []) {
-    const login = { userId: row.id as string, email: row.email as string, status: row.status as string, lastLoginAt: (row.lastLoginAt as string | null) ?? null };
+    const login = {
+      userId: row.id as string,
+      email: row.email as string,
+      status: row.status as string,
+      lastLoginAt: (row.lastLoginAt as string | null) ?? null,
+    };
     if (row.contactId) byContact.set(row.contactId as string, login);
-    else unlinked.push({ contactId: null, name: row.email as string, email: row.email as string, role: "Login with no contact recorded", login });
+    else {
+      // A login made from the Users screen, before logins named a contact.
+      unlinked.push({
+        contactId: null,
+        name: row.email as string,
+        email: row.email as string,
+        role: "Login with no contact recorded",
+        login,
+      });
+    }
   }
 
-  const people = (contacts.data ?? [])
-    .map((row) => {
-      const contact = (Array.isArray(row.contact) ? row.contact[0] : row.contact) as
-        { id: string; firstName: string; lastName: string; email: string | null; deletedAt: string | null } | null;
-      if (!contact || contact.deletedAt) return null;
-      return {
-        contactId: contact.id,
-        name: `${contact.firstName} ${contact.lastName}`.trim(),
-        email: contact.email,
-        role: (row.role as string | null) ?? null,
-        login: byContact.get(contact.id) ?? null,
-      };
-    })
-    .filter((p) => p !== null) as PartnerLoginPerson[];
+  const rows: PartnerLoginPerson[] = people.map(({ contact, role }) => ({
+    contactId: contact.id,
+    name: `${contact.firstName} ${contact.lastName}`.trim(),
+    email: contact.email,
+    role,
+    login: byContact.get(contact.id) ?? null,
+  }));
 
-  return [...people, ...unlinked];
+  return [...rows, ...unlinked];
 }
 
 const grantSchema = z.object({
@@ -101,19 +182,13 @@ export async function grantPartnerAccess(
   const data = parsed.data;
   const admin = supabaseAdmin();
 
-  // The contact has to belong to this partner. Taken from the join table rather
-  // than trusted from the form, so a contact id from elsewhere finds nothing.
-  const { data: link } = await admin
-    .from("partner_contact")
-    .select("contact:contact ( id, firstName, lastName, email, deletedAt )")
-    .eq("partnerId", data.partnerId)
-    .eq("contactId", data.contactId)
-    .maybeSingle();
+  // The contact has to be one of this partner's people, worked out server-side
+  // from the partner rather than trusted from the form, so a contact id from
+  // somewhere else finds nothing.
+  const people = await partnerPeople(admin, data.partnerId);
+  const contact = people.find((person) => person.contact.id === data.contactId)?.contact ?? null;
 
-  const contact = (Array.isArray(link?.contact) ? link?.contact[0] : link?.contact) as
-    { id: string; firstName: string; lastName: string; email: string | null; deletedAt: string | null } | null;
-
-  if (!contact || contact.deletedAt) {
+  if (!contact) {
     return { ok: false, error: "That person is not a contact of this partner." };
   }
   if (!contact.email) {
