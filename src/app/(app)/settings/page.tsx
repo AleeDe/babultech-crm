@@ -7,6 +7,8 @@ import { getEmailSettings } from "@/server/email";
 import { SlaPolicies } from "./sla-policies";
 import { listSlaPolicies, listBusinessHours } from "@/server/sla";
 import { getPicklistsForAdmin } from "@/server/picklists";
+import { listRoles } from "@/server/roles";
+import { RolesPanel } from "./roles-panel";
 import { PicklistEditor } from "./picklist-editor";
 
 export default async function SettingsPage() {
@@ -19,8 +21,10 @@ export default async function SettingsPage() {
     slaPolicies,
     businessHours,
     picklists,
+    roles,
   ] = await Promise.all([
     getSettings(), getEmailSettings(), listSlaPolicies(), listBusinessHours(), getPicklistsForAdmin(),
+    listRoles(),
   ]);
 
   const everythingEmpty =
@@ -43,6 +47,7 @@ export default async function SettingsPage() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
+        <RolesPanel roles={roles} />
         <PicklistEditor lists={picklists} />
         <SlaPolicies policies={slaPolicies} businessHours={businessHours} />
         <EmailSettingsPanel values={emailSettings} />

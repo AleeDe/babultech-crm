@@ -2,20 +2,18 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Handshake, ShieldCheck } from "lucide-react";
+import { Building2, ShieldCheck } from "lucide-react";
 import { createUser, updateUser } from "@/server/users";
 import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Alert, Badge,
 } from "@/components/ui";
-import { RecordLookup } from "@/components/record-lookup";
 import { PicklistOptions } from "@/components/picklist";
 import { SelectWithAdd } from "@/components/select-with-add";
 import { createDepartment } from "@/server/reference-options";
 import { cn, humanize } from "@/lib/utils";
 
 const STATUSES = ["ACTIVE", "INACTIVE", "SUSPENDED"];
-const PARTNER_ROLE = "Partner";
 
 export interface UserFormOptions {
   roles: {
@@ -69,7 +67,9 @@ export function UserForm({
 
   const editing = Boolean(defaults);
   const role = useMemo(() => options.roles.find((r) => r.id === roleId), [options.roles, roleId]);
-  const isPartner = role?.name === PARTNER_ROLE;
+  // Kept as a constant rather than deleted: an existing partner login can
+  // still be opened here, and its employee-only fields must stay hidden.
+  const isPartner = Boolean(defaults?.partnerId);
 
   // A submit HANDLER rather than <form action={...}>. React resets a form after
   // an action completes, and every field here is uncontrolled (defaultValue), so
@@ -97,7 +97,7 @@ export function UserForm({
       roleId,
       departmentId: isPartner ? null : get("departmentId"),
       managerUserId: isPartner ? null : get("managerUserId"),
-      partnerId: isPartner ? get("partnerId") : null,
+      partnerId: defaults?.partnerId ?? null,
       status: get("status") ?? "ACTIVE",
       costRate: isPartner ? null : get("costRate"),
       defaultBillingRate: isPartner ? null : get("defaultBillingRate"),
@@ -124,16 +124,16 @@ export function UserForm({
 
       <Card>
         <CardHeader>
-          <CardTitle>Access</CardTitle>
+          <CardTitle>Select role</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            The role grants permissions and a data scope. Ownership, team membership and project assignments determine which records they can access.
+            The role decides what they may do and how much they see. Roles are configured in Settings. Ownership, team membership and project assignments narrow it further.
           </p>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {options.roles.map((r) => {
               const selected = r.id === roleId;
-              const Icon = r.name === PARTNER_ROLE ? Handshake : r.permissions.includes("*") ? ShieldCheck : Building2;
+              const Icon = r.permissions.includes("*") ? ShieldCheck : Building2;
               return (
                 <button
                   key={r.id}
@@ -171,15 +171,10 @@ export function UserForm({
           )}
 
           {isPartner && (
-            <Field
-              label="Partner they act for"
-              required
-              error={fieldErrors.partnerId?.[0]}
-              hint="Everything this login can see is scoped through this record."
-            help="Only for external partner logins. Setting it makes this an outside user who sees only that partner's records, never your customer list."
-            >
-              <RecordLookup entity="partner" name="partnerId" defaultValue={defaults?.partnerId ?? ""} required emptyLabel="Select a partner…" />
-            </Field>
+            <Alert tone="warning">
+              This is an external partner login. Its partnership, password and access are managed on
+              the partner&apos;s own page.
+            </Alert>
           )}
 
           <Field label="Status" required

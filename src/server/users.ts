@@ -624,6 +624,10 @@ export async function getUserFormOptions() {
         .from("security_role")
         .select("id, name, description, dataScope, permissions")
         .eq("active", true)
+        // The portal roles are not offered here: an external login is created
+        // from the partner's page or the contact's, which is also where its
+        // welcome email and its link to a person come from.
+        .not("name", "in", '("Partner","Customer")')
         .order("name"),
       db
         .from("department")
