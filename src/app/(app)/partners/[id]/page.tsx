@@ -6,6 +6,8 @@ import { NotesSection } from "@/components/notes-section";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { Building2, User, Mail, Phone, Globe, MapPin } from "lucide-react";
 import { getPartner, getPartnerSummary } from "@/server/partners";
+import { listPartnerPortalAccess } from "@/server/partner-access";
+import { PartnerPortalPanel } from "./portal-access-panel";
 import { getAuditTrail } from "@/lib/audit";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
@@ -25,9 +27,10 @@ export default async function PartnerDetailPage({
 
   const { id } = await params;
 
-  const [notes, documents] = await Promise.all([
+  const [notes, documents, portalPeople] = await Promise.all([
     listNotes("Partner", id),
     listDocuments("Partner", id),
+    listPartnerPortalAccess(id),
   ]);
   const [partner, summary] = await Promise.all([getPartner(id), getPartnerSummary(id)]);
   if (!partner) notFound();
@@ -210,6 +213,14 @@ export default async function PartnerDetailPage({
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      <div className="mt-6">
+        <PartnerPortalPanel
+          partnerId={id}
+          people={portalPeople}
+          canManage={can(_me, PERMISSIONS.PARTNER_WRITE)}
+        />
       </div>
 
       <Card className="mt-6">

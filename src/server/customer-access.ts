@@ -159,6 +159,7 @@ export async function grantPortalAccess(
     password: data.password,
     contactId: contact.id,
     kind: "welcome",
+    audience: "customer",
   });
 
   revalidatePath(`/contacts/${contact.id}`);
@@ -217,6 +218,7 @@ export async function resetPortalPassword(
     password: parsed.data.password,
     contactId: parsed.data.contactId,
     kind: "reset",
+    audience: "customer",
   });
 
   revalidatePath(`/contacts/${parsed.data.contactId}`);

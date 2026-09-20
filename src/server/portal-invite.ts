@@ -55,22 +55,30 @@ export async function sendPortalWelcome(input: {
   contactId: string;
   /** A first invitation, or a replacement password for an existing login. */
   kind: "welcome" | "reset";
+  /** Which portal they are being let into, which is all that differs. */
+  audience?: "customer" | "partner";
 }): Promise<{ ok: boolean; error?: string }> {
   const b = await branding();
   const first = input.kind === "welcome";
   const signInUrl = `${APP_URL.replace(/\/$/, "")}/login`;
 
+  const partner = input.audience === "partner";
+  const portalName = partner ? "partner portal" : "support portal";
+  const firstName = input.fullName.split(" ")[0] ?? input.fullName;
+
   const message = first
-    ? `Hello ${input.fullName.split(" ")[0] ?? input.fullName},\n\n` +
-      `You can now sign in to raise support tickets with us, follow what is happening with them, and read our help articles.\n\n` +
-      `Use the details below to sign in. Please change the password after you first sign in, and do not share it.`
-    : `Hello ${input.fullName.split(" ")[0] ?? input.fullName},\n\n` +
-      `Your support portal password has been reset. Use the details below to sign in.\n\n` +
-      `If you did not ask for this, tell us straight away.`;
+    ? `Hello ${firstName},\n\n` +
+      (partner
+        ? "You can now sign in to our partner portal to register deals, follow the ones you have brought us, and see your commission and payouts.\n\n"
+        : "You can now sign in to raise support tickets with us, follow what is happening with them, and read our help articles.\n\n") +
+      "Use the details below to sign in. Please change the password after you first sign in, and do not share it."
+    : `Hello ${firstName},\n\n` +
+      `Your ${portalName} password has been reset. Use the details below to sign in.\n\n` +
+      "If you did not ask for this, tell us straight away.";
 
   const { html, text } = renderDocumentEmail({
     branding: b,
-    documentTitle: first ? "Your support portal access" : "Your new portal password",
+    documentTitle: first ? `Your ${portalName} access` : "Your new portal password",
     message,
     summary: [
       { label: "Sign in at", value: signInUrl },
@@ -88,7 +96,7 @@ export async function sendPortalWelcome(input: {
     id: rowId,
     updatedAt: now,
     direction: "OUTBOUND",
-    subject: first ? `Your ${b.companyName} support portal access` : `Your new ${b.companyName} portal password`,
+    subject: first ? `Your ${b.companyName} ${portalName} access` : `Your new ${b.companyName} portal password`,
     fromAddress: FROM,
     toAddresses: [input.to],
     bodyHtml: html,
