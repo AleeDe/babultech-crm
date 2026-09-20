@@ -1,13 +1,27 @@
 import { getPortalDeals } from "@/server/portal";
+import { listMyProposals } from "@/server/commission-proposals";
+import { RateRequest } from "./rate-request";
 import {
-  PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
+  PageHeader, Card, CardHeader, CardTitle, CardContent,
+  Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, StatTile, Alert,
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize, daysBetween } from "@/lib/utils";
 import { REGISTRATION_EXPIRY_WARNING_DAYS } from "@/lib/partner-policy";
 
 export default async function PortalDealsPage() {
-  const deals = await getPortalDeals();
+  const [deals, proposals] = await Promise.all([getPortalDeals(), listMyProposals()]);
+
+  // The request that matters on a deal is the open one; failing that, the most
+  // recent answer, so a partner sees what we said rather than nothing at all.
+  // listMyProposals returns newest first, so the first match of each kind wins.
+  const requestByDeal = new Map();
+  for (const proposal of proposals) {
+    const held = requestByDeal.get(proposal.opportunityId);
+    if (!held || (held.status !== "PENDING" && proposal.status === "PENDING")) {
+      requestByDeal.set(proposal.opportunityId, proposal);
+    }
+  }
 
   const currency = deals[0]?.opportunity?.currencyCode ?? "PKR";
   const open = deals.filter((d) => !["CLOSED_WON", "CLOSED_LOST"].includes(d.opportunity?.stage));
@@ -136,6 +150,52 @@ export default async function PortalDealsPage() {
           </Table>
         )}
       </Card>
+
+      {deals.length > 0 && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Your rate on each deal</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              What you earn on a deal, and where you think it should be different, ask us. Your
+              rate does not change until we agree it.
+            </p>
+          </CardHeader>
+          <CardContent className="divide-y">
+            {deals.map((d) => (
+              <div key={d.id} className="space-y-3 py-4 first:pt-0 last:pb-0">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <div>
+                    <p className="font-medium">{d.opportunity?.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {d.opportunity?.account?.name}
+                      {" · "}
+                      {formatMoney(d.opportunity?.amount, d.opportunity?.currencyCode)}
+                    </p>
+                  </div>
+                  <p className="text-sm">
+                    {d.commissionPlanName ? (
+                      <span className="text-muted-foreground">On the {d.commissionPlanName} plan</span>
+                    ) : d.effectiveCommissionPercent !== null ? (
+                      <>
+                        <span className="font-medium tabular">{formatPercent(d.effectiveCommissionPercent)}</span>
+                        <span className="text-muted-foreground"> today</span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">No rate set</span>
+                    )}
+                  </p>
+                </div>
+                <RateRequest
+                  opportunityId={d.opportunity.id}
+                  dealName={d.opportunity?.name ?? "this deal"}
+                  currentPercent={d.effectiveCommissionPercent}
+                  proposal={requestByDeal.get(d.opportunity.id) ?? null}
+                />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </>
   );
 }

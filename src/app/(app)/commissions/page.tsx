@@ -8,6 +8,8 @@ import {
 } from "@/components/ui";
 import { formatMoney, humanize, serialize } from "@/lib/utils";
 import { CommissionTable } from "./commission-table";
+import { listCommissionProposals } from "@/server/commission-proposals";
+import { RateRequestsPanel } from "./rate-requests-panel";
 
 export default async function CommissionsPage({
   searchParams,
@@ -19,7 +21,7 @@ export default async function CommissionsPage({
 
   const params = await searchParams;
 
-  const [records, totals, partners] = await Promise.all([
+  const [records, totals, partners, proposals] = await Promise.all([
     listCommissions(params),
     getCommissionTotals(),
     (async () => {
@@ -31,6 +33,7 @@ export default async function CommissionsPage({
         .order("displayName");
       return data ?? [];
     })(),
+    listCommissionProposals(),
   ]);
 
   return (
@@ -83,6 +86,10 @@ export default async function CommissionsPage({
           <CommissionTable rows={serialize(records) as never} />
         </div>
       </Card>
+
+      <div className="mt-6">
+        <RateRequestsPanel proposals={serialize(proposals) as never} />
+      </div>
     </>
   );
 }
