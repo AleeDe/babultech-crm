@@ -156,10 +156,6 @@ const products = await upsert(
       description: "Core ERP platform licence — finance, inventory and HR modules.",
       category: "Software",
       productType: "SUBSCRIPTION",
-      billingType: "ANNUAL",
-      unitOfMeasure: "Licence",
-      standardPrice: 1850000,
-      standardCost: 620000,
       defaultTaxRateId: gst.id,
       commissionPercent: 8,
       commissionable: true,
@@ -171,10 +167,6 @@ const products = await upsert(
       description: "Sales, service and partner management platform.",
       category: "Software",
       productType: "SUBSCRIPTION",
-      billingType: "ANNUAL",
-      unitOfMeasure: "Licence",
-      standardPrice: 950000,
-      standardCost: 310000,
       defaultTaxRateId: gst.id,
       commissionPercent: 10,
       commissionable: true,
@@ -186,10 +178,6 @@ const products = await upsert(
       description: "Discovery, configuration, data migration and go-live support.",
       category: "Services",
       productType: "SERVICE",
-      billingType: "MILESTONE",
-      unitOfMeasure: "Project",
-      standardPrice: 1250000,
-      standardCost: 700000,
       defaultTaxRateId: gst.id,
       commissionPercent: 5,
       commissionable: true,
@@ -201,10 +189,6 @@ const products = await upsert(
       description: "Senior functional or technical consultant, per working day.",
       category: "Services",
       productType: "SERVICE",
-      billingType: "HOURLY",
-      unitOfMeasure: "Day",
-      standardPrice: 65000,
-      standardCost: 32000,
       defaultTaxRateId: gst.id,
       commissionPercent: 4,
       commissionable: true,
@@ -216,10 +200,6 @@ const products = await upsert(
       description: "24x5 support with a four-hour response SLA.",
       category: "Support",
       productType: "SERVICE",
-      billingType: "RETAINER",
-      unitOfMeasure: "Month",
-      standardPrice: 185000,
-      standardCost: 74000,
       defaultTaxRateId: gst.id,
       commissionPercent: 6,
       commissionable: true,
@@ -231,10 +211,6 @@ const products = await upsert(
       description: "Rack server, licences and three-year hardware warranty.",
       category: "Hardware",
       productType: "PRODUCT",
-      billingType: "FIXED",
-      unitOfMeasure: "Unit",
-      standardPrice: 2400000,
-      standardCost: 1850000,
       defaultTaxRateId: gst.id,
       commissionPercent: 3,
       commissionable: true,
@@ -246,10 +222,6 @@ const products = await upsert(
       description: "Instructor-led training, up to twenty participants per batch.",
       category: "Services",
       productType: "SERVICE",
-      billingType: "FIXED",
-      unitOfMeasure: "Batch",
-      standardPrice: 275000,
-      standardCost: 120000,
       defaultTaxRateId: gst.id,
       commissionPercent: 5,
       commissionable: false,
@@ -258,6 +230,38 @@ const products = await upsert(
   ],
   "productCode",
 );
+// Prices live in price books now, one product can have several. The demo gets
+// one "Standard" book each, carrying what used to be the catalogue price.
+const priceBookSeeds = [
+  { code: "SW-ERP-001", licenseCost: 1850000 },
+  { code: "SW-CRM-002", licenseCost: 950000 },
+  { code: "SV-IMPL-001", licenseCost: 1250000 },
+  { code: "SV-CONS-002", licenseCost: 65000 },
+  { code: "SV-SUPP-003", licenseCost: 185000 },
+  { code: "HW-SRV-001", licenseCost: 2400000 },
+  { code: "SV-TRN-004", licenseCost: 275000 }
+];
+for (const seed of priceBookSeeds) {
+  const product = products[seed.code];
+  if (!product) continue;
+  const existing = await db
+    .from("price_book")
+    .select("id")
+    .eq("productId", product.id)
+    .eq("name", "Standard")
+    .is("deletedAt", null)
+    .maybeSingle();
+  if (existing.data) continue;
+  await db.from("price_book").insert({
+    productId: product.id,
+    name: "Standard",
+    currencyCode: "PKR",
+    licenseCost: seed.licenseCost,
+    active: true,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 const product = Object.fromEntries(products.map((p) => [p.productCode, p]));
 console.log(`  ok product             ${products.length}`);
 

@@ -54,7 +54,7 @@ try {
  }
 
  await check(db.from("account").insert({ id: ids.account, accountNumber: `QASUB-${run}`, name: `QA Sub Account ${run}`, accountType: "CUSTOMER", ownerUserId: ids.sales, updatedAt: now() }), "Create temporary account");
- await check(db.from("product").insert({ id: ids.product, productCode: `QASUB-P-${run}`, name: `QA BabulPOS ${run}`, productType: "SUBSCRIPTION", billingType: "MONTHLY", standardPrice: 500, active: true, updatedAt: now() }), "Create temporary product");
+ await check(db.from("product").insert({ id: ids.product, productCode: `QASUB-P-${run}`, name: `QA BabulPOS ${run}`, productType: "SUBSCRIPTION", active: true, updatedAt: now() }), "Create temporary product");
 
  const salesClient = await asUser(emails.sales, passwords.sales);
  const financeClient = await asUser(emails.finance, passwords.finance);
@@ -72,7 +72,7 @@ try {
  await passed("Sales records a customer agreement, which starts as a draft");
 
  // The plan is a snapshot: changing the catalogue must not rewrite it.
- await check(db.from("product").update({ standardPrice: 9999, updatedAt: now() }).eq("id", ids.product), "Change the catalogue price");
+ await check(db.from("price_book").insert({ productId: ids.product, name: "Standard", currencyCode: "PKR", licenseCost: 9999, updatedAt: now() }), "Change the catalogue price");
  const afterCatalogue = await db.from("customer_subscription").select("unitPrice,plan").eq("id", ids.subscription).single();
  assert.equal(Number(afterCatalogue.data.unitPrice), 500, "A catalogue price change rewrote the agreed price");
  await passed("Changing the catalogue price does not change what the customer agreed to");

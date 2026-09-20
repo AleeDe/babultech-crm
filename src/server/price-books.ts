@@ -132,3 +132,54 @@ export async function deletePriceBook(id: string): Promise<ActionResult> {
   revalidatePath(`/products/${data.productId}`);
   return { ok: true, data: undefined };
 }
+
+/**
+ * The sellable catalogue: active products, each with its active price books.
+ *
+ * Quote, invoice and deal lines price from these. A product with no price book
+ * can still be put on a line; its price is then typed in.
+ */
+export async function listCatalogueProducts(): Promise<
+  {
+    id: string;
+    name: string;
+    productCode: string;
+    defaultTaxRateId: string | null;
+    priceBooks: { id: string; name: string; total: string }[];
+  }[]
+> {
+  await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
+  const db = await supabaseServer();
+
+  const [products, books] = await Promise.all([
+    db
+      .from("product")
+      .select("id, name, productCode, defaultTaxRateId")
+      .is("deletedAt", null)
+      .eq("active", true)
+      .order("name"),
+    db
+      .from("price_book")
+      .select("id, productId, name, licenseCost, maintenanceCost, cloudCost, aiCost")
+      .is("deletedAt", null)
+      .eq("active", true)
+      .order("name"),
+  ]);
+
+  const byProduct = new Map<string, { id: string; name: string; total: string }[]>();
+  for (const b of books.data ?? []) {
+    const total =
+      Number(b.licenseCost) + Number(b.maintenanceCost) + Number(b.cloudCost) + Number(b.aiCost);
+    const list = byProduct.get(b.productId as string) ?? [];
+    list.push({ id: b.id as string, name: b.name as string, total: total.toFixed(2) });
+    byProduct.set(b.productId as string, list);
+  }
+
+  return (products.data ?? []).map((p) => ({
+    id: p.id as string,
+    name: p.name as string,
+    productCode: p.productCode as string,
+    defaultTaxRateId: (p.defaultTaxRateId as string | null) ?? null,
+    priceBooks: byProduct.get(p.id as string) ?? [],
+  }));
+}

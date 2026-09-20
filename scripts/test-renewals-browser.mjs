@@ -64,7 +64,7 @@ try {
 
  // A subscription ending inside the window, and one with no end date at all.
  // The second must never appear: an open-ended agreement has no renewal to chase.
- await check(db.from("product").insert({ id: ids.product, productCode: `QAREN-P-${run}`, name: `QA POS ${run}`, productType: "SUBSCRIPTION", billingType: "MONTHLY", standardPrice: 500, active: true, updatedAt: now() }), "Create temporary product");
+ await check(db.from("product").insert({ id: ids.product, productCode: `QAREN-P-${run}`, name: `QA POS ${run}`, productType: "SUBSCRIPTION", active: true, updatedAt: now() }), "Create temporary product");
  await check(db.from("customer_subscription").insert([
   {
    id: ids.subscription, subscriptionNumber: `SUB-QA-${run}`, accountId: ids.healthyAccount,

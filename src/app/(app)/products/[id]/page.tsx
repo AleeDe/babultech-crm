@@ -2,12 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
-import { priceBasis } from "@/lib/product-options";
-import type { ProductPlan } from "@/lib/product-plans";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { getProductEconomics } from "@/server/crm";
 import { listPriceBooks } from "@/server/price-books";
 import { PriceBooksPanel } from "./price-books";
+import { ProductActiveToggle } from "./active-toggle";
 import {
   PageHeader, Button, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Forbidden
@@ -82,9 +81,11 @@ export default async function ProductDetailPage({
 
   if (!product) notFound();
 
-  const price = Number(product.standardPrice ?? 0);
-  const cost = Number(product.standardCost ?? 0);
-  const marginPercent = price > 0 ? ((price - cost) / price) * 100 : 0;
+  // The catalogue holds no price; the product's books do.
+  const liveBooks = priceBooks.filter((b) => b.active);
+  const bookTotal = (b: (typeof priceBooks)[number]) =>
+    Number(b.licenseCost) + Number(b.maintenanceCost) + Number(b.cloudCost) + Number(b.aiCost);
+  const cheapest = liveBooks.length ? Math.min(...liveBooks.map(bookTotal)) : null;
 
   const pipelineValue = product.opportunityLines
     .filter((l: Record<string, any>) => !["CLOSED_WON", "CLOSED_LOST"].includes(l.opportunity?.stage))
@@ -104,15 +105,22 @@ export default async function ProductDetailPage({
             <Link href={`/products/${product.id}/edit`}>Edit</Link>
           </Button>
         )}
+        {can(_me, PERMISSIONS.OPPORTUNITY_WRITE) && (
+          <ProductActiveToggle productId={product.id} active={Boolean(product.active)} />
+        )}
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Default plan price" value={formatMoney(product.standardPrice)} sublabel={priceBasis(product.billingType, product.unitOfMeasure)} />
         <StatTile
-          label="Margin"
-          value={price > 0 ? formatPercent(marginPercent, 1) : "—"}
-          sublabel={`Cost ${formatMoney(product.standardCost)}`}
-          tone={marginPercent >= 30 ? "success" : marginPercent > 0 ? "warning" : "neutral"}
+          label="Price books"
+          value={String(liveBooks.length)}
+          sublabel={liveBooks.length ? "Active offers for this product" : "No price set yet"}
+          tone={liveBooks.length ? "neutral" : "warning"}
+        />
+        <StatTile
+          label="From"
+          value={cheapest == null ? "—" : formatMoney(cheapest)}
+          sublabel="Cheapest active price book"
         />
         <StatTile label="In open pipeline" value={formatMoney(pipelineValue)} sublabel={`${product.opportunityLines.length} deal line(s)`} tone="info" />
         <StatTile label="Invoiced" value={formatMoney(invoicedValue)} sublabel={`${product.invoiceLines.length} invoice line(s)`} />
@@ -125,21 +133,6 @@ export default async function ProductDetailPage({
         canEdit={can(_me, PERMISSIONS.OPPORTUNITY_WRITE)}
       />
 
-      <Card className="mt-6">
-        <CardHeader><CardTitle>Pricing plans</CardTitle></CardHeader>
-        <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {((product.pricingPlans ?? []) as ProductPlan[]).map((plan, index) => (
-              <div key={plan.id} className="rounded-lg border p-4">
-                <p className="font-semibold">{plan.name} {index === 0 && <Badge tone="neutral">Default</Badge>}</p>
-                <p className="mt-2 text-xl font-semibold">{plan.standardPrice == null ? "Price not set" : formatMoney(plan.standardPrice)}</p>
-                <p className="text-sm text-muted-foreground">{priceBasis(plan.billingType, plan.unitOfMeasure)}</p>
-                <p className="mt-2 text-xs text-muted-foreground">Cost: {plan.standardCost == null ? "Not set" : formatMoney(plan.standardCost)}</p>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
 
       {/* ------------------------------------------- what it cost vs earned */}
       {economics && (
@@ -398,8 +391,6 @@ export default async function ProductDetailPage({
               <DetailRow label="Code">{product.productCode}</DetailRow>
               <DetailRow label="Category">{product.category ?? "—"}</DetailRow>
               <DetailRow label="Type">{humanize(product.productType)}</DetailRow>
-              <DetailRow label="Billing">{humanize(product.billingType)}</DetailRow>
-              <DetailRow label="Unit of measure">{product.unitOfMeasure ?? "—"}</DetailRow>
               <DetailRow label="Default tax">
                 {product.defaultTaxRate
                   ? `${product.defaultTaxRate?.name} (${formatPercent(product.defaultTaxRate?.ratePercent, 1)})`

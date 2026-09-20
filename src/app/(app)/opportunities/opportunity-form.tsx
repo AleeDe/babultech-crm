@@ -29,7 +29,6 @@ export interface OpportunityFormOptions {
     id: string;
     name: string;
     productCode: string;
-    standardPrice: string | null;
     defaultTaxRateId: string | null;
   }[];
   taxRates: { id: string; name: string; ratePercent: string }[];
@@ -198,11 +197,17 @@ export function OpportunityForm({
     setLines((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   }
 
+  // Products hold no price of their own, so a line starts from the product's
+  // first active price book, if it has one, and is editable from there.
   function onPickProduct(key: string, productId: string) {
     const product = options.products.find((p) => p.id === productId);
+    const book = options.priceBooks.find((b) => b.productId === productId && b.active);
+    const total = book
+      ? Number(book.licenseCost) + Number(book.maintenanceCost) + Number(book.cloudCost) + Number(book.aiCost)
+      : null;
     updateRow(key, {
       productId,
-      unitPrice: product?.standardPrice ?? "",
+      unitPrice: total == null ? "" : total.toFixed(2),
       taxRateId: product?.defaultTaxRateId ?? "",
     });
   }

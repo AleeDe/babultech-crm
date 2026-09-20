@@ -1,8 +1,7 @@
 "use server";
 
 import { getProductOptions } from "./product-options";
-import { BILLING_OPTIONS, optionKey } from "@/lib/product-options";
-import { productPlansSchema } from "@/lib/product-plans";
+import { optionKey } from "@/lib/product-options";
 import { randomUUID } from "node:crypto";
 import { withRateSnapshots } from "@/lib/rate-snapshots";
 import { revalidatePath } from "next/cache";
@@ -890,7 +889,7 @@ export async function getFormOptions() {
         .order("firstName"),
       db
         .from("product")
-        .select("id, name, productCode, standardPrice, defaultTaxRateId, pricingPlans")
+        .select("id, name, productCode, defaultTaxRateId")
         .is("deletedAt", null)
         .eq("active", true)
         .order("name"),
@@ -1069,19 +1068,18 @@ const productSchema = z.object({
   productCode: z.string().min(1, "Give the product a code.").max(50),
   name: z.string().min(1, "Give the product a name.").max(200),
   productType: z.enum(["PRODUCT", "SERVICE", "SUBSCRIPTION"]),
-  billingType: z.enum(BILLING_OPTIONS).default("FIXED"),
   description: z.string().optional().nullable(),
   category: z.string().max(100).optional().nullable(),
-  unitOfMeasure: z.string().max(30).optional().nullable(),
-  standardPrice: z.coerce.number().min(0).optional().nullable(),
-  standardCost: z.coerce.number().min(0).optional().nullable(),
   defaultTaxRateId: z.string().uuid().optional().nullable(),
   commissionPercent: z.coerce.number().min(0).max(100).optional().nullable(),
+  // Not on the form. Whether a product may still be sold, and whether it earns
+  // commission, are lifecycle facts rather than catalogue detail: active is
+  // toggled from the product page, commissionable from the commission rules.
   commissionable: z.coerce.boolean().default(true),
   active: z.coerce.boolean().default(true),
 });
 
-const createProductSchema = productSchema.omit({ productCode: true }).extend({ pricingPlans: productPlansSchema });
+const createProductSchema = productSchema.omit({ productCode: true });
 
 export async function createProduct(
   input: z.infer<typeof createProductSchema>,
@@ -1098,23 +1096,13 @@ export async function createProduct(
     };
   }
   const d = parsed.data;
-  // Legacy catalogue consumers use the first plan as their default.
-  Object.assign(d, { billingType: d.pricingPlans[0].billingType, unitOfMeasure: d.pricingPlans[0].unitOfMeasure, standardPrice: d.pricingPlans[0].standardPrice, standardCost: d.pricingPlans[0].standardCost });
 
   try {
     const options = await getProductOptions();
-    for (const plan of d.pricingPlans) {
-      if (!plan.unitOfMeasure) continue;
-      const unit = options.units.find((value) => optionKey(value) === optionKey(plan.unitOfMeasure!));
-      if (!unit) return { ok: false, error: "Select or create a unit for each plan.", fieldErrors: { pricingPlans: ["One plan has an unknown unit."] } };
-      plan.unitOfMeasure = unit;
-    }
-
-    for (const [field, values] of [["category", options.categories], ["unitOfMeasure", options.units]] as const) {
-      if (!d[field]) continue;
-      const canonical = values.find((value) => optionKey(value) === optionKey(d[field]!));
-      if (!canonical) return { ok: false, error: "Choose an existing category or unit, or create it first.", fieldErrors: { [field]: ["Select or create an option first."] } };
-      d[field] = canonical;
+    if (d.category) {
+      const canonical = options.categories.find((value) => optionKey(value) === optionKey(d.category!));
+      if (!canonical) return { ok: false, error: "Choose an existing category, or create it first.", fieldErrors: { category: ["Select or create an option first."] } };
+      d.category = canonical;
     }
   } catch (error) { return { ok: false, error: error instanceof Error ? error.message : "Could not load product options." }; }
 
@@ -1123,15 +1111,6 @@ export async function createProduct(
   // product_productCode_key unique index is the final concurrency-safe guard.
   const productCode = `PRD-${randomUUID().toUpperCase()}`;
 
-  // Selling below cost is legitimate but rarely intended, so it is worth
-  // stopping on here rather than discovering it on a margin report later.
-  if (d.standardPrice != null && d.standardCost != null && d.standardPrice < d.standardCost) {
-    return {
-      ok: false,
-      error: "The price is below the cost. Change one of them, or leave the cost blank.",
-      fieldErrors: { standardPrice: ["Below the standard cost."] },
-    };
-  }
 
   try {
     const db = await supabaseServer();
@@ -1154,13 +1133,8 @@ export async function createProduct(
       productCode,
       name: d.name,
       productType: d.productType,
-      billingType: d.billingType,
-      pricingPlans: d.pricingPlans,
       description: d.description || null,
       category: d.category || null,
-      unitOfMeasure: d.unitOfMeasure || null,
-      standardPrice: d.standardPrice ?? null,
-      standardCost: d.standardCost ?? null,
       defaultTaxRateId: d.defaultTaxRateId || null,
       commissionPercent: d.commissionPercent ?? null,
       commissionable: d.commissionable,
@@ -1347,6 +1321,21 @@ export async function updateCampaign(
   }
 }
 
+/** Retire a product, or put it back on sale, without touching its details. */
+export async function setProductActive(id: string, active: boolean): Promise<ActionResult> {
+  const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  try {
+    await updateRecord("product", id, { active }, "Product", _auth.user.id);
+    revalidatePath("/products");
+    revalidatePath(`/products/${id}`);
+    return { ok: true, data: undefined };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Could not change the product." };
+  }
+}
+
 export async function getProduct(id: string) {
   await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
   const db = await supabaseServer();
@@ -1379,34 +1368,17 @@ export async function updateProduct(
     };
   }
   const d = parsed.data;
-  // Legacy catalogue consumers use the first plan as their default.
-  Object.assign(d, { billingType: d.pricingPlans[0].billingType, unitOfMeasure: d.pricingPlans[0].unitOfMeasure, standardPrice: d.pricingPlans[0].standardPrice, standardCost: d.pricingPlans[0].standardCost });
 
   try {
     const options = await getProductOptions();
-    for (const plan of d.pricingPlans) {
-      if (!plan.unitOfMeasure) continue;
-      const unit = options.units.find((value) => optionKey(value) === optionKey(plan.unitOfMeasure!));
-      if (!unit) return { ok: false, error: "Select or create a unit for each plan.", fieldErrors: { pricingPlans: ["One plan has an unknown unit."] } };
-      plan.unitOfMeasure = unit;
-    }
-
-    for (const [field, values] of [["category", options.categories], ["unitOfMeasure", options.units]] as const) {
-      if (!d[field]) continue;
-      const canonical = values.find((value) => optionKey(value) === optionKey(d[field]!));
-      if (!canonical) return { ok: false, error: "Choose an existing category or unit, or create it first.", fieldErrors: { [field]: ["Select or create an option first."] } };
-      d[field] = canonical;
+    if (d.category) {
+      const canonical = options.categories.find((value) => optionKey(value) === optionKey(d.category!));
+      if (!canonical) return { ok: false, error: "Choose an existing category, or create it first.", fieldErrors: { category: ["Select or create an option first."] } };
+      d.category = canonical;
     }
   } catch (error) { return { ok: false, error: error instanceof Error ? error.message : "Could not load product options." }; }
 
 
-  if (d.standardPrice != null && d.standardCost != null && d.standardPrice < d.standardCost) {
-    return {
-      ok: false,
-      error: "The price is below the cost. Change one of them, or leave the cost blank.",
-      fieldErrors: { standardPrice: ["Below the standard cost."] },
-    };
-  }
 
   try {
     await updateRecord(
@@ -1415,17 +1387,13 @@ export async function updateProduct(
       {
         name: d.name,
         productType: d.productType,
-        billingType: d.billingType,
-      pricingPlans: d.pricingPlans,
         description: d.description || null,
         category: d.category || null,
-        unitOfMeasure: d.unitOfMeasure || null,
-        standardPrice: d.standardPrice ?? null,
-        standardCost: d.standardCost ?? null,
         defaultTaxRateId: d.defaultTaxRateId || null,
         commissionPercent: d.commissionPercent ?? null,
-        commissionable: d.commissionable,
-        active: d.active,
+        // commissionable and active are deliberately absent: they are not on
+        // the form, and writing their schema defaults here would put a retired
+        // product back on sale every time someone fixed a typo.
       },
       "Product",
       _auth.user.id,
@@ -1603,7 +1571,7 @@ export async function getProductEconomics(productId: string) {
 
   const { data: product, error: productError } = await db
     .from("product")
-    .select("id, productCode, name, productType, billingType, standardPrice, standardCost, active")
+    .select("id, productCode, name, productType, active")
     .eq("id", productId)
     .maybeSingle();
 

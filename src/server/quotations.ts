@@ -6,6 +6,7 @@ import { z } from "zod";
 import Decimal from "decimal.js";
 import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
+import { listCatalogueProducts } from "./price-books";
 import { updateRecord } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
@@ -511,12 +512,7 @@ export async function getQuotationFormOptions(opportunityId?: string) {
       .is("deletedAt", null)
       .eq("active", true)
       .order("firstName"),
-    db
-      .from("product")
-      .select("id, name, productCode, standardPrice, defaultTaxRateId, pricingPlans")
-      .is("deletedAt", null)
-      .eq("active", true)
-      .order("name"),
+    listCatalogueProducts(),
     db.from("tax_rate").select("id, name, ratePercent").eq("active", true).order("name"),
     db.from("currency").select("code, name").eq("active", true).order("code"),
   ]);
@@ -534,7 +530,7 @@ export async function getQuotationFormOptions(opportunityId?: string) {
       })),
     })),
     contacts: contacts.data ?? [],
-    products: products.data ?? [],
+    products: products,
     taxRates: taxRates.data ?? [],
     currencies: currencies.data ?? [],
   };

@@ -64,7 +64,9 @@ export type Subscription = {
   id: string;
   accountId: string;
   productId: string;
-  plan: { id: string; name: string; billingType: string; unitOfMeasure: string | null };
+  // A price book snapshot carries neither, so both are optional; rows sold
+  // under the old pricing plans still have them.
+  plan: { id: string; name: string; billingType?: string | null; unitOfMeasure?: string | null };
   quantity: number;
   unitPrice: number;
   currencyCode: string;

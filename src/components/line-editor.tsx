@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button, Field, Input, Select } from "@/components/ui";
 import { formatMoney } from "@/lib/utils";
-import { commercialPlanSchema, planDescription, type ProductPlan, type CommercialPlan } from "@/lib/product-plans";
+import { planDescription, type CommercialPlan } from "@/lib/product-plans";
 
 /**
  * The line grid shared by the quote builder and the invoice builder.
@@ -31,15 +31,27 @@ export interface ProductOption {
   id: string;
   name: string;
   productCode: string;
-  standardPrice: string | null;
   defaultTaxRateId: string | null;
-  pricingPlans?: ProductPlan[];
+  /** The product's active price books. A line is priced from one of them. */
+  priceBooks?: PriceBookOption[];
+}
+
+export interface PriceBookOption {
+  id: string;
+  name: string;
+  /** license + maintenance + cloud + AI, which is what the line starts from. */
+  total: string;
 }
 
 export interface TaxRateOption {
   id: string;
   name: string;
   ratePercent: string;
+}
+
+/** A price book, as the snapshot a line keeps of what it was sold on. */
+function bookAsPlan(book: PriceBookOption): CommercialPlan {
+  return { id: book.id, name: book.name };
 }
 
 let seq = 0;
@@ -108,9 +120,9 @@ export function LineEditor({
     const line = lines.find((l) => l.key === key);
     update(key, {
       productId,
-      productPlan: product?.pricingPlans?.length === 1 ? commercialPlanSchema.parse(product.pricingPlans[0]) : null,
-      description: product?.pricingPlans?.length === 1 ? planDescription(product.name, product.pricingPlans[0]) : product?.name ?? line?.description ?? "",
-      unitPrice: (product?.pricingPlans?.length ?? 0) > 1 ? "" : String(product?.standardPrice ?? line?.unitPrice ?? ""),
+      productPlan: product?.priceBooks?.length === 1 ? bookAsPlan(product.priceBooks[0]) : null,
+      description: product?.priceBooks?.length === 1 ? planDescription(product.name, bookAsPlan(product.priceBooks[0])) : product?.name ?? line?.description ?? "",
+      unitPrice: product?.priceBooks?.length === 1 ? String(product.priceBooks[0].total) : "",
       taxRateId: product?.defaultTaxRateId ?? line?.taxRateId ?? "",
     });
   }
@@ -138,16 +150,17 @@ export function LineEditor({
                   ))}
                 </Select>
               </Field>
-              {(products.find((p) => p.id === line.productId)?.pricingPlans?.length || line.productPlan) && (
-                <Field label="Pricing plan" help="Choose the one-time or recurring offer. The selected plan fills the price and description; prices remain editable for negotiated deals.">
-                  <Select aria-label="Pricing plan" required disabled={disabled} value={line.productPlan?.id ?? ""} onChange={(e) => {
+              {(products.find((p) => p.id === line.productId)?.priceBooks?.length || line.productPlan) && (
+                <Field label="Price book" help="Which of the product's price books this customer is on. It fills the price and description; the price stays editable for a negotiated deal.">
+                  <Select aria-label="Price book" required disabled={disabled} value={line.productPlan?.id ?? ""} onChange={(e) => {
                     const product = products.find((p) => p.id === line.productId);
-                    const plan = product?.pricingPlans?.find((p) => p.id === e.target.value);
-                    if (product && plan) update(line.key, { productPlan: commercialPlanSchema.parse(plan), description: planDescription(product.name, plan), unitPrice: plan.standardPrice == null ? "" : String(plan.standardPrice) });
+                    const book = product?.priceBooks?.find((b) => b.id === e.target.value);
+                    if (product && book) update(line.key, { productPlan: bookAsPlan(book), description: planDescription(product.name, bookAsPlan(book)), unitPrice: String(book.total) });
                   }}>
-                    <option value="" disabled>Choose a plan</option>
-                    {line.productPlan && !products.find((p) => p.id === line.productId)?.pricingPlans?.some((p) => p.id === line.productPlan?.id) && <option value={line.productPlan.id}>{line.productPlan.name} (saved plan)</option>}
-                    {products.find((p) => p.id === line.productId)?.pricingPlans?.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.billingType.toLowerCase()} · {p.standardPrice == null ? "Price not set" : formatMoney(p.standardPrice, currency)}</option>)}
+                    <option value="" disabled>Choose a price book</option>
+                    {/* The book this line was sold on, even if it has since been retired. */}
+                    {line.productPlan && !products.find((p) => p.id === line.productId)?.priceBooks?.some((b) => b.id === line.productPlan?.id) && <option value={line.productPlan.id}>{line.productPlan.name} (as sold)</option>}
+                    {products.find((p) => p.id === line.productId)?.priceBooks?.map((b) => <option key={b.id} value={b.id}>{b.name} · {formatMoney(b.total, currency)}</option>)}
                   </Select>
                 </Field>
               )}

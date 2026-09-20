@@ -8,6 +8,7 @@ import { picklistCode } from "@/lib/picklists";
 import Decimal from "decimal.js";
 import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
+import { listCatalogueProducts } from "./price-books";
 import { createRecord, updateRecord, LIST_LIMIT, applySearch } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, authorizeAny, requirePermission } from "@/lib/authz";
@@ -841,12 +842,7 @@ export async function getBillingFormOptions() {
         .select("id, contractNumber, name, accountId")
         .is("deletedAt", null)
         .order("contractNumber"),
-      db
-        .from("product")
-        .select("id, name, productCode, standardPrice, defaultTaxRateId, pricingPlans")
-        .is("deletedAt", null)
-        .eq("active", true)
-        .order("name"),
+      listCatalogueProducts(),
       db.from("tax_rate").select("id, name, ratePercent").eq("active", true).order("name"),
       db.from("currency").select("*").eq("active", true).order("code"),
     ]);
@@ -862,7 +858,7 @@ export async function getBillingFormOptions() {
     ),
   }));
   const contracts = contractsRes.data ?? [];
-  const products = productsRes.data ?? [];
+  const products = productsRes;
   const taxRates = taxRatesRes.data ?? [];
   const currencies = currenciesRes.data ?? [];
 

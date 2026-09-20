@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { ProductFields } from "../product-fields";
 import { getProductOptions } from "@/server/product-options";
 import { createProduct, getCreateFormOptions } from "@/server/crm";
@@ -19,12 +18,12 @@ export default async function NewProductPage() {
         backTo="/products"
         backLabel="Back to products"
         title="New product"
-        description="Quote and invoice lines price from this catalogue."
+        description="What the company sells. Set its prices afterwards, in Price books on the product's page."
       />
 
       <div className="max-w-2xl">
         <RecordForm action={createProduct} redirectTo="/products" submitLabel="Create product">
-          <ProductFields defaults={{ pricingPlans: [{ id: randomUUID(), name: "Standard", billingType: "FIXED", unitOfMeasure: "Licence", standardPrice: null, standardCost: null }] }} taxRates={taxRates} options={options} />
+          <ProductFields taxRates={taxRates} options={options} />
         </RecordForm>
       </div>
     </>

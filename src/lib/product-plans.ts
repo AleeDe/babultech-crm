@@ -1,31 +1,27 @@
 import { z } from "zod";
-import { BILLING_OPTIONS, optionKey, priceBasis } from "./product-options";
+import { priceBasis } from "./product-options";
 
-const amount = z.preprocess((v) => v === "" || v == null ? null : v, z.coerce.number().finite().min(0).nullable());
-export const productPlanSchema = z.object({
-  id: z.string().uuid(),
-  name: z.string().trim().min(1).max(100),
-  billingType: z.enum(BILLING_OPTIONS),
-  unitOfMeasure: z.string().trim().max(30).nullable(),
-  standardPrice: amount,
-  standardCost: amount,
-}).refine((p) => p.standardPrice == null || p.standardCost == null || p.standardPrice >= p.standardCost,
-  "Plan price must not be below its cost.");
-
-export const productPlansSchema = z.preprocess((value) => {
-  if (typeof value !== "string") return value;
-  try { return JSON.parse(value); } catch { return null; }
-}, z.array(productPlanSchema).min(1, "Add at least one pricing plan.").max(50)
-  .refine((plans) => new Set(plans.map((p) => p.id)).size === plans.length, "Plan IDs must be unique.")
-  .refine((plans) => new Set(plans.map((p) => optionKey(p.name))).size === plans.length, "Give each plan a different name."));
-
-export type ProductPlan = z.infer<typeof productPlanSchema>;
+/**
+ * The priced offer a line or a subscription was sold on.
+ *
+ * Products no longer carry prices: a product's price books do, and a quote
+ * line, invoice line or subscription snapshots the one it was sold on. The
+ * snapshot is kept rather than referenced so that repricing a book never
+ * rewrites what a customer already agreed to.
+ *
+ * `billingType` and `unitOfMeasure` are optional because a price book has
+ * neither; they are still read on rows snapshotted from the pricing plans this
+ * replaced, which is why they are kept rather than dropped.
+ */
 export const commercialPlanSchema = z.object({
-  id: z.string().uuid(), name: z.string().min(1).max(100),
-  billingType: z.enum(BILLING_OPTIONS), unitOfMeasure: z.string().max(30).nullable(),
+  id: z.string().uuid(),
+  name: z.string().min(1).max(100),
+  billingType: z.string().max(30).nullable().optional(),
+  unitOfMeasure: z.string().max(30).nullable().optional(),
 });
 export type CommercialPlan = z.infer<typeof commercialPlanSchema>;
 
 export function planDescription(product: string, plan: CommercialPlan) {
-  return `${product} — ${plan.name} (${priceBasis(plan.billingType, plan.unitOfMeasure)})`;
+  const basis = plan.billingType ? ` (${priceBasis(plan.billingType, plan.unitOfMeasure)})` : "";
+  return `${product} — ${plan.name}${basis}`;
 }

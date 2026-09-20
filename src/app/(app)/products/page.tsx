@@ -59,10 +59,6 @@ export default async function ProductsPage({
                 <TH>Product</TH>
                 <TH priority="tertiary">Category</TH>
                 <TH priority="secondary">Type</TH>
-                <TH priority="tertiary">Billing</TH>
-                <TH priority="tertiary">Unit</TH>
-                <TH className="text-right" priority="secondary">Default price</TH>
-                <TH className="text-right" priority="tertiary">Cost</TH>
                 <TH className="text-right" priority="tertiary">Commission</TH>
                 <TH priority="tertiary">Tax</TH>
               </TR>
@@ -80,10 +76,6 @@ export default async function ProductsPage({
                   <TD priority="secondary">
                     <Badge tone="neutral">{humanize(p.productType)}</Badge>
                   </TD>
-                  <TD priority="tertiary" className="text-sm text-muted-foreground">{p.pricingPlans?.length > 1 ? `${p.pricingPlans.length} plans` : humanize(p.billingType)}</TD>
-                  <TD priority="tertiary" className="text-sm text-muted-foreground">{p.unitOfMeasure ?? "—"}</TD>
-                  <TD priority="secondary" className="text-right font-medium tabular">{formatMoney(p.standardPrice)}</TD>
-                  <TD priority="tertiary" className="text-right tabular text-muted-foreground">{formatMoney(p.standardCost)}</TD>
                   <TD priority="tertiary" className="text-right tabular">
                     {!p.commissionable ? (
                       <span className="text-muted-foreground">excluded</span>
