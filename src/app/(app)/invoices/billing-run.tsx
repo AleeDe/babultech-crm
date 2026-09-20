@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Play } from "lucide-react";
 import { runMilestoneBilling, runTimeBilling } from "@/server/billing";
 import { runRecurringBilling } from "@/server/recurring-billing";
-import { runSubscriptionBilling } from "@/server/subscriptions";
 import { Button, Card, CardContent, CardHeader, CardTitle, Select, Alert } from "@/components/ui";
 
 /**
@@ -52,23 +51,6 @@ export function BillingRun({
         setNotice(
           created === 0
             ? "No contract periods are waiting to be billed."
-            : `${created} draft invoice(s) raised.${skipped.length ? ` Skipped: ${skipped.join("; ")}` : ""}`,
-        );
-        router.refresh();
-      } else setError(result.error);
-    });
-  }
-
-  function subscriptions() {
-    setError(null);
-    setNotice(null);
-    startTransition(async () => {
-      const result = await runSubscriptionBilling();
-      if (result.ok) {
-        const { created, skipped } = result.data;
-        setNotice(
-          created === 0
-            ? "No subscription periods are waiting to be billed."
             : `${created} draft invoice(s) raised.${skipped.length ? ` Skipped: ${skipped.join("; ")}` : ""}`,
         );
         router.refresh();
@@ -131,9 +113,6 @@ export function BillingRun({
           <Button variant="outline" disabled={pending} onClick={recurring}>
             Bill contract periods
           </Button>
-          <Button variant="outline" disabled={pending} onClick={subscriptions}>
-            Bill subscriptions
-          </Button>
         </div>
 
         <p className="text-xs text-muted-foreground">
@@ -141,8 +120,7 @@ export function BillingRun({
           invoiced. Time billing picks up approved, billable hours that carry a rate and have not
           been billed, grouped by person. Contract billing raises one draft per monthly, quarterly
           or annual period that has already started and has not been billed - running it twice
-          cannot bill the same period twice. Subscription billing does the same for customer
-          subscriptions, charging the quantity in force when each period started.
+          cannot bill the same period twice.
         </p>
       </CardContent>
     </Card>

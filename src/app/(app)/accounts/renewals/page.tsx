@@ -33,7 +33,7 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
     <>
       <PageHeader
         title="Renewals"
-        description="Contracts and subscriptions ending soon, and any that have already run out. Dates come from each agreement; nothing here renews anything on its own."
+        description="Contracts ending soon, and any that have already run out. Dates come from each contract; nothing here renews anything on its own."
       >
         <Button asChild variant="outline"><Link href="/contracts">All contracts</Link></Button>
       </PageHeader>
@@ -62,7 +62,7 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
                 <div>
                   <Link
                     className="font-semibold text-primary"
-                    href={row.source === "CONTRACT" ? `/contracts/${row.id}` : `/subscriptions/${row.id}`}
+                    href={`/contracts/${row.id}`}
                   >
                     {row.name}
                   </Link>
@@ -101,7 +101,6 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
                   <dt className="text-muted-foreground">Value</dt>
                   <dd>
                     {money(row.value, row.currencyCode)}
-                    {row.source === "SUBSCRIPTION" ? " per period" : ""}
                     {" · "}{row.renewalType === "AUTO_RENEW" ? "Auto-renews" : "Manual renewal"}
                   </dd>
                 </div>
@@ -113,8 +112,8 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
 
       {rows.length === 0 && (
         <p className="rounded-xl border p-6">
-          Nothing ends within {window} days. Try a wider window, or check that contracts and
-          subscriptions carry an end date - an open-ended subscription has no renewal to chase.
+          Nothing ends within {window} days. Try a wider window, or check that your contracts
+          carry an end date - an open-ended contract has no renewal to chase.
         </p>
       )}
 

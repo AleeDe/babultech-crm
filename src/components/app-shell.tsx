@@ -71,7 +71,6 @@ const NAV: NavGroup[] = [
       { href: "/contracts", label: "Contracts", icon: FileSignature, permissions: ["contract:read", "contract:write", "opportunity:read"] },
       { href: "/accounts/renewals", label: "Renewals", icon: CalendarSync, permissions: ["contract:read", "contract:write", "opportunity:read"] },
       { href: "/products", label: "Products", icon: Package, permissions: ["opportunity:read"] },
-      { href: "/subscriptions", label: "Subscriptions", icon: RefreshCw, permissions: ["account:read"] },
     ],
   },
   {

@@ -26,12 +26,6 @@ const contract = (overrides: Record<string, unknown> = {}) => ({
   value: 12000, currencyCode: "PKR", ...overrides,
 });
 
-/** A subscription has no agreed notice period, so it has no notice deadline. */
-const subscription = (overrides: Record<string, unknown> = {}) => ({
-  source: "SUBSCRIPTION" as const, id: "s1", reference: "SUB-1", name: "BabulPOS — 10 users",
-  accountId: "a1", endDate: "2026-07-15", renewalType: "AUTO_RENEW", noticePeriodDays: null,
-  value: 5000, currencyCode: "PKR", ...overrides,
-});
 const account = { name: "Shop", ownerUserId: "u1", ownerName: "Ayesha" };
 
 describe("renewal rows", () => {
@@ -52,12 +46,6 @@ describe("renewal rows", () => {
     expect(row.noticeUrgent).toBe(false);
   });
 
-  it("gives a subscription no notice deadline, because none is agreed", () => {
-    const row = renewalRow(subscription(), account, TODAY);
-    expect(row.source).toBe("SUBSCRIPTION");
-    expect(row.noticeBy).toBeNull();
-    expect(renewalStage(row)).not.toBe("NOTICE_DUE");
-  });
 
   it("keeps a contract that has already ended, with a negative day count", () => {
     const row = renewalRow(contract({ endDate: "2026-05-01" }), account, TODAY);
@@ -97,10 +85,10 @@ describe("renewal windows and ordering", () => {
     expect(byUrgency(rows).map((r) => r.id)).toEqual(["c", "b", "a", "d"]);
   });
 
-  it("keeps subscriptions and contracts in one queue, ordered together", () => {
+  it("puts the soonest renewal first", () => {
     const mixed = [
       renewalRow(contract({ id: "later", endDate: "2026-08-01" }), account, TODAY),
-      renewalRow(subscription({ id: "sooner", endDate: "2026-06-20" }), account, TODAY),
+      renewalRow(contract({ id: "sooner", endDate: "2026-06-20", noticePeriodDays: null }), account, TODAY),
     ];
     expect(byUrgency(mixed).map((r) => r.id)).toEqual(["sooner", "later"]);
   });

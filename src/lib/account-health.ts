@@ -6,17 +6,18 @@ export const RENEWAL_WINDOWS = [30, 60, 90] as const;
 export type RenewalWindow = (typeof RENEWAL_WINDOWS)[number];
 
 /**
- * What kind of agreement is coming up for renewal. Both end on a date and both
- * need somebody to act, so they belong in one queue - a subscription nobody
- * renewed is lost revenue in exactly the way a lapsed contract is.
+ * What kind of agreement is coming up for renewal.
+ *
+ * One kind today, kept as a named type because the queue was built to hold more
+ * than one and a lapsed agreement of any kind is the same signal.
  */
-export type RenewalSource = "CONTRACT" | "SUBSCRIPTION";
+export type RenewalSource = "CONTRACT";
 
 export type RenewalRow = {
   source: RenewalSource;
-  /** The contract or subscription id, for linking to the right page. */
+  /** The contract id, for linking to its page. */
   id: string;
-  /** Its human reference: a contract number or a subscription number. */
+  /** Its human reference: the contract number. */
   reference: string;
   name: string;
   accountId: string;
@@ -24,11 +25,11 @@ export type RenewalRow = {
   ownerUserId: string | null;
   ownerName: string | null;
   endDate: string;
-  /** MANUAL or AUTO_RENEW for a contract; a subscription's autoRenew flag. */
+  /** MANUAL or AUTO_RENEW. */
   renewalType: string | null;
-  /** Contracts carry an agreed notice period; subscriptions do not. */
+  /** The agreed notice period, where the contract carries one. */
   noticePeriodDays: number | null;
-  /** The contract value, or the subscription's period total. */
+  /** The contract value. */
   value: number;
   currencyCode: string;
   /** Days from today to the end date. Negative once it has already lapsed. */
@@ -125,7 +126,7 @@ export type HealthInput = {
   recentSatisfaction: number[];
   /** The last time anyone logged an activity against the account. */
   lastActivityAt: string | null;
-  /** Contracts and subscriptions ending soon, as day counts. */
+  /** Contracts ending soon, as day counts. */
   renewalDaysToEnd: number[];
   today: string;
 };
