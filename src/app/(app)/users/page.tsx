@@ -94,6 +94,7 @@ export default async function UsersPage({
             <THead>
               <TR>
                 <TH>User</TH>
+                <TH priority="secondary">Type</TH>
                 <TH priority="secondary">Role</TH>
                 <TH priority="tertiary">Sees</TH>
                 <TH priority="tertiary">Department</TH>
@@ -123,6 +124,11 @@ export default async function UsersPage({
                         </Badge>
                         <Badge tone={statusTone(u.status)}>{humanize(u.status)}</Badge>
                       </div>
+                    </TD>
+                    <TD priority="secondary">
+                      <Badge tone={u.userType === "INTERNAL" ? "neutral" : u.userType === "PARTNER" ? "warning" : "info"}>
+                        {u.userType === "INTERNAL" ? "Employee" : u.userType === "PARTNER" ? "Partner" : "Customer"}
+                      </Badge>
                     </TD>
                     <TD priority="secondary">
                       <Badge tone={isAdmin ? "danger" : u.partner ? "warning" : "neutral"}>

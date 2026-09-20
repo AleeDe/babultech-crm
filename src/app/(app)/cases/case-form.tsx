@@ -10,6 +10,8 @@ import {
 } from "@/components/ui";
 import { RecordLookup } from "@/components/record-lookup";
 import { PicklistOptions } from "@/components/picklist";
+import { SelectWithAdd } from "@/components/select-with-add";
+import { createCaseCategory } from "@/server/reference-options";
 import { PicklistSelect } from "@/components/picklist-select";
 import { humanize } from "@/lib/utils";
 
@@ -257,15 +259,16 @@ export function CaseForm({
             </Field>
             <Field
               label="Category"
-              hint={options.categories.length === 0 ? "No categories configured yet." : undefined}
             help="A finer classification within the type. Used to spot patterns across many cases."
             >
-              <Select name="categoryId" defaultValue={defaults?.categoryId ?? ""}>
-                <option value="">Uncategorised</option>
-                {options.categories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </Select>
+              <SelectWithAdd
+                name="categoryId"
+                options={options.categories}
+                defaultValue={defaults?.categoryId ?? ""}
+                placeholder="Uncategorised"
+                addLabel="Add a case category"
+                onCreate={createCaseCategory}
+              />
             </Field>
           </div>
 

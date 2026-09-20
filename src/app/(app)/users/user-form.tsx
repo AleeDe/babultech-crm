@@ -10,6 +10,8 @@ import {
 } from "@/components/ui";
 import { RecordLookup } from "@/components/record-lookup";
 import { PicklistOptions } from "@/components/picklist";
+import { SelectWithAdd } from "@/components/select-with-add";
+import { createDepartment } from "@/server/reference-options";
 import { cn, humanize } from "@/lib/utils";
 
 const STATUSES = ["ACTIVE", "INACTIVE", "SUSPENDED"];
@@ -259,12 +261,14 @@ export function UserForm({
               </Field>
               <Field label="Department" error={fieldErrors.departmentId?.[0]}
             help="Which part of the business they belong to.">
-                <Select name="departmentId" defaultValue={defaults?.departmentId ?? ""}>
-                  <option value="">None</option>
-                  {options.departments.map((d) => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-                </Select>
+                <SelectWithAdd
+                  name="departmentId"
+                  options={options.departments}
+                  defaultValue={defaults?.departmentId ?? ""}
+                  placeholder="None"
+                  addLabel="Add a department"
+                  onCreate={createDepartment}
+                />
               </Field>
               <Field label="Reports to" error={fieldErrors.managerUserId?.[0]}
             help="Their manager. This is not decoration - it decides what a manager can see. Anyone on Department scope sees their own records plus everyone beneath them in this line.">

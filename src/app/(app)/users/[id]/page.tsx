@@ -59,6 +59,9 @@ export default async function UserDetailPage({
         title={user.fullName}
         description={`${user.email}${user.jobTitle ? ` · ${user.jobTitle}` : ""}`}
       >
+        <Badge tone={user.userType === "INTERNAL" ? "neutral" : user.userType === "PARTNER" ? "warning" : "info"}>
+          {user.userType === "INTERNAL" ? "Employee" : user.userType === "PARTNER" ? "Partner login" : "Customer login"}
+        </Badge>
         <Badge tone={isAdmin ? "danger" : isPartner ? "warning" : "neutral"}>{(user.role?.name ?? "—")}</Badge>
         <Badge tone={statusTone(user.status)}>{humanize(user.status)}</Badge>
         <Button asChild variant="outline"><Link href={`/users/${user.id}/teams`}>Manage teams</Link></Button>

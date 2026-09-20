@@ -4,6 +4,8 @@ import { type ComponentProps } from "react";
 import { Input, Select, Textarea } from "@/components/ui";
 import { FormField as BaseFormField } from "@/components/record-form";
 import { ProductOptionPicker } from "@/components/product-option-picker";
+import { SelectWithAdd } from "@/components/select-with-add";
+import { createTaxRateOption } from "@/server/reference-options";
 
 /**
  * What a product is, and nothing about what it costs.
@@ -44,7 +46,17 @@ export function ProductFields({ defaults = {}, taxRates, options }: {
       <FormField label="Type" name="productType" required><Select name="productType" required defaultValue={defaults.productType ?? "PRODUCT"}><option value="PRODUCT">Product</option><option value="SERVICE">Service</option><option value="SUBSCRIPTION">Subscription</option></Select></FormField>
     </div>
     <div className="grid gap-5 sm:grid-cols-2">
-      <FormField label="Default tax rate" name="defaultTaxRateId"><Select name="defaultTaxRateId" defaultValue={defaults.defaultTaxRateId ?? ""}><option value="">None</option>{taxRates.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.ratePercent}%)</option>)}</Select></FormField>
+      <FormField label="Default tax rate" name="defaultTaxRateId">
+        <SelectWithAdd
+          name="defaultTaxRateId"
+          options={taxRates.map((t) => ({ id: t.id, name: `${t.name} (${t.ratePercent}%)` }))}
+          defaultValue={defaults.defaultTaxRateId ?? ""}
+          placeholder="None"
+          addLabel="Add a tax rate"
+          onCreate={createTaxRateOption}
+          extraField={{ name: "ratePercent", label: "Rate %", placeholder: "18" }}
+        />
+      </FormField>
       <FormField label="Commission %" name="commissionPercent"><Input name="commissionPercent" type="number" min="0" max="100" step="0.01" defaultValue={defaults.commissionPercent ?? ""} /></FormField>
     </div>
     <FormField label="Description" name="description"><Textarea name="description" rows={3} defaultValue={defaults.description ?? ""} /></FormField>
