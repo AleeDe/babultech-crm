@@ -282,7 +282,7 @@ export async function getContact(id: string) {
     .select(
       `*,
        account ( id, name ),
-       partnerAsPerson:partner ( id, partnerNumber )`,
+       partnerAsPerson:partner!partner_contactId_fkey ( id, partnerNumber )`,
     )
     .eq("id", id)
     .maybeSingle();
@@ -360,7 +360,7 @@ export async function listContacts(filters?: { search?: string; accountId?: stri
     .select(
       `*,
        account ( id, name ),
-       partnerAsPerson:partner ( id, partnerNumber, partnerType )`,
+       partnerAsPerson:partner!partner_contactId_fkey ( id, partnerNumber, partnerType )`,
     )
     .is("deletedAt", null)
     .order("lastName")

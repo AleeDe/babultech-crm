@@ -335,7 +335,7 @@ export async function listPartners(filters?: {
     .select(
       `*,
        account!partner_accountId_fkey ( id, name ),
-       contact ( id, firstName, lastName, email ),
+       contact!partner_contactId_fkey ( id, firstName, lastName, email ),
        partnerManager:app_user!partner_partnerManagerId_fkey ( id, fullName ),
        commissionPlan:commission_plan ( id, name ),
        opportunities:opportunity_partner ( count ),
@@ -384,7 +384,7 @@ export async function getPartner(id: string) {
     .select(
       `*,
        account!partner_accountId_fkey ( * ),
-       contact ( * ),
+       contact!partner_contactId_fkey ( * ),
        partnerManager:app_user!partner_partnerManagerId_fkey ( id, fullName, email ),
        commissionPlan:commission_plan ( *, tiers:commission_tier ( * ) ),
        contacts:partner_contact ( *, contact ( * ) ),

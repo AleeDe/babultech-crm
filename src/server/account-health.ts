@@ -33,7 +33,7 @@ export async function getRenewalQueue(window: RenewalWindow = 90) {
     .select(
       `id, contractNumber, name, accountId, endDate, renewalType, noticePeriodDays,
        contractValue, currencyCode,
-       account:account!inner ( name, ownerUserId, owner:app_user ( fullName, status ) )`,
+       account:account!inner ( name, ownerUserId, owner:app_user!account_ownerUserId_fkey ( fullName, status ) )`,
     )
     // A terminated contract is not up for renewal; an expired one might still
     // need chasing, which is why it is not excluded here.
@@ -109,7 +109,7 @@ export async function getAccountHealth(): Promise<{
   const { data: accounts, error } = await db
     .from("account")
     .select(`id, name, ownerUserId, customerStatus, customerHealth, createdAt,
-             owner:app_user ( fullName, status )`)
+             owner:app_user!account_ownerUserId_fkey ( fullName, status )`)
     .eq("accountType", "CUSTOMER")
     .is("deletedAt", null)
     .order("name")

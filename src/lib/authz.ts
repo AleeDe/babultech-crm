@@ -122,7 +122,7 @@ async function loadUser(): Promise<SessionUser> {
     .select(
       `id, fullName, email, status, deletedAt, departmentId, partnerId,
        userType, contactId, portalScope,
-       contact:contact ( accountId ),
+       contact:contact!app_user_contactId_fkey ( accountId ),
        role:security_role!inner ( name, dataScope, permissions ),
        teamMemberships:team_member ( teamId )`,
     )
