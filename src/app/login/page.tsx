@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { signInWithCredentials } from "@/lib/auth";
-import { supabaseServer } from "@/lib/supabase";
+import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { Button, Card, Field, Input, Alert } from "@/components/ui";
 import { PasswordInput } from "@/components/password-input";
 
@@ -9,11 +9,41 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  // Only asking "is anyone signed in?", so verify the token locally against the
-  // cached JWKS rather than spending a round trip on the answer.
   const db = await supabaseServer();
+
+  // A signed-in visitor belongs inside the application, not on this page.
+  //
+  // But a token only proves somebody authenticated once; it does not prove
+  // they still have an account. Redirecting on the token alone produced an
+  // infinite loop: this page sent them to /, requireUser() found no active
+  // app_user and threw, and its handler sent them back here. That happens to
+  // anybody whose account is deactivated, and to anybody holding a session
+  // for a login that has since been removed.
+  //
+  // So the account is confirmed before redirecting, and a session with no
+  // usable account is ended here - which is the only place that can end it,
+  // since every page inside the application refuses them first.
   const { data: claims } = await db.auth.getClaims();
-  if (claims) redirect("/");
+  let staleSession = false;
+
+  if (claims) {
+    const userId = (claims.claims?.sub ?? null) as string | null;
+    const { data: account } = userId
+      ? await supabaseAdmin()
+          .from("app_user")
+          .select("id, status, deletedAt")
+          .eq("id", userId)
+          .maybeSingle()
+      : { data: null };
+
+    if (account && account.status === "ACTIVE" && !account.deletedAt) {
+      redirect("/");
+    }
+
+    // Ends the loop rather than bouncing them around it.
+    await db.auth.signOut();
+    staleSession = true;
+  }
 
   const { error } = await searchParams;
 
@@ -51,6 +81,15 @@ export default async function LoginPage({
           <h1 className="text-xl font-semibold tracking-tight">BabulTech CRM</h1>
           <p className="mt-1 text-sm text-muted-foreground">Sign in to continue</p>
         </div>
+
+        {staleSession && !error && (
+          <div className="mb-4">
+            <Alert tone="warning">
+              You were signed in, but that account is no longer active. Sign in with another
+              one, or ask an administrator to reactivate it.
+            </Alert>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4">
