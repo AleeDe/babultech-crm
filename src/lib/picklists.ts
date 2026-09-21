@@ -39,7 +39,8 @@ export type PicklistKey =
   | "task_status" | "task_type" | "task_category" | "risk_level" | "payment_method"
   | "user_status"
   // Marketing lists, added with the campaign member entity.
-  | "business_type" | "company_size";
+  | "business_type" | "company_size"
+  | "campaign_activity_type" | "call_outcome" | "webinar_outcome";
 
 /**
  * A value from an open, enum-backed list. Administrators can add values in

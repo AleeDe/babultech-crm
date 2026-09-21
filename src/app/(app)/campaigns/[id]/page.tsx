@@ -8,6 +8,8 @@ import {
   Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
+import { listCampaignActivities } from "@/server/campaign-activities";
+import { Megaphone, Plus } from "lucide-react";
 
 export default async function CampaignDetailPage({
   params,
@@ -18,6 +20,7 @@ export default async function CampaignDetailPage({
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.LEAD_READ)) return <Forbidden what="campaigns" />;
   const db = await supabaseServer();
+  const activities = await listCampaignActivities(id);
 
   const { data: campaignRow } = await db
     .from("campaign")
@@ -257,6 +260,65 @@ export default async function CampaignDetailPage({
               </CardContent>
             </Card>
           )}
+
+          <Card>
+            <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2">
+              <CardTitle className="flex items-center gap-2">
+                <Megaphone className="h-4 w-4" /> Activities ({activities.length})
+              </CardTitle>
+              {can(_me, PERMISSIONS.LEAD_WRITE) && (
+                <Button asChild size="sm" variant="secondary">
+                  <Link href={`/campaigns/activities/new?campaignId=${id}`}>
+                    <Plus className="h-4 w-4" /> New activity
+                  </Link>
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent className="px-0">
+              {activities.length === 0 ? (
+                <p className="px-6 pb-4 text-sm text-muted-foreground">
+                  Nothing has been run for this campaign yet. An activity is one round of
+                  outreach — an email, some calls, a webinar.
+                </p>
+              ) : (
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>Activity</TH>
+                      <TH>How</TH>
+                      <TH>Status</TH>
+                      <TH className="text-right">Audience</TH>
+                      <TH priority="tertiary">When</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {activities.map((activity) => (
+                      <TR key={activity.id}>
+                        <TD>
+                          <Link
+                            href={`/campaigns/activities/${activity.id}`}
+                            className="text-sm font-medium hover:underline"
+                          >
+                            {activity.name}
+                          </Link>
+                        </TD>
+                        <TD className="text-sm">{humanize(activity.activityType)}</TD>
+                        <TD>
+                          <Badge tone={activity.status === "COMPLETED" ? "success" : "info"}>
+                            {humanize(activity.status)}
+                          </Badge>
+                        </TD>
+                        <TD className="text-right tabular">{activity.audienceCount ?? 0}</TD>
+                        <TD className="whitespace-nowrap text-sm">
+                          {formatDate(activity.completedAt ?? activity.scheduledAt ?? activity.createdAt)}
+                        </TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </>

@@ -33,6 +33,12 @@ async function ok(result, what) {
 }
 
 const email = (n) => `cm-${run}-${n}@example.com`;
+// Unique per run: the dedupe matches on the last nine digits, so a fixed
+// number would find whatever the previous run left behind.
+const suffix = String(Math.floor(Math.random() * 9e6) + 1e6);
+const phoneA = `0300 ${suffix}`;
+const phoneB = `+92 321 ${suffix}`;
+const phoneBAlt = `0321${suffix}`;
 
 try {
   // --- two identities: one who may work leads, one who may not -------------
@@ -79,20 +85,23 @@ try {
   const marketer = await makeUser("marketer", superRole.id);
   const outsider = await makeUser("outsider", noLeadRole.id);
 
+  // By owner rather than by email: a member with no address is invisible to an
+  // email filter, so an email-based cleanup silently leaves them behind. Pushed
+  // before the users are removed, since cleanup runs in reverse.
   cleanup.push(() =>
-    admin.from("campaign_member").delete().like("email", `cm-${run}-%@example.com`),
+    admin.from("campaign_member").delete().in("ownerUserId", [marketer.id, outsider.id]),
   );
 
   // --- 1. the import -------------------------------------------------------
 
   const firstFile = [
-    { firstName: "Ayesha", lastName: "Malik", email: email(1), phone: "0300 1112222",
+    { firstName: "Ayesha", lastName: "Malik", email: email(1), phone: phoneA,
       companyName: "Meridian Foods", businessType: "MANUFACTURING", companySize: "MEDIUM",
       city: "Lahore", source: `Trade show ${run}` },
     { firstName: "Bilal", lastName: "Ahmed", email: email(2),
       companyName: "Sapphire Textiles", companySize: "LARGE" },
     // No address, but a phone number - the case a trade-show sheet is full of.
-    { firstName: "Phone Only", lastName: "Person", phone: "+92 321 4445556" },
+    { firstName: "Phone Only", lastName: "Person", phone: phoneB },
     { firstName: "", lastName: "Blank row" },
   ];
 
@@ -140,7 +149,7 @@ try {
       .eq("email", email(1)).single(),
     "Re-read her record",
   );
-  assert.equal(ayesha.phone, "0300 1112222", "A blank cell must not clear a phone number");
+  assert.equal(ayesha.phone, phoneA, "A blank cell must not clear a phone number");
   assert.equal(ayesha.companyName, "Meridian Foods", "A blank cell must not clear a company");
   assert.equal(ayesha.businessType, "MANUFACTURING", "A blank cell must not clear a business type");
   pass("A thinner second file tops up details rather than wiping them");
@@ -148,7 +157,7 @@ try {
   // A number written the other way round is the same number.
   const reformattedRaw = await ok(
     marketer.client.rpc("import_campaign_members", {
-      p_rows: [{ firstName: "Phone Only", lastName: "Person", phone: "03214445556" }],
+      p_rows: [{ firstName: "Phone Only", lastName: "Person", phone: phoneBAlt }],
       p_owner: marketer.id,
     }),
     "Import the same number, written differently",
