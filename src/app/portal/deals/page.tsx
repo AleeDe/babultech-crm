@@ -1,10 +1,12 @@
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { getPortalDeals } from "@/server/portal";
 import { listMyProposals } from "@/server/commission-proposals";
 import { RateRequest } from "./rate-request";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent,
   Table, THead, TBody, TR, TH, TD, Badge, statusTone,
-  EmptyState, StatTile, Alert,
+  EmptyState, StatTile, Alert, Button,
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize, daysBetween } from "@/lib/utils";
 import { REGISTRATION_EXPIRY_WARNING_DAYS } from "@/lib/partner-policy";
@@ -41,7 +43,13 @@ export default async function PortalDealsPage() {
       <PageHeader
         title="Opportunities"
         description="The deals you are registered on, your share of each, and what each has earned you."
-      />
+      >
+        <Button asChild>
+          <Link href="/portal/deals/new">
+            <Plus className="h-4 w-4" /> New opportunity
+          </Link>
+        </Button>
+      </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Open deals" value={String(open.length)} sublabel={formatMoney(openValue, currency)} tone="info" />

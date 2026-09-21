@@ -219,7 +219,33 @@ const dealSchema = z.object({
   state: z.string().trim().max(100).optional(),
   postalCode: z.string().trim().max(30).optional(),
   country: z.string().trim().max(100).optional(),
+  // The partner's own read of the deal. They are closer to it than we are.
+  probabilityPercent: z.coerce.number().min(0).max(100).optional(),
+  leadSource: z.string().trim().max(100).optional(),
 });
+
+/**
+ * The customers a partner may raise a deal against.
+ *
+ * Only the ones they sourced, which is the same rule the write path
+ * enforces - offering an account the function would refuse is how somebody
+ * ends up staring at "that customer is not one of yours".
+ */
+export async function listMyAccountsForDeal(): Promise<
+  { id: string; name: string; accountNumber: string }[]
+> {
+  await requirePartnerId();
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("account")
+    .select("id, name, accountNumber")
+    .is("deletedAt", null)
+    .order("name");
+
+  if (error) throw new Error(`Could not load your accounts: ${error.message}`);
+  return data ?? [];
+}
 
 /** Add a deal against a customer this partner already brought. */
 export async function addPartnerOpportunity(
@@ -263,6 +289,8 @@ export async function addPartnerOpportunity(
     p_state: d.state || null,
     p_postal_code: d.postalCode || null,
     p_country: d.country || null,
+    p_probability: d.probabilityPercent ?? null,
+    p_lead_source: d.leadSource || null,
   });
 
   if (error) return { ok: false, error: error.message };

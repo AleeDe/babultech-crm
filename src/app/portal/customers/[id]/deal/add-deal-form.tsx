@@ -60,6 +60,10 @@ export function AddDealForm({
         contactId: buyerMode === "EXISTING" ? text("contactId") : "",
         notes: text("notes"),
         dealType: text("dealType"),
+        probabilityPercent: fd.get("probabilityPercent")
+          ? Number(fd.get("probabilityPercent"))
+          : undefined,
+        leadSource: text("leadSource"),
         nextStep: text("nextStep"),
         competitorName: text("competitorName"),
         newFirstName: buyerMode === "NEW" ? text("newFirstName") : "",
@@ -127,6 +131,28 @@ export function AddDealForm({
 
           <Field label="Who else is bidding?" help="Leave blank if nobody, or you do not know.">
             <Input id="competitorName" name="competitorName" maxLength={200} />
+          </Field>
+
+          <Field
+            label="How likely is it? (%)"
+            help="Your honest read. It feeds our forecast, so a guess you believe beats a round number."
+          >
+            <Input
+              id="probabilityPercent"
+              name="probabilityPercent"
+              type="number"
+              min="0"
+              max="100"
+              step="5"
+              placeholder="25"
+            />
+          </Field>
+
+          <Field
+            label="Where did they come from?"
+            help="How this customer reached you — a referral, an event, your own outreach."
+          >
+            <Input id="leadSource" name="leadSource" maxLength={100} placeholder="Referral" />
           </Field>
 
           <div className="sm:col-span-2">

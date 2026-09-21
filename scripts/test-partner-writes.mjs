@@ -157,17 +157,19 @@ try {
 
   const mine = await check(asPartner.from("account").select("id, name"), "List accounts as the partner");
   const visible = mine.map((a) => a.id).sort();
-  // Two accounts, and only two: the customer they sourced, and their own
-  // company. Their own is there because getPortalAccounts reads
-  // partner.accountId expressly to show it.
+  // Exactly one: the customer they sourced. Their OWN company is deliberately
+  // not here - Accounts in the portal means the customers they brought, and
+  // their own company sitting among them carried buttons that could not work,
+  // because the write path refuses a deal against an account nobody sourced.
   assert.deepEqual(
     visible,
-    [made.accountId, ids.myAccount].sort(),
-    "A partner must see the accounts they sourced, plus their own company, and nothing else",
+    [made.accountId],
+    "A partner must see exactly the accounts they sourced",
   );
+  assert.ok(!visible.includes(ids.myAccount), "A partner must not see their own company here");
   assert.ok(!visible.includes(ids.rivalCustomer), "A partner must never see a rival's customer");
   assert.ok(!visible.includes(ids.otherAccount), "A partner must never see a rival's own company");
-  pass("Sees their own company and the customer they created, and not the rival's");
+  pass("Sees the customers they sourced, and neither their own company nor a rival's");
 
   const theirContacts = await check(asPartner.from("contact").select("id, email"), "List contacts as the partner");
   assert.ok(
