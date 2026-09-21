@@ -24,3 +24,6 @@ backups/mumbai-migration/.env.sydney
 .env.local
 .env*.local
 /env
+
+# Database snapshots taken before a destructive reset. Local only.
+/backups/
