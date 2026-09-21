@@ -54,7 +54,7 @@ export default async function AddPartnerDealPage({
     <>
       <PageHeader
         backTo="/portal/customers"
-        backLabel="Back to your customers"
+        backLabel="Back to accounts"
         title={`New deal at ${account.name}`}
         description="You are credited as the partner who sourced it, so commission follows it automatically."
       />

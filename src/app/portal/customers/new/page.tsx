@@ -21,9 +21,9 @@ export default async function NewPartnerCustomerPage() {
     <>
       <PageHeader
         backTo="/portal/customers"
-        backLabel="Back to your customers"
-        title="Add a customer"
-        description="For a customer you have won. We create the account and their contact, and credit you as the partner who brought them."
+        backLabel="Back to accounts"
+        title="New account"
+        description="For a customer you have won. We create the account and their first contact, and credit you as the partner who brought them."
       />
       <PartnerCustomerForm currencies={currencies ?? [{ code: "PKR", name: "Pakistani Rupee" }]} />
     </>

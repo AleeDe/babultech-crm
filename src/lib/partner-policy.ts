@@ -32,7 +32,6 @@ export const DEAL_REGISTRATION_PROTECTION_DAYS = 90;
  * because the expiry is stamped on the record rather than computed on read.
  */
 export const TIER_PROTECTION_DAYS: Record<string, number> = {
-  REGISTERED: 60,
   SILVER: 90,
   GOLD: 120,
   PLATINUM: 180,

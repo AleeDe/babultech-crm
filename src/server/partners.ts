@@ -32,9 +32,11 @@ const addressSchema = z
   .optional();
 
 const basePartnerSchema = z.object({
-  partnerType: z.enum(["REFERRAL", "RESELLER", "IMPLEMENTATION", "TECHNOLOGY", "DISTRIBUTOR"]),
-  tier: z.enum(["REGISTERED", "SILVER", "GOLD", "PLATINUM"]).default("REGISTERED"),
-  status: z.enum(["PROSPECTIVE", "ACTIVE", "INACTIVE", "TERMINATED"]).default("PROSPECTIVE"),
+  partnerType: z.enum(["REFERRAL", "ACCOUNT_MANAGEMENT", "IMPLEMENTATION", "INVESTMENT"]),
+  tier: z.enum(["SILVER", "GOLD", "PLATINUM"]).default("SILVER"),
+  // Inactive by default. An active partnership can register deals, add
+  // customers and use the portal, and none of that should start by accident.
+  status: z.enum(["ACTIVE", "INACTIVE", "TERMINATED"]).default("INACTIVE"),
   partnerManagerId: z.string().uuid().optional().nullable(),
   territory: z.string().max(150).optional().nullable(),
   startDate: z.coerce.date().optional().nullable(),

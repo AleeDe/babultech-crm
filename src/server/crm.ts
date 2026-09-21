@@ -390,6 +390,10 @@ export async function listContacts(filters?: { search?: string; accountId?: stri
 // ---------------------------------------------------------------------------
 
 const leadSchema = z.object({
+  // What this lead becomes if it converts: a customer, or a partner. It is
+  // read by convert_lead to decide the account's type, so it is a real
+  // branch rather than a label.
+  leadType: z.enum(["SALES", "PARTNER"]).default("SALES"),
   firstName: z.string().min(1).max(100),
   lastName: z.string().min(1).max(100),
   companyName: z.string().max(200).optional().nullable(),

@@ -17,8 +17,8 @@ import { signOutAction } from "@/lib/sign-out-action";
  */
 const NAV = [
   { href: "/portal", label: "Overview", icon: LayoutDashboard, exact: true },
-  { href: "/portal/deals", label: "My deals", icon: Target },
-  { href: "/portal/customers", label: "Your customers", icon: Building2 },
+  { href: "/portal/deals", label: "Opportunities", icon: Target },
+  { href: "/portal/customers", label: "Accounts", icon: Building2 },
   { href: "/portal/commissions", label: "Commission", icon: Coins },
   { href: "/portal/payouts", label: "Payouts", icon: Banknote },
   { href: "/portal/activities", label: "Activities", icon: MessageSquare },

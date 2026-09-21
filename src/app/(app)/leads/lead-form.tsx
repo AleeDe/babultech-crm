@@ -31,6 +31,8 @@ interface Options {
 
 export interface LeadDefaults {
   id: string;
+  /** SALES or PARTNER; what this lead becomes if it converts. */
+  leadType?: string | null;
   firstName: string;
   lastName: string;
   companyName: string | null;
@@ -136,6 +138,19 @@ export function LeadForm({
           <CardTitle>Who is this lead?</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Field
+              label="Lead type"
+              required
+              hint="What this becomes if it converts."
+              help="A sales lead converts to a customer account. A partner lead converts to an account of type Partner, ready to be linked on the Partners screen."
+            >
+              <Select name="leadType" required defaultValue={defaults?.leadType ?? "SALES"}>
+                <option value="SALES">Sales — a prospective customer</option>
+                <option value="PARTNER">Partner — a prospective partner</option>
+              </Select>
+            </Field>
+          </div>
           <Field label="First name" required error={fieldErrors.firstName?.[0]}>
             <Input name="firstName" required defaultValue={defaults?.firstName} />
           </Field>

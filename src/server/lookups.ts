@@ -215,6 +215,9 @@ function applyFilters(query: any, entity: LookupEntity, config: EntityConfig, fi
   // Partner and customer logins are not staff: they cannot own an account or
   // be assigned a task, so they stay out of people pickers.
   if (entity === "user" && filters.internalOnly !== false) query = query.is("partnerId", null);
+  if (filters.accountType && entity === "account") {
+    query = query.eq("accountType", filters.accountType);
+  }
   if (!filters.includeInactive && config.activeFilter) query = config.activeFilter(query);
   return query;
 }

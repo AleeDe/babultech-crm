@@ -2,40 +2,46 @@ import Link from "next/link";
 import { AlertTriangle, Plus } from "lucide-react";
 import { listMyCustomers } from "@/server/partner-customers";
 import {
-  PageHeader, Card, CardContent, CardHeader, CardTitle, Badge, Button,
-  EmptyState, StatTile, Alert, statusTone,
+  PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, Button,
+  EmptyState, StatTile, Alert,
 } from "@/components/ui";
-import { formatMoney, formatDate, humanize } from "@/lib/utils";
+import { formatDate, humanize } from "@/lib/utils";
 
 /**
- * The customers this partner brought us.
+ * The accounts this partner brought us.
  *
- * Only the customers they sourced. A partner can be attached to a deal at a
- * customer that was always ours; that one shows on their deals but not here,
- * because only the ones they brought are theirs to add people and deals to.
+ * Laid out like the CRM's own account list rather than as portal-shaped cards:
+ * a partner and a colleague discussing the same customer should be looking at
+ * the same thing, in the same words. What is left out is what belongs to us
+ * rather than to them — the internal owner, the health score, case counts and
+ * anything financial.
+ *
+ * Only the accounts they sourced. A partner can be attached to an opportunity
+ * at an account that was always ours; that one shows under Opportunities but
+ * not here, because only the ones they brought are theirs to add to.
  */
-export default async function PortalCustomersPage({
+export default async function PortalAccountsPage({
   searchParams,
 }: {
   searchParams: Promise<{ created?: string }>;
 }) {
-  const [customers, { created }] = await Promise.all([listMyCustomers(), searchParams]);
+  const [accounts, { created }] = await Promise.all([listMyCustomers(), searchParams]);
 
-  const contested = customers.filter((c) => c.registrationContested);
-  const totalDeals = customers.reduce(
-    (sum, c) => sum + (Array.isArray(c.opportunities) ? c.opportunities.length : 0),
+  const contested = accounts.filter((a) => a.registrationContested);
+  const totalDeals = accounts.reduce(
+    (sum, a) => sum + (Array.isArray(a.opportunities) ? a.opportunities.length : 0),
     0,
   );
 
   return (
     <>
       <PageHeader
-        title="Your customers"
-        description="The organisations you brought us. Add their people and their deals here."
+        title="Accounts"
+        description="The organisations you brought us. Add their people and their opportunities here."
       >
         <Button asChild>
           <Link href="/portal/customers/new">
-            <Plus className="h-4 w-4" /> Add a customer
+            <Plus className="h-4 w-4" /> New account
           </Link>
         </Button>
       </PageHeader>
@@ -43,8 +49,8 @@ export default async function PortalCustomersPage({
       {created && (
         <div className="mb-5">
           <Alert tone="success">
-            Customer <strong>{created}</strong> created. Your partner manager has been given the
-            account and will be in touch.
+            Account <strong>{created}</strong> created. Your partner manager has it and will be in
+            touch.
           </Alert>
         </div>
       )}
@@ -54,18 +60,18 @@ export default async function PortalCustomersPage({
           <Alert tone="warning">
             <span className="font-medium">
               {contested.length === 1
-                ? "One of your customers is contested."
-                : `${contested.length} of your customers are contested.`}
+                ? "One of your accounts is contested."
+                : `${contested.length} of your accounts are contested.`}
             </span>{" "}
-            They matched a customer we already knew. We are looking into who holds the relationship
-            and will come back to you.
+            It matched an organisation we already knew. We are looking into who holds the
+            relationship and will come back to you.
           </Alert>
         </div>
       )}
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <StatTile label="Customers" value={String(customers.length)} />
-        <StatTile label="Deals" value={String(totalDeals)} tone="info" />
+        <StatTile label="Accounts" value={String(accounts.length)} />
+        <StatTile label="Opportunities" value={String(totalDeals)} tone="info" />
         <StatTile
           label="Contested"
           value={String(contested.length)}
@@ -73,113 +79,71 @@ export default async function PortalCustomersPage({
         />
       </div>
 
-      <div className="mt-6 space-y-4">
-        {customers.length === 0 ? (
-          <Card>
-            <CardContent className="py-10">
-              <EmptyState
-                title="No customers yet"
-                description="When you win a customer, add them here. We create the account and their contact, and credit you as the partner who brought them."
-                action={
-                  <Button asChild>
-                    <Link href="/portal/customers/new">
-                      <Plus className="h-4 w-4" /> Add your first customer
-                    </Link>
-                  </Button>
-                }
-              />
-            </CardContent>
-          </Card>
+      <Card className="mt-6">
+        {accounts.length === 0 ? (
+          <div className="py-10">
+            <EmptyState
+              title="No accounts yet"
+              description="When you win a customer, add them here. We create the account and their first contact, and credit you as the partner who brought them."
+              action={
+                <Button asChild>
+                  <Link href="/portal/customers/new">
+                    <Plus className="h-4 w-4" /> Add your first account
+                  </Link>
+                </Button>
+              }
+            />
+          </div>
         ) : (
-          customers.map((customer) => {
-            const contacts = Array.isArray(customer.contacts) ? customer.contacts : [];
-            const deals = Array.isArray(customer.opportunities) ? customer.opportunities : [];
-            const primary = contacts.find((c) => c.isPrimary) ?? contacts[0];
+          <Table>
+            <THead>
+              <TR>
+                <TH>Account</TH>
+                <TH>Type</TH>
+                <TH priority="tertiary">Industry</TH>
+                <TH className="text-right" priority="secondary">Contacts</TH>
+                <TH className="text-right" priority="secondary">Opportunities</TH>
+                <TH priority="tertiary">Added</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {accounts.map((account) => {
+                const contacts = Array.isArray(account.contacts) ? account.contacts : [];
+                const deals = Array.isArray(account.opportunities) ? account.opportunities : [];
 
-            return (
-              <Card key={customer.id}>
-                <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <CardTitle className="flex flex-wrap items-center gap-2">
-                      {customer.name}
-                      <Badge tone="neutral">{humanize(customer.accountType)}</Badge>
-                      {customer.registrationContested && (
-                        <Badge tone="warning">
-                          <AlertTriangle className="mr-1 inline h-3 w-3" />
-                          Contested
-                        </Badge>
-                      )}
-                    </CardTitle>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {customer.accountNumber}
-                      {customer.industry && ` · ${customer.industry}`}
-                      {` · added ${formatDate(customer.createdAt)}`}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/portal/customers/${customer.id}/contact`}>Add employee</Link>
-                    </Button>
-                    <Button asChild size="sm" variant="secondary">
-                      <Link href={`/portal/customers/${customer.id}/deal`}>Add a deal</Link>
-                    </Button>
-                  </div>
-                </CardHeader>
-
-                <CardContent className="grid gap-5 text-sm sm:grid-cols-2">
-                  <div>
-                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      People ({contacts.length})
-                    </p>
-                    {contacts.length === 0 ? (
-                      <p className="text-muted-foreground">Nobody recorded yet.</p>
-                    ) : (
-                      <ul className="space-y-1.5">
-                        {contacts.map((c) => (
-                          <li key={c.id}>
-                            <span className="font-medium">
-                              {c.firstName} {c.lastName}
-                            </span>
-                            {c.id === primary?.id && (
-                              <Badge tone="neutral" className="ml-2">Primary</Badge>
-                            )}
-                            <span className="block text-xs text-muted-foreground">
-                              {[c.jobTitle, c.email, c.phone].filter(Boolean).join(" · ") ||
-                                "No details recorded"}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  <div>
-                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Deals ({deals.length})
-                    </p>
-                    {deals.length === 0 ? (
-                      <p className="text-muted-foreground">No deals yet.</p>
-                    ) : (
-                      <ul className="space-y-1.5">
-                        {deals.map((d) => (
-                          <li key={d.id} className="flex flex-wrap items-baseline gap-2">
-                            <span className="font-medium">{d.name}</span>
-                            <Badge tone={statusTone(d.stage)}>{humanize(d.stage)}</Badge>
-                            <span className="text-xs tabular text-muted-foreground">
-                              {formatMoney(d.amount, d.currencyCode)}
-                              {d.expectedCloseDate && ` · ${formatDate(d.expectedCloseDate)}`}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })
+                return (
+                  <TR key={account.id}>
+                    <TD>
+                      <Link
+                        href={`/portal/customers/${account.id}`}
+                        className="text-sm font-medium hover:underline"
+                      >
+                        {account.name}
+                      </Link>
+                      <p className="text-xs text-muted-foreground">
+                        {account.accountNumber}
+                        {account.registrationContested && (
+                          <Badge tone="warning" className="ml-2">
+                            <AlertTriangle className="mr-1 inline h-3 w-3" />
+                            Contested
+                          </Badge>
+                        )}
+                      </p>
+                    </TD>
+                    <TD>
+                      <Badge tone="neutral">{humanize(account.accountType)}</Badge>
+                    </TD>
+                    <TD className="text-sm">{account.industry ?? "—"}</TD>
+                    <TD className="text-right tabular">{contacts.length}</TD>
+                    <TD className="text-right tabular">{deals.length}</TD>
+                    <TD className="whitespace-nowrap text-sm">{formatDate(account.createdAt)}</TD>
+                  </TR>
+                );
+              })}
+            </TBody>
+          </Table>
         )}
-      </div>
+      </Card>
     </>
   );
 }

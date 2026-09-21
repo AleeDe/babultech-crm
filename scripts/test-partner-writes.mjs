@@ -68,8 +68,8 @@ try {
   cleanup.push(() => db.from("contact").delete().eq("id", ids.myContact));
 
   await check(db.from("partner").insert([
-    { id: ids.myPartner, partnerNumber: `QAWP-${run}`, displayName: `QA Writer ${run}`, kind: "COMPANY", accountId: ids.myAccount, partnerType: "RESELLER", status: "ACTIVE", partnerManagerId: owner.id, updatedAt: now() },
-    { id: ids.otherPartner, partnerNumber: `QAWPX-${run}`, displayName: `QA Rival ${run}`, kind: "COMPANY", accountId: ids.otherAccount, partnerType: "RESELLER", status: "ACTIVE", partnerManagerId: owner.id, updatedAt: now() },
+    { id: ids.myPartner, partnerNumber: `QAWP-${run}`, displayName: `QA Writer ${run}`, kind: "COMPANY", accountId: ids.myAccount, partnerType: "ACCOUNT_MANAGEMENT", status: "ACTIVE", partnerManagerId: owner.id, updatedAt: now() },
+    { id: ids.otherPartner, partnerNumber: `QAWPX-${run}`, displayName: `QA Rival ${run}`, kind: "COMPANY", accountId: ids.otherAccount, partnerType: "ACCOUNT_MANAGEMENT", status: "ACTIVE", partnerManagerId: owner.id, updatedAt: now() },
   ]), "Create partners");
   cleanup.push(() => db.from("partner").delete().in("id", [ids.myPartner, ids.otherPartner]));
 

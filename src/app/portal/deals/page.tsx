@@ -39,8 +39,8 @@ export default async function PortalDealsPage() {
   return (
     <>
       <PageHeader
-        title="My deals"
-        description="Opportunities you are registered on, your share of each, and what it has earned you."
+        title="Opportunities"
+        description="The deals you are registered on, your share of each, and what each has earned you."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

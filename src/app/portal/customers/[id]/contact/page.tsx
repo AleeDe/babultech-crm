@@ -27,7 +27,7 @@ export default async function AddPartnerContactPage({
     <>
       <PageHeader
         backTo="/portal/customers"
-        backLabel="Back to your customers"
+        backLabel="Back to accounts"
         title={`Add an employee at ${account.name}`}
         description="Someone who works there and you deal with. They will not get a login."
       />

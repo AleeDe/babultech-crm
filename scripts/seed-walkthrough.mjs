@@ -673,7 +673,7 @@ try {
   await ok(
     db.from("partner").insert({
       id: made.partner, partnerNumber: `WT-PTR-${tag}`, displayName: `WT Nexus Systems ${tag}`,
-      kind: "COMPANY", accountId: made.partnerAccount, partnerType: "RESELLER",
+      kind: "COMPANY", accountId: made.partnerAccount, partnerType: "ACCOUNT_MANAGEMENT",
       tier: "SILVER", status: "ACTIVE", partnerManagerId: meId,
       defaultCommissionPercent: 12, payoutCurrencyCode: "PKR",
       registrationProtectionDays: 90, startDate: today(),

@@ -298,3 +298,44 @@ export async function listMyCustomers() {
   // rather than surface it.
   return data ?? [];
 }
+
+/**
+ * One account this partner sourced, with its people and its opportunities.
+ *
+ * Shaped like the CRM's own account page so both sides read the same record the
+ * same way. What is not selected is what belongs to us: the internal owner, the
+ * health score, cases, invoices and anything financial. RLS would refuse most
+ * of it anyway; leaving it out of the query says so plainly rather than relying
+ * on a policy to silently blank it.
+ */
+export async function getMyCustomer(id: string) {
+  await requirePartnerId();
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("account")
+    .select(
+      `id, accountNumber, name, accountType, customerStatus, industry, website,
+       mainPhone, employeeCount, billingAddress, description,
+       registrationContested, createdAt,
+       contacts:contact ( id, firstName, lastName, jobTitle, email, phone, mobile,
+                          isPrimary, active, createdAt ),
+       opportunities:opportunity ( id, opportunityNumber, name, stage, amount,
+                                   currencyCode, expectedCloseDate, actualCloseDate,
+                                   nextStep, deletedAt )`,
+    )
+    .eq("id", id)
+    .is("deletedAt", null)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not load the account: ${error.message}`);
+  if (!data) return null;
+
+  return {
+    ...data,
+    contacts: (data.contacts ?? []).filter((c: { active?: boolean }) => c.active !== false),
+    opportunities: (data.opportunities ?? []).filter(
+      (o: { deletedAt?: string | null }) => !o.deletedAt,
+    ),
+  };
+}

@@ -42,6 +42,12 @@ export interface LookupFilters {
   opportunityId?: string | null;
   /** Internal users only, excluding partner and customer logins. */
   internalOnly?: boolean;
+  /**
+   * Narrows accounts to one type, e.g. PARTNER when linking a partner to the
+   * account that represents them. Without it, linking a partner would offer
+   * every customer you have.
+   */
+  accountType?: string | null;
   /** Include records that are inactive, retired or closed. Off by default. */
   includeInactive?: boolean;
 }

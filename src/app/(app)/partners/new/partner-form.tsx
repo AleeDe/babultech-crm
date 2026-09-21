@@ -30,7 +30,7 @@ export function PartnerForm({ options }: { options: Options }) {
   const [pending, startTransition] = useTransition();
   const [kind, setKind] = useState<"COMPANY" | "INDIVIDUAL">("COMPANY");
   const [linkExisting, setLinkExisting] = useState(false);
-  const [tierValue, setTierValue] = useState("REGISTERED");
+  const [tierValue, setTierValue] = useState("SILVER");
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
@@ -175,7 +175,13 @@ export function PartnerForm({ options }: { options: Options }) {
             linkExisting ? (
               <Field label="Existing account" required hint="Its type will be switched to Partner."
             help="Pick this if they are already in the system as an account, so you do not end up with two records for one company.">
-                <RecordLookup entity="account" name="accountId" required emptyLabel="Select an account…" />
+                <RecordLookup
+                  entity="account"
+                  name="accountId"
+                  required
+                  filters={{ accountType: "PARTNER" }}
+                  emptyLabel="Search partner accounts…"
+                />
               </Field>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
@@ -235,9 +241,9 @@ export function PartnerForm({ options }: { options: Options }) {
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Partner type" required
-            help="What kind of partner they are - reseller, referrer, implementation partner. Decides how commission is treated.">
+            help="What they do for you: send referrals, hold the account, deliver the work, or put money in.">
             <Select name="partnerType" required defaultValue="REFERRAL">
-              {["REFERRAL", "RESELLER", "IMPLEMENTATION", "TECHNOLOGY", "DISTRIBUTOR"].map((t) => (
+              {["REFERRAL", "ACCOUNT_MANAGEMENT", "IMPLEMENTATION", "INVESTMENT"].map((t) => (
                 <option key={t} value={t}>{humanize(t)}</option>
               ))}
             </Select>
@@ -245,15 +251,15 @@ export function PartnerForm({ options }: { options: Options }) {
           <Field label="Tier"
             help="Their level in your partner programme. Often drives the commission rate.">
             <Select name="tier" value={tierValue} onChange={(e) => setTierValue(e.target.value)}>
-              {["REGISTERED", "SILVER", "GOLD", "PLATINUM"].map((t) => (
+              {["SILVER", "GOLD", "PLATINUM"].map((t) => (
                 <option key={t} value={t}>{humanize(t)}</option>
               ))}
             </Select>
           </Field>
           <Field label="Status" required
-            help="Whether the partnership is active. Inactive partners keep their history but stop appearing in pickers.">
-            <Select name="status" defaultValue="PROSPECTIVE">
-              {["PROSPECTIVE", "ACTIVE", "INACTIVE", "TERMINATED"].map((s) => (
+            help="Only an active partnership can register deals, add customers or use the portal. Inactive keeps the history without the entitlements.">
+            <Select name="status" defaultValue="INACTIVE">
+              {["ACTIVE", "INACTIVE", "TERMINATED"].map((s) => (
                 <option key={s} value={s}>{humanize(s)}</option>
               ))}
             </Select>

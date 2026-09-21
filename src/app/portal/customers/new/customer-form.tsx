@@ -98,7 +98,7 @@ export function PartnerCustomerForm({ currencies }: { currencies: { code: string
             </p>
             <p className="text-sm">
               {conflict.mine
-                ? "Adding them again would create a duplicate. Open your customers to find them."
+                ? "Adding them again would create a duplicate. Open your accounts to find them."
                 : "You can still register them, but the relationship may already belong to someone else. We will look into it and come back to you."}
             </p>
 
@@ -144,7 +144,7 @@ export function PartnerCustomerForm({ currencies }: { currencies: { code: string
                 )}
                 {conflict.mine && (
                   <Link href="/portal/customers" className="mt-2 inline-block text-xs underline">
-                    Open your customers
+                    Open your accounts
                   </Link>
                 )}
               </div>
