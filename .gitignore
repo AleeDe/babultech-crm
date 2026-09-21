@@ -27,3 +27,9 @@ backups/mumbai-migration/.env.sydney
 
 # Database snapshots taken before a destructive reset. Local only.
 /backups/
+
+# Copies of env files taken before a change. They hold live secrets, and a
+# backup beside the original is exactly what `git add -A` sweeps up.
+*.backup-*
+.env.backup*
+.env.local.backup*

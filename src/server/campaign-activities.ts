@@ -335,14 +335,36 @@ export async function markActivityRun(activityId: string): Promise<ActionResult<
 // Sending
 // ---------------------------------------------------------------------------
 
-/** Plain text to simple HTML: paragraphs, and nothing a sender did not type. */
+/**
+ * A web address in the middle of a line.
+ *
+ * Stops before trailing punctuation, so "see https://example.com." links the
+ * address and leaves the full stop as a full stop. Applied after escaping, so
+ * it matches &amp; in a query string rather than a raw ampersand.
+ */
+const BARE_URL = /\bhttps?:\/\/[^\s<]+[^\s<.,:;!?"')\]]/g;
+
+/**
+ * Plain text to simple HTML: paragraphs, and nothing a sender did not type.
+ *
+ * Web addresses become real links. Without that a sender typing an address
+ * gets text nobody can click - and click tracking works by rewriting anchor
+ * tags, so an email of bare URLs would report no clicks however many people
+ * followed them.
+ */
 function textToHtml(text: string): string {
   const escaped = text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
-  const paragraphs = escaped
+
+  const linked = escaped.replace(
+    BARE_URL,
+    (url) => `<a href="${url}" style="color:#0b6bcb">${url}</a>`,
+  );
+
+  const paragraphs = linked
     .split(/\n{2,}/)
     .map((p) => `<p style="margin:0 0 16px">${p.replace(/\n/g, "<br>")}</p>`)
     .join("");
