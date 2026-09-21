@@ -8,7 +8,7 @@ import {
   FileText, FileSignature, Handshake, Coins, LifeBuoy, FolderKanban,
   Receipt, Package, CalendarCheck, Menu, X, LogOut, Clock, UsersRound, Banknote,
   ShieldCheck, UserCog, Settings, BookOpen, CheckSquare, FileInput, Wallet, Stamp,
-  ChevronDown, PanelLeftClose, PanelLeftOpen, KeyRound, CalendarClock, HeartPulse, CalendarSync, RefreshCw,
+  ChevronDown, PanelLeftClose, PanelLeftOpen, KeyRound, CalendarClock, HeartPulse, CalendarSync, RefreshCw, ContactRound,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { holdsAny } from "@/lib/nav-permissions";
@@ -57,6 +57,7 @@ const NAV: NavGroup[] = [
     label: "Marketing",
     items: [
       { href: "/campaigns", label: "Campaigns", icon: Megaphone, permissions: ["lead:read"] },
+      { href: "/campaign-members", label: "Campaign members", icon: ContactRound, permissions: ["lead:read"] },
       { href: "/leads", label: "Leads", icon: UserPlus, permissions: ["lead:read"] },
     ],
   },

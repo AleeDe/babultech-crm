@@ -37,7 +37,9 @@ export type PicklistKey =
   | "priority" | "case_type" | "case_source" | "case_status" | "contract_status"
   | "billing_frequency" | "renewal_type" | "project_status" | "billing_type"
   | "task_status" | "task_type" | "task_category" | "risk_level" | "payment_method"
-  | "user_status";
+  | "user_status"
+  // Marketing lists, added with the campaign member entity.
+  | "business_type" | "company_size";
 
 /**
  * A value from an open, enum-backed list. Administrators can add values in
