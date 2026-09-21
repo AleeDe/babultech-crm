@@ -3,9 +3,14 @@ import Link from "next/link";
 import { getCampaignActivity, getActivityAudience, getActivityStats } from "@/server/campaign-activities";
 import { getPicklistMap } from "@/server/picklists";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
-import { PageHeader, Forbidden, Badge, StatTile, Alert, Card, CardHeader, CardTitle, CardContent } from "@/components/ui";
+import { Pencil } from "lucide-react";
+import {
+  PageHeader, Forbidden, Badge, Button, StatTile, Alert,
+  Card, CardHeader, CardTitle, CardContent,
+} from "@/components/ui";
 import { formatDateTime, humanize } from "@/lib/utils";
 import { AudiencePanel } from "./audience-panel";
+import { ActivityActions } from "./activity-actions";
 
 /** Which outcome list a type uses. Email outcomes come from the provider. */
 const OUTCOME_LIST: Record<string, string> = {
@@ -35,6 +40,8 @@ export default async function CampaignActivityPage({
   const lists = picklists as Record<string, { value: string; label: string }[]>;
   const outcomeOptions = lists[OUTCOME_LIST[activity.activityType] ?? ""] ?? [];
   const isEmail = activity.activityType === "EMAIL";
+  // Once it has run, nothing about it is editable any more.
+  const isLocked = ["RUNNING", "COMPLETED"].includes(activity.status);
 
   // Rates are worked out against what was actually delivered, not against the
   // whole audience: counting an open against somebody whose address bounced
@@ -54,6 +61,14 @@ export default async function CampaignActivityPage({
         <Badge tone={activity.status === "COMPLETED" ? "success" : activity.status === "CANCELLED" ? "neutral" : "info"}>
           {humanize(activity.status)}
         </Badge>
+        {can(me, PERMISSIONS.LEAD_WRITE) && (
+          <ActivityActions
+            id={activity.id}
+            name={activity.name}
+            campaignId={activity.campaignId}
+            status={activity.status}
+          />
+        )}
       </PageHeader>
 
       {isEmail && stats.sent > 0 && (
@@ -114,20 +129,34 @@ export default async function CampaignActivityPage({
         </Card>
       )}
 
-      {isEmail && activity.subject && (
+      {isEmail && (
         <Card className="mt-6">
-          <CardHeader>
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2">
             <CardTitle>The email</CardTitle>
+            {can(me, PERMISSIONS.LEAD_WRITE) && !isLocked && (
+              <Button asChild size="sm" variant="outline">
+                <Link href={`/campaigns/activities/${activity.id}/edit`}>
+                  <Pencil className="h-4 w-4" /> Edit the email
+                </Link>
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <p><span className="text-muted-foreground">Subject: </span><span className="font-medium">{activity.subject}</span></p>
+            <p>
+              <span className="text-muted-foreground">Subject: </span>
+              <span className="font-medium">{activity.subject ?? "Not set"}</span>
+            </p>
             {activity.replyTo && (
               <p><span className="text-muted-foreground">Replies go to: </span>{activity.replyTo}</p>
             )}
-            {activity.bodyText && (
+            {activity.bodyText ? (
               <pre className="mt-3 whitespace-pre-wrap rounded-md bg-muted/40 p-3 font-sans text-sm">
                 {activity.bodyText}
               </pre>
+            ) : (
+              <p className="text-muted-foreground">
+                No message written yet. It cannot be sent until there is one.
+              </p>
             )}
           </CardContent>
         </Card>
