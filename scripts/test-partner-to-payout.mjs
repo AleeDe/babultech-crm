@@ -161,12 +161,46 @@ try {
   assert.equal(cont.sourcePartnerUserId, partner.id, "And to the person");
   pass("The contact carries the same attribution");
 
-  // Write-once.
-  const tamper = await admin.from("account")
-    .update({ sourcePartnerId: null, updatedAt: now() }).eq("id", accountId).select("id");
-  assert.ok(tamper.error, "Clearing attribution must be refused");
-  assert.match(tamper.error.message, /cannot be changed/i, "The refusal should say why");
-  pass("Attribution cannot be changed or cleared, even with the service role");
+  // Credit cannot be MOVED. That is the rule worth enforcing: repointing a
+  // customer from one partner to another moves the money. Clearing is a
+  // different thing, and has to stay possible because both columns are
+  // declared ON DELETE SET NULL - forbidding it meant a partner login could
+  // never be deleted.
+  const otherPartner = await ok(
+    admin.from("partner").select("id").neq("id", partnerId).limit(1).maybeSingle(),
+    "Find another partner to try moving the credit to",
+  );
+
+  if (otherPartner) {
+    const moved = await admin.from("account")
+      .update({ sourcePartnerId: otherPartner.id, updatedAt: now() })
+      .eq("id", accountId).select("id");
+    assert.ok(moved.error, "Moving credit to another partner must be refused");
+    assert.match(moved.error.message, /cannot be moved/i, "The refusal should say why");
+    pass("Credit cannot be moved to another partner, even with the service role");
+  } else {
+    console.log("  NOTE  Only one partner exists, so the repointing check was skipped");
+  }
+
+  // Clearing is allowed, and leaves the partner's own credit intact.
+  const cleared = await admin.from("account")
+    .update({ sourcePartnerUserId: null, updatedAt: now() })
+    .eq("id", accountId).select("id");
+  assert.ok(!cleared.error, `Clearing the person must be allowed: ${cleared.error?.message}`);
+
+  const afterClear = await ok(
+    admin.from("account").select("sourcePartnerId").eq("id", accountId).single(),
+    "Re-read the account",
+  );
+  assert.equal(
+    afterClear.sourcePartnerId, partnerId,
+    "Clearing the person must leave the PARTNER credited - the company still brought them",
+  );
+  pass("Clearing the person is allowed, and the partner keeps the credit");
+
+  // Put it back for the rest of the run.
+  await admin.from("account")
+    .update({ sourcePartnerUserId: partner.id, updatedAt: now() }).eq("id", accountId);
 
   // The owner being internal is what keeps it visible to staff.
   const staffSees = await ok(
