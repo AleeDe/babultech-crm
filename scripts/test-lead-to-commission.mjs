@@ -428,17 +428,31 @@ try {
   pass(`Payment of ${fmt(DEAL)} recorded as CLEARED and allocated`);
 
   // The engine reaches a deal from an invoice through the invoice's project or
-  // contract. This invoice was raised straight against the account, so it has
-  // neither — a real gap, reported rather than hidden, and the accrual is done
-  // here as a project-backed invoice would have caused.
+  // contract, so the route is checked rather than assumed.
   const route = await ok(
     admin.from("invoice").select("projectId, contractId").eq("id", invoiceId).single(),
     "Check how the invoice reaches the deal",
   );
-  if (!route.projectId && !route.contractId) {
-    note("This invoice names no project or contract, so the engine cannot reach");
-    note("the deal from it. Accruing directly, as a project-backed one would.");
-  }
+  assert.ok(
+    route.projectId || route.contractId,
+    "The invoice must name a project or a contract, or commission can never reach the deal",
+  );
+  pass("The invoice names its project — the route commission travels back along");
+
+  // ------------------------------------------------------------------
+  // The row below is WRITTEN BY THIS SCRIPT, not by the engine.
+  //
+  // accrueForPayment() is a Next.js server action: it resolves the signed-in
+  // user from request cookies, which a plain node script has no way to supply.
+  // So this walkthrough asserts the SHAPE of the result - status, basis, rate,
+  // withholding, and everything downstream of it - while the arithmetic that
+  // produced the numbers is covered separately, and for real, by
+  // test/commission-rate-resolution.test.ts.
+  //
+  // Worth being blunt about, because a green tick here would otherwise read as
+  // proof the engine calculated this, and it did not.
+  // ------------------------------------------------------------------
+  note("The next row is written by this script, not the engine — see the comment above");
 
   const commissionId = randomUUID();
   await ok(
@@ -582,6 +596,28 @@ try {
   assert.equal(money(txn.amount), expectedNet, "For the NET, not the gross");
   pass(`${txn.transactionNumber}: OUTGOING ${fmt(txn.amount)} POSTED — the net, not the gross`);
   note(`"${txn.description}"`);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  step("10b", "A plan that sets the timing but not the rate");
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // Every partner negotiates their own percentage, so the standard plan carries
+  // no rate of its own - it only says WHEN commission is earned. A plan like
+  // that used to pay zero: the engine read flatPercent as null and treated it
+  // as 0%, silently overruling the rate on the partner record. This checks the
+  // partner's own rate survives being put on a plan.
+
+  const stdPlan = await ok(
+    admin.from("commission_plan")
+      .select("id, name, trigger, flatPercent")
+      .eq("name", "Standard - on payment received").maybeSingle(),
+    "Find the standard plan",
+  );
+  assert.ok(stdPlan, "The standard commission plan must exist");
+  assert.equal(stdPlan.flatPercent, null, "It must carry no rate of its own");
+  assert.equal(stdPlan.trigger, "ON_PAYMENT_RECEIVED", "And pay when the money clears");
+  pass(`Plan "${stdPlan.name}" exists, rate-less, paying on cleared payment`);
+
 
   // ═══════════════════════════════════════════════════════════════════════
   step("11", "A lead referred by the partner, converted by US");

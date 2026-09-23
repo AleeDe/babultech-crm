@@ -35,10 +35,11 @@ export function InvoiceActions({
     startTransition(async () => {
       const result = await sendInvoice(invoiceId);
       if (result.ok) {
+        const emailReminder = " Nothing has been emailed - use the Email panel to send it.";
         setNotice(
           result.data.commissionsCreated > 0
-            ? `Issued. ${result.data.commissionsCreated} commission record(s) accrued.`
-            : "Issued.",
+            ? `Marked as issued. ${result.data.commissionsCreated} commission record(s) accrued.${emailReminder}`
+            : `Marked as issued.${emailReminder}`,
         );
         router.refresh();
       } else setError(result.error);
@@ -75,13 +76,18 @@ export function InvoiceActions({
               Still a draft. Issuing it stamps any linked milestone as invoiced and accrues
               commission on plans that pay when the invoice goes out.
             </p>
+            <p className="text-sm text-muted-foreground">
+              <strong className="font-medium text-foreground">It does not email the customer.</strong>{" "}
+              Issuing records that the invoice has gone out; sending it is the separate
+              Email panel below.
+            </p>
             <Button className="w-full" disabled={pending} onClick={send}>
-              {pending ? "Working…" : "Issue invoice"}
+              {pending ? "Working…" : "Mark as issued"}
             </Button>
           </>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Issued and no longer editable. Apply cash from the{" "}
+            Marked as issued and no longer editable. Apply cash from the{" "}
             <a href="/payments/new" className="text-primary hover:underline">payments</a> screen.
           </p>
         )}

@@ -120,6 +120,29 @@ export function calculateCommission(input: {
   let ratePercent: Decimal | null = null;
   let commission: Decimal;
 
+  /**
+   * The partner's own negotiated rate.
+   *
+   * Used when there is no plan at all, and also when a plan sets the TIMING of
+   * commission but carries no rate of its own - which is the shape most useful
+   * here, because every partner negotiates their own percentage and a plan that
+   * hard-codes one would quietly overrule it.
+   *
+   * Previously a rate-less plan fell through to `flatPercent ?? 0` and paid
+   * nothing at all. That is the worst of the three possible answers: it is not
+   * the partner's rate, it is not an error, and a commission of zero looks much
+   * like a commission that has not been earned yet.
+   */
+  const partnerDefaultRate = () => {
+    const rate = D(input.partnerDefaultPercent ?? 0);
+    notes.push(
+      input.plan
+        ? `Plan "${input.plan.name}" sets when commission is earned but no rate, so the partner default ${rate.toFixed(2)}% applies`
+        : `Partner default rate ${rate.toFixed(2)}% (no plan assigned)`,
+    );
+    return { ratePercent: rate, commission: basisAmount.times(rate).dividedBy(HUNDRED) };
+  };
+
   if (input.overridePercent !== null && input.overridePercent !== undefined) {
     ratePercent = D(input.overridePercent);
     commission = basisAmount.times(ratePercent).dividedBy(HUNDRED);
@@ -127,11 +150,19 @@ export function calculateCommission(input: {
   } else if (input.plan) {
     switch (input.plan.rateType) {
       case "FIXED_AMOUNT": {
-        commission = D(input.plan.fixedAmount ?? 0).times(share).dividedBy(HUNDRED);
-        notes.push(`Fixed amount ${D(input.plan.fixedAmount ?? 0).toFixed(2)} x ${share.toFixed(2)}% share`);
+        if (input.plan.fixedAmount === null || input.plan.fixedAmount === undefined) {
+          ({ ratePercent, commission } = partnerDefaultRate());
+          break;
+        }
+        commission = D(input.plan.fixedAmount).times(share).dividedBy(HUNDRED);
+        notes.push(`Fixed amount ${D(input.plan.fixedAmount).toFixed(2)} x ${share.toFixed(2)}% share`);
         break;
       }
       case "TIERED_PERCENT": {
+        if (input.plan.tiers.length === 0) {
+          ({ ratePercent, commission } = partnerDefaultRate());
+          break;
+        }
         const t = tieredAmount(basisAmount, input.plan.tiers);
         commission = t.total;
         ratePercent = t.effectiveRate;
@@ -140,16 +171,18 @@ export function calculateCommission(input: {
       }
       case "FLAT_PERCENT":
       default: {
-        ratePercent = D(input.plan.flatPercent ?? 0);
+        if (input.plan.flatPercent === null || input.plan.flatPercent === undefined) {
+          ({ ratePercent, commission } = partnerDefaultRate());
+          break;
+        }
+        ratePercent = D(input.plan.flatPercent);
         commission = basisAmount.times(ratePercent).dividedBy(HUNDRED);
         notes.push(`Plan "${input.plan.name}" flat rate ${ratePercent.toFixed(2)}%`);
         break;
       }
     }
   } else {
-    ratePercent = D(input.partnerDefaultPercent ?? 0);
-    commission = basisAmount.times(ratePercent).dividedBy(HUNDRED);
-    notes.push(`Partner default rate ${ratePercent.toFixed(2)}% (no plan assigned)`);
+    ({ ratePercent, commission } = partnerDefaultRate());
   }
 
   // Cap.
