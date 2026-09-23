@@ -8,11 +8,55 @@ import {
   Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, StatTile, Alert, Button,
 } from "@/components/ui";
+import { ListFilters, optionsFrom } from "@/components/list-filters";
 import { formatMoney, formatDate, formatPercent, humanize, daysBetween } from "@/lib/utils";
 import { REGISTRATION_EXPIRY_WARNING_DAYS } from "@/lib/partner-policy";
 
-export default async function PortalDealsPage() {
-  const [deals, proposals] = await Promise.all([getPortalDeals(), listMyProposals()]);
+/** The stages a partner can meaningfully filter by. */
+const STAGES = [
+  "DISCOVERY", "QUALIFICATION", "PROPOSAL", "NEGOTIATION",
+  "ON_HOLD", "CLOSED_WON", "CLOSED_LOST",
+] as const;
+
+export default async function PortalDealsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ search?: string; stage?: string; customer?: string }>;
+}) {
+  const [allDeals, proposals, params] = await Promise.all([
+    getPortalDeals(),
+    listMyProposals(),
+    searchParams,
+  ]);
+
+  // Filtered in memory rather than in the query: a partner's deal list is small
+  // by nature, and doing it here keeps getPortalDeals a single shape that every
+  // caller - including the Overview - reads the same way.
+  const term = params.search?.trim().toLowerCase();
+  const deals = allDeals.filter((d) => {
+    if (params.stage && d.opportunity?.stage !== params.stage) return false;
+    if (params.customer && d.opportunity?.account?.id !== params.customer) return false;
+    if (term) {
+      const haystack = [
+        d.opportunity?.name,
+        d.opportunity?.opportunityNumber,
+        d.opportunity?.account?.name,
+      ].filter(Boolean).join(" ").toLowerCase();
+      if (!haystack.includes(term)) return false;
+    }
+    return true;
+  });
+
+  // Built from the unfiltered list, so choosing a customer never removes the
+  // other customers from the dropdown you chose it in.
+  const customers = [
+    ...new Map(
+      allDeals
+        .map((d) => d.opportunity?.account)
+        .filter((a) => Boolean(a?.id))
+        .map((a) => [String(a!.id), { id: String(a!.id), name: String(a!.name) }] as const),
+    ).values(),
+  ].sort((a, b) => a.name.localeCompare(b.name));
 
   // The request that matters on a deal is the open one; failing that, the most
   // recent answer, so a partner sees what we said rather than nothing at all.
@@ -73,11 +117,37 @@ export default async function PortalDealsPage() {
         </div>
       )}
 
-      <Card className="mt-6">
+      <div className="mt-6">
+        <ListFilters
+          searchPlaceholder="Search deal, number or customer…"
+          searchValue={params.search}
+          selects={[
+            {
+              name: "stage",
+              allLabel: "All stages",
+              value: params.stage,
+              options: optionsFrom(STAGES),
+            },
+            {
+              name: "customer",
+              allLabel: "All customers",
+              value: params.customer,
+              className: "w-52",
+              options: customers.map((c) => ({ value: c.id, label: c.name })),
+            },
+          ]}
+        />
+      </div>
+
+      <Card>
         {deals.length === 0 ? (
           <EmptyState
-            title="No deals registered"
-            description="When we attach you to an opportunity - because you sourced it, influenced it, resold it or are delivering it - it appears here."
+            title={allDeals.length === 0 ? "No deals registered" : "No deals match"}
+            description={
+              allDeals.length === 0
+                ? "When we attach you to an opportunity - because you sourced it, influenced it, resold it or are delivering it - it appears here."
+                : "Nothing matches those filters. Clear them to see all your deals again."
+            }
           />
         ) : (
           <Table>

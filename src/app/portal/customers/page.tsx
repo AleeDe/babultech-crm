@@ -5,6 +5,7 @@ import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, Button,
   EmptyState, StatTile, Alert,
 } from "@/components/ui";
+import { ListFilters } from "@/components/list-filters";
 import { formatDate, humanize } from "@/lib/utils";
 
 /**
@@ -23,9 +24,28 @@ import { formatDate, humanize } from "@/lib/utils";
 export default async function PortalAccountsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ created?: string }>;
+  searchParams: Promise<{ created?: string; search?: string; industry?: string; flag?: string }>;
 }) {
-  const [accounts, { created }] = await Promise.all([listMyCustomers(), searchParams]);
+  const [allAccounts, params] = await Promise.all([listMyCustomers(), searchParams]);
+  const { created } = params;
+
+  const term = params.search?.trim().toLowerCase();
+  const accounts = allAccounts.filter((a) => {
+    if (params.industry && a.industry !== params.industry) return false;
+    if (params.flag === "contested" && !a.registrationContested) return false;
+    if (term && !String(a.name ?? "").toLowerCase().includes(term)) return false;
+    return true;
+  });
+
+  // From the unfiltered list, so narrowing by one industry does not empty the
+  // list of industries you narrowed with.
+  const industries = [
+    ...new Set(
+      allAccounts
+        .map((a) => a.industry)
+        .filter((i): i is string => typeof i === "string" && i.length > 0),
+    ),
+  ].sort();
 
   const contested = accounts.filter((a) => a.registrationContested);
   const totalDeals = accounts.reduce(
@@ -79,18 +99,48 @@ export default async function PortalAccountsPage({
         />
       </div>
 
-      <Card className="mt-6">
+      {allAccounts.length > 0 && (
+        <div className="mt-6">
+          <ListFilters
+            searchPlaceholder="Search account name…"
+            searchValue={params.search}
+            selects={[
+              {
+                name: "industry",
+                allLabel: "All industries",
+                value: params.industry,
+                className: "w-52",
+                options: industries.map((i) => ({ value: i, label: i })),
+              },
+              {
+                name: "flag",
+                allLabel: "All accounts",
+                value: params.flag,
+                options: [{ value: "contested", label: "Contested only" }],
+              },
+            ]}
+          />
+        </div>
+      )}
+
+      <Card className={allAccounts.length > 0 ? undefined : "mt-6"}>
         {accounts.length === 0 ? (
           <div className="py-10">
             <EmptyState
-              title="No accounts yet"
-              description="When you win a customer, add them here. We create the account and their first contact, and credit you as the partner who brought them."
+              title={allAccounts.length === 0 ? "No accounts yet" : "No accounts match"}
+              description={
+                allAccounts.length === 0
+                  ? "When you win a customer, add them here. We create the account and their first contact, and credit you as the partner who brought them."
+                  : "Nothing matches those filters. Clear them to see all your accounts again."
+              }
               action={
-                <Button asChild>
-                  <Link href="/portal/customers/new">
-                    <Plus className="h-4 w-4" /> Add your first account
-                  </Link>
-                </Button>
+                allAccounts.length === 0 ? (
+                  <Button asChild>
+                    <Link href="/portal/customers/new">
+                      <Plus className="h-4 w-4" /> Add your first account
+                    </Link>
+                  </Button>
+                ) : undefined
               }
             />
           </div>

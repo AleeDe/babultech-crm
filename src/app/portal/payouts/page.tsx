@@ -3,10 +3,24 @@ import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, StatTile, Alert,
 } from "@/components/ui";
+import { ListFilters, optionsFrom } from "@/components/list-filters";
 import { formatMoney, formatDate, humanize } from "@/lib/utils";
 
-export default async function PortalPayoutsPage() {
-  const payouts = await getPortalPayouts();
+const STATUSES = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "PAID", "CANCELLED"] as const;
+
+export default async function PortalPayoutsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ search?: string; status?: string }>;
+}) {
+  const [allPayouts, params] = await Promise.all([getPortalPayouts(), searchParams]);
+
+  const term = params.search?.trim().toLowerCase();
+  const payouts = allPayouts.filter((p) => {
+    if (params.status && p.status !== params.status) return false;
+    if (term && !String(p.payoutNumber ?? "").toLowerCase().includes(term)) return false;
+    return true;
+  });
 
   const currency = payouts[0]?.currencyCode ?? "PKR";
   const paid = payouts.filter((p) => p.status === "PAID");
@@ -34,11 +48,33 @@ export default async function PortalPayoutsPage() {
         <StatTile label="Total payouts" value={String(payouts.length)} />
       </div>
 
-      <Card className="mt-6">
+      {allPayouts.length > 0 && (
+        <div className="mt-6">
+          <ListFilters
+            searchPlaceholder="Search payout reference…"
+            searchValue={params.search}
+            selects={[
+              {
+                name: "status",
+                allLabel: "All statuses",
+                value: params.status,
+                className: "w-52",
+                options: optionsFrom(STATUSES),
+              },
+            ]}
+          />
+        </div>
+      )}
+
+      <Card className={allPayouts.length > 0 ? undefined : "mt-6"}>
         {payouts.length === 0 ? (
           <EmptyState
-            title="No payouts yet"
-            description="Once approved commission is batched for payment, the batch shows up here with its reference."
+            title={allPayouts.length === 0 ? "No payouts yet" : "No payouts match"}
+            description={
+              allPayouts.length === 0
+                ? "Once approved commission is batched for payment, the batch shows up here with its reference."
+                : "Nothing matches those filters. Clear them to see all your payouts again."
+            }
           />
         ) : (
           <Table>

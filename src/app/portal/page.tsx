@@ -1,19 +1,24 @@
 import Link from "next/link";
 import { MessageSquare } from "lucide-react";
-import { getPortalSummary, getPartnerProfile, getPortalCommissions } from "@/server/portal";
+import {
+  getPortalSummary, getPartnerProfile, getPortalCommissions, getPortalAnalytics,
+} from "@/server/portal";
 import { countUnreadPartnerMessages } from "@/server/partner-activities";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   StatTile, Button, Alert, Table, THead, TBody, TR, TH, TD, EmptyState,
 } from "@/components/ui";
+import { RankedList, AttentionList } from "@/components/dashboard-kit";
+import { Sparkline, Delta } from "@/components/sparkline";
 import { formatMoney, formatDate, formatPercent, humanize, daysBetween } from "@/lib/utils";
 
 export default async function PortalHomePage() {
-  const [summary, partner, recent, unread] = await Promise.all([
+  const [summary, partner, recent, unread, stats] = await Promise.all([
     getPortalSummary(),
     getPartnerProfile(),
     getPortalCommissions(),
     countUnreadPartnerMessages(),
+    getPortalAnalytics(),
   ]);
 
   const agreementDays = partner.agreementExpiryDate
@@ -87,6 +92,138 @@ export default async function PortalHomePage() {
           tone="info"
         />
       </div>
+
+      {/*
+        Ordered by the question a partner asks first: how am I doing, then what
+        is still in play, then what needs me to do something. Anything needing
+        action comes last on purpose - it is the part they act on, so it sits
+        closest to where they stop reading.
+      */}
+      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex-row items-start justify-between space-y-0">
+            <div>
+              <CardTitle>What you have earned</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Commission earned each month, over the last six months.
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="font-mono text-lg font-semibold tabular-nums">
+                {formatMoney(stats.thisMonth, stats.currency)}
+              </p>
+              <p className="text-xs text-muted-foreground">this month</p>
+              <Delta value={stats.monthDelta} />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Sparkline
+              values={stats.months.map((m) => m.total)}
+              tone="success"
+              height={64}
+              className="w-full"
+            />
+            <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+              {stats.months.map((m) => (
+                <span key={m.key}>{m.label}</span>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Your deals</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            <div>
+              <p className="text-2xl font-semibold tabular-nums">
+                {stats.winRate === null ? "—" : `${stats.winRate}%`}
+              </p>
+              <p className="text-muted-foreground">
+                {stats.winRate === null
+                  ? "No deals decided yet"
+                  : `won — ${stats.wonCount} of ${stats.wonCount + stats.lostCount} decided`}
+              </p>
+            </div>
+            <div className="border-t pt-3">
+              <p className="font-mono text-lg font-semibold tabular-nums">
+                {formatMoney(stats.openValue, stats.currency)}
+              </p>
+              <p className="text-muted-foreground">
+                still open across {stats.openCount} deal(s)
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <RankedList
+          title="Where your pipeline sits"
+          module="partners"
+          emptyText="No deals registered yet."
+          rows={stats.stages.map((s) => ({
+            id: s.stage,
+            label: humanize(s.stage),
+            sublabel: `${s.count} deal(s)`,
+            value: s.value,
+            display: formatMoney(s.value, stats.currency),
+            href: `/portal/deals?stage=${s.stage}`,
+          }))}
+        />
+        <RankedList
+          title="Your best customers"
+          module="partners"
+          emptyText="Nothing won yet — this fills in as deals close."
+          rows={stats.topAccounts.map((a) => ({
+            id: a.id,
+            label: a.name,
+            value: a.value,
+            display: formatMoney(a.value, stats.currency),
+            href: `/portal/customers/${a.id}`,
+          }))}
+        />
+      </div>
+
+      {(stats.attention.expiringSoon > 0 ||
+        stats.attention.stale > 0 ||
+        stats.attention.overdue > 0) && (
+        <div className="mt-4">
+          <h2 className="mb-2 text-sm font-semibold">Worth a look</h2>
+          <AttentionList
+            items={
+              [
+                stats.attention.expiringSoon > 0 && {
+                  id: "expiring",
+                  count: stats.attention.expiringSoon,
+                  title: "Registration expiring within 30 days",
+                  detail:
+                    "A lapsed registration earns no commission, even if the deal later closes.",
+                  href: "/portal/deals",
+                  tone: "critical" as const,
+                },
+                stats.attention.overdue > 0 && {
+                  id: "overdue",
+                  count: stats.attention.overdue,
+                  title: "Past their expected close date",
+                  detail: "Still open, but the date they were expected to land has gone.",
+                  href: "/portal/deals",
+                  tone: "warning" as const,
+                },
+                stats.attention.stale > 0 && {
+                  id: "stale",
+                  count: stats.attention.stale,
+                  title: "No movement in 60 days",
+                  detail: "Nothing has changed on these for two months.",
+                  href: "/portal/deals",
+                  tone: "warning" as const,
+                },
+              ].filter(Boolean) as Parameters<typeof AttentionList>[0]["items"]
+            }
+          />
+        </div>
+      )}
 
       {Number(summary.clawedBackTotal) < 0 && (
         <div className="mt-5">

@@ -661,3 +661,147 @@ export async function submitDealRegistration(
     };
   }
 }
+
+/**
+ * The numbers behind the partner's Overview.
+ *
+ * Every figure here is derived from rows the partner can already open on their
+ * own pages - their deals, their commission ledger. Nothing new becomes visible
+ * to them, which is why this needs no separate access decision.
+ *
+ * No targets, by choice. A conversion rate describes what happened; a quota
+ * changes what the relationship is, and that is not ours to introduce from a
+ * dashboard.
+ */
+export async function getPortalAnalytics() {
+  const { partnerId } = await requirePartner();
+
+  const db = await supabaseServer();
+
+  const [recordsRes, linksRes] = await Promise.all([
+    db
+      .from("commission_record")
+      .select("earnedDate, commissionAmount, netPayableAmount, status, currencyCode")
+      .eq("partnerId", partnerId)
+      .is("deletedAt", null),
+    db
+      .from("opportunity_partner")
+      .select(
+        `registrationExpiresAt,
+         opportunity!inner (
+           id, name, stage, amount, currencyCode, expectedCloseDate, updatedAt,
+           account ( id, name )
+         )`,
+      )
+      .eq("partnerId", partnerId)
+      .is("opportunity.deletedAt", null),
+  ]);
+
+  const records = recordsRes.data ?? [];
+  const links = linksRes.data ?? [];
+  const currency = records[0]?.currencyCode ?? "PKR";
+
+  // --- earnings, by month ---------------------------------------------------
+  //
+  // Six buckets, built from today backwards, so a month in which nothing was
+  // earned shows as a zero rather than disappearing and making the line lie.
+  const months: { key: string; label: string; total: number }[] = [];
+  const now = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({
+      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+      label: d.toLocaleDateString("en-GB", { month: "short" }),
+      total: 0,
+    });
+  }
+  const byKey = new Map(months.map((m) => [m.key, m]));
+  for (const r of records) {
+    if (!r.earnedDate) continue;
+    const bucket = byKey.get(String(r.earnedDate).slice(0, 7));
+    if (bucket) bucket.total += Number(r.commissionAmount ?? 0);
+  }
+
+  // Against the month before, which is the comparison a partner actually makes.
+  const thisMonth = months[months.length - 1]?.total ?? 0;
+  const lastMonth = months[months.length - 2]?.total ?? 0;
+  const monthDelta =
+    lastMonth === 0 ? null : Math.round(((thisMonth - lastMonth) / lastMonth) * 100);
+
+  // --- pipeline, by stage ---------------------------------------------------
+  const OPEN = ["DISCOVERY", "QUALIFICATION", "PROPOSAL", "NEGOTIATION", "ON_HOLD"];
+  const stages = new Map<string, { count: number; value: number }>();
+  let wonCount = 0;
+  let lostCount = 0;
+  let openValue = 0;
+
+  for (const l of links) {
+    const o = one(l.opportunity) as Record<string, unknown> | null;
+    if (!o) continue;
+    const stage = String(o.stage);
+    const value = Number(o.amount ?? 0);
+
+    if (stage === "CLOSED_WON") wonCount++;
+    else if (stage === "CLOSED_LOST") lostCount++;
+    else if (OPEN.includes(stage)) openValue += value;
+
+    const at = stages.get(stage) ?? { count: 0, value: 0 };
+    at.count++;
+    at.value += value;
+    stages.set(stage, at);
+  }
+
+  // Of the deals that have been DECIDED. Counting open deals as losses would
+  // punish a partner for having a healthy pipeline.
+  const decided = wonCount + lostCount;
+  const winRate = decided === 0 ? null : Math.round((wonCount / decided) * 100);
+
+  // --- who is actually bringing the money -----------------------------------
+  const byAccount = new Map<string, { id: string; name: string; value: number }>();
+  for (const l of links) {
+    const o = one(l.opportunity) as Record<string, unknown> | null;
+    if (!o || o.stage !== "CLOSED_WON") continue;
+    const a = one(o.account as never) as { id: string; name: string } | null;
+    if (!a) continue;
+    const at = byAccount.get(a.id) ?? { id: a.id, name: a.name, value: 0 };
+    at.value += Number(o.amount ?? 0);
+    byAccount.set(a.id, at);
+  }
+
+  // --- what needs looking at ------------------------------------------------
+  const DAY = 24 * 60 * 60 * 1000;
+  const expiringSoon = links.filter((l) => {
+    if (!l.registrationExpiresAt) return false;
+    const days = (new Date(l.registrationExpiresAt as string).getTime() - now.getTime()) / DAY;
+    return days > 0 && days <= 30;
+  }).length;
+
+  const stale = links.filter((l) => {
+    const o = one(l.opportunity) as Record<string, unknown> | null;
+    if (!o || !OPEN.includes(String(o.stage)) || !o.updatedAt) return false;
+    return (now.getTime() - new Date(o.updatedAt as string).getTime()) / DAY > 60;
+  }).length;
+
+  const overdue = links.filter((l) => {
+    const o = one(l.opportunity) as Record<string, unknown> | null;
+    if (!o || !OPEN.includes(String(o.stage)) || !o.expectedCloseDate) return false;
+    return new Date(o.expectedCloseDate as string).getTime() < now.getTime();
+  }).length;
+
+  return {
+    currency,
+    months,
+    monthDelta,
+    thisMonth,
+    winRate,
+    wonCount,
+    lostCount,
+    openValue,
+    openCount: links.length - wonCount - lostCount,
+    stages: [...stages.entries()]
+      .map(([stage, v]) => ({ stage, ...v }))
+      .sort((a, b) => b.value - a.value),
+    topAccounts: [...byAccount.values()].sort((a, b) => b.value - a.value),
+    attention: { expiringSoon, stale, overdue },
+  };
+}
