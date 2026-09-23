@@ -44,7 +44,7 @@ const passed = [];
  */
 const ids = {
   authUsers: [], appUsers: [], partnerLogins: [],
-  leads: [], accounts: [], contacts: [], partners: [],
+  leads: [], accounts: [], contacts: [], partners: [], products: [], projects: [],
   opportunities: [], invoices: [], payments: [],
   commissions: [], payouts: [], transactions: [],
   teardown() {
@@ -58,9 +58,12 @@ const ids = {
       del("payment", "id", this.payments),
       del("invoice_line", "invoiceId", this.invoices),
       del("invoice", "id", this.invoices),
+      del("project_member", "projectId", this.projects),
+      del("project", "id", this.projects),
       del("opportunity_partner", "opportunityId", this.opportunities),
       del("opportunity", "id", this.opportunities),
       del("lead", "id", this.leads),
+      del("product", "id", this.products),
       // Portal logins first: each names a partner and a contact, and nulling
       // either on delete would trip app_user_type_links_check.
       del("app_user", "id", this.partnerLogins),
@@ -315,6 +318,35 @@ try {
     return count ?? 0;
   };
 
+  // A deal with no product cannot be won. The product is what creates the
+  // delivery project, and the project is how an invoice finds its way back
+  // here to pay commission - so the refusal is the thing that keeps the rest
+  // of this chain from failing silently later.
+  const tooEarly = await sales.client.from("opportunity")
+    .update({ stage: "CLOSED_WON", actualCloseDate: today(), updatedAt: now() })
+    .eq("id", opportunityId).select("id");
+  assert.ok(tooEarly.error, "Winning without a product must be refused");
+  assert.match(tooEarly.error.message, /needs a product/i, "The refusal should say why");
+  pass("Winning refused — the deal has no product yet");
+
+  const productId = randomUUID();
+  await ok(
+    admin.from("product").insert({
+      id: productId, productCode: `L2C-${run}`, name: `Warehouse platform ${run}`,
+      // Pricing lives in the price books now, not on the product.
+      productType: "SERVICE", commissionable: true, active: true, updatedAt: now(),
+    }),
+    "Create the product being sold",
+  );
+  ids.products.push(productId);
+
+  await ok(
+    sales.client.from("opportunity")
+      .update({ productId, implementationCost: DEAL, updatedAt: now() })
+      .eq("id", opportunityId),
+    "Put the product on the deal",
+  );
+
   await ok(
     sales.client.from("opportunity")
       .update({ stage: "CLOSED_WON", actualCloseDate: today(), updatedAt: now() })
@@ -322,13 +354,29 @@ try {
     "Close the deal as won",
   );
   assert.equal(await commissionCount(), 0, "Winning must not pay commission under this plan");
-  pass("Deal WON  →  commission records: 0");
+  pass("Product added  →  deal WON  →  commission records: 0");
+
+  // The project is created by the app, not a database trigger, so the test
+  // does what the app does rather than asserting a row appeared on its own.
+  const projectRaw = await ok(
+    sales.client.rpc("create_project_for_won_opportunity", { p_opportunity: opportunityId }),
+    "Create the delivery project",
+  );
+  const project = parse(projectRaw);
+  assert.ok(project?.id, "A won deal with a product must produce a delivery project");
+  ids.projects.push(project.id);
+  pass(`Delivery project ${project.projectNumber} created from the won deal`);
 
   const invoiceId = randomUUID();
   await ok(
     finance.client.from("invoice").insert({
       id: invoiceId, invoiceNumber: `L2CI-${run}`, accountId: customerAccountId,
       contactId: customer.contactId, invoiceDate: today(), dueDate: inDays(30),
+      // This is the link commission travels back along:
+      //   payment -> invoice -> project -> opportunity -> partner link
+      // Leave it out and the invoice is paid, the numbers look right, and no
+      // commission is ever created.
+      projectId: project.id,
       // An invoice may only be CREATED as a draft or approved - never straight
       // to sent. Issuing is an approval act, so it is its own step below.
       status: "DRAFT", currencyCode: "PKR", subtotal: DEAL, discountAmount: 0,
@@ -534,6 +582,84 @@ try {
   assert.equal(money(txn.amount), expectedNet, "For the NET, not the gross");
   pass(`${txn.transactionNumber}: OUTGOING ${fmt(txn.amount)} POSTED — the net, not the gross`);
   note(`"${txn.description}"`);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  step("11", "A lead referred by the partner, converted by US");
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // Everything above went through the portal, where the partner stamps their own
+  // credit as they go. This is the other door: a lead that names the partner,
+  // converted by an internal salesperson, and a deal raised on the CRM screen by
+  // someone who has never heard of the partner. It has to end up in the same
+  // place, or commission depends on which door the work came through.
+
+  const refLeadId = randomUUID();
+  await ok(
+    sales.client.from("lead").insert({
+      id: refLeadId, leadNumber: `L2CR-${run}`, firstName: "Imran", lastName: `Qadir ${run}`,
+      companyName: `L2C Referred Foods ${run}`, email: `imran.${run}@example.com`,
+      status: "NEW", leadType: "SALES", ownerUserId: sales.id,
+      referredByPartnerId: partnerId, updatedAt: now(),
+    }),
+    "Create a lead referred by the partner",
+  );
+  ids.leads.push(refLeadId);
+  pass("Lead created with Referred by partner set");
+
+  const refRaw = await ok(
+    admin.rpc("convert_lead", {
+      p_lead_id: refLeadId, p_actor_id: sales.id, p_account_id: null,
+      p_create_opportunity: false, p_opportunity_name: null, p_amount: null,
+      p_expected_close: null, p_registered_at: null, p_expires_at: null,
+      p_protection_days: null,
+    }),
+    "Convert the referred lead",
+  );
+  const ref = parse(refRaw);
+  ids.accounts.push(ref.accountId);
+
+  const refAccount = await ok(
+    admin.from("account").select("name, sourcePartnerId").eq("id", ref.accountId).single(),
+    "Read the converted account",
+  );
+  assert.equal(
+    refAccount.sourcePartnerId, partnerId,
+    "Converting must carry the referral onto the account, or it is forgotten here",
+  );
+  pass(`Account "${refAccount.name}" carries the partner from the lead`);
+
+  // The salesperson raises the deal. Nothing in this insert mentions a partner.
+  const crmDealId = randomUUID();
+  await ok(
+    sales.client.from("opportunity").insert({
+      id: crmDealId, opportunityNumber: `L2CD-${run}`, name: `L2C Second rollout ${run}`,
+      accountId: ref.accountId, ownerUserId: sales.id, stage: "DISCOVERY",
+      amount: 400000, currencyCode: "PKR", probabilityPercent: 20,
+      expectedCloseDate: inDays(45), opportunityType: "NEW", updatedAt: now(),
+    }),
+    "Raise a deal on it from the CRM",
+  );
+  ids.opportunities.push(crmDealId);
+
+  const crmLink = await ok(
+    admin.from("opportunity_partner")
+      .select("partnerId, role, revenueSharePercent, registrationExpiresAt")
+      .eq("opportunityId", crmDealId).maybeSingle(),
+    "Look for a commission link nobody asked for",
+  );
+  assert.ok(crmLink, "The account's partner must be attached to a deal raised in the CRM");
+  assert.equal(crmLink.partnerId, partnerId, "And it must be the right partner");
+  assert.equal(crmLink.role, "SOURCED", "As SOURCED");
+  assert.equal(money(crmLink.revenueSharePercent), 100, "For the whole deal");
+  assert.ok(crmLink.registrationExpiresAt, "With a registration window, as the portal stamps");
+  pass("Commission link created automatically - the salesperson never mentioned a partner");
+
+  const crmAttrib = await ok(
+    admin.from("opportunity").select("sourcePartnerId").eq("id", crmDealId).single(),
+    "Read the deal's attribution",
+  );
+  assert.equal(crmAttrib.sourcePartnerId, partnerId, "The deal records who brought it");
+  pass("The deal itself is attributed to the partner");
 
   // ═══════════════════════════════════════════════════════════════════════
   console.log(`\n${"═".repeat(64)}`);

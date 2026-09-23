@@ -313,7 +313,7 @@ export async function changeStage(
     const { data: before } = await db
       .from("opportunity")
       .select(
-        "amount, probabilityPercent, competitorName, quotations:quotation ( id, status )",
+        "amount, probabilityPercent, competitorName, productId, quotations:quotation ( id, status )",
       )
       .eq("id", data.id)
       .maybeSingle();
@@ -327,6 +327,17 @@ export async function changeStage(
     if (data.stage === "CLOSED_WON") {
       if (toDecimal(before.amount).lessThanOrEqualTo(0)) {
         return { ok: false, error: "A won deal needs an amount greater than zero." };
+      }
+      // The product is what creates the delivery project, and the project is how
+      // an invoice later finds its way back to this deal to pay partner
+      // commission. Winning without one breaks both, and says nothing while it
+      // does - so it is refused here rather than discovered a quarter later.
+      if (!before.productId) {
+        return {
+          ok: false,
+          error:
+            "A won deal needs a product. Pick the product being sold, then close it - the delivery project and any partner commission are both created from it.",
+        };
       }
       // Prisma filtered the embedded quotations in the query; PostgREST returns
       // them all, so the ACCEPTED filter is applied here.
