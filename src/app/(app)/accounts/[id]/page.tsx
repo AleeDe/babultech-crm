@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
 import { NotesSection } from "@/components/notes-section";
+import { ActivitiesPanel } from "@/components/activities-panel";
+import { listActivitiesFor } from "@/server/activities";
 import { AuditPanel } from "@/components/audit-panel";
 import { getAuditTrail } from "@/lib/audit";
 import { DocumentsPanel } from "@/components/documents-panel";
@@ -24,10 +26,11 @@ export default async function AccountDetailPage({
 
   const { id } = await params;
 
-  const [notes, documents, audit] = await Promise.all([
+  const [notes, documents, audit, activities] = await Promise.all([
     listNotes("Account", id),
     listDocuments("Account", id),
     getAuditTrail("Account", id, 15),
+    listActivitiesFor("Account", id),
   ]);
   const account = await getAccount(id);
   if (!account) notFound();
@@ -286,6 +289,15 @@ export default async function AccountDetailPage({
         </Card>
       </div>
 
+
+      <div className="mt-6">
+        <ActivitiesPanel
+          entityType="Account"
+          entityId={id}
+          activities={activities}
+          canWrite={can(_me, PERMISSIONS.LEAD_WRITE)}
+        />
+      </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NotesSection entityType="Account" entityId={id} notes={notes} />
         <DocumentsPanel entityType="Account" entityId={id} documents={documents} />

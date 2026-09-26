@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
 import { NotesSection } from "@/components/notes-section";
+import { ActivitiesPanel } from "@/components/activities-panel";
+import { listActivitiesFor } from "@/server/activities";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { Building2, User, Mail, Phone, Globe, MapPin } from "lucide-react";
 import { getPartner, getPartnerSummary } from "@/server/partners";
@@ -30,11 +32,12 @@ export default async function PartnerDetailPage({
 
   const { id } = await params;
 
-  const [notes, documents, portalPeople, thread] = await Promise.all([
+  const [notes, documents, portalPeople, thread, activities] = await Promise.all([
     listNotes("Partner", id),
     listDocuments("Partner", id),
     listPartnerPortalAccess(id),
     getPartnerThread(id),
+    listActivitiesFor("Partner", id),
   ]);
   const [partner, summary] = await Promise.all([getPartner(id), getPartnerSummary(id)]);
   if (!partner) notFound();
@@ -410,6 +413,15 @@ export default async function PartnerDetailPage({
         </Card>
       </div>
 
+
+      <div className="mt-6">
+        <ActivitiesPanel
+          entityType="Partner"
+          entityId={id}
+          activities={activities}
+          canWrite={can(_me, PERMISSIONS.LEAD_WRITE)}
+        />
+      </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NotesSection entityType="Partner" entityId={id} notes={notes} />
         <DocumentsPanel entityType="Partner" entityId={id} documents={documents} />

@@ -81,9 +81,11 @@ export async function POST(request: Request) {
   const db = supabaseAdmin();
   const now = new Date().toISOString();
 
+  // Emails are now activities against a lead, contact or partner rather than
+  // rows in a campaign audience, so the match is on the activity.
   const { data: row } = await db
-    .from("campaign_activity_member")
-    .select("id, memberId, openCount, clickCount, openedAt, clickedAt")
+    .from("activity")
+    .select("id, toAddress, openCount, clickCount, openedAt, clickedAt")
     .eq("providerMessageId", messageId)
     .maybeSingle();
 
@@ -106,27 +108,33 @@ export async function POST(request: Request) {
     update[column] = now;
   }
 
-  await db.from("campaign_activity_member").update(update).eq("id", row.id);
+  await db.from("activity").update(update).eq("id", row.id);
 
-  // A hard bounce or a spam complaint is about the address, not this one send:
-  // both must stop future campaigns reaching it, or the domain's reputation
+  // A hard bounce or a spam complaint is about the ADDRESS, not this one send.
+  // Both must stop future mail reaching it, or the domain's sending reputation
   // goes and the invoices stop arriving too.
-  if (event.type === "email.bounced") {
-    await db
-      .from("campaign_member")
-      .update({ emailBounced: true, updatedAt: now })
-      .eq("id", row.memberId);
-  }
-  if (event.type === "email.complained") {
-    await db
-      .from("campaign_member")
-      .update({
-        emailOptOut: true,
-        emailOptOutAt: now,
-        emailOptOutReason: "Reported an email as spam",
-        updatedAt: now,
-      })
-      .eq("id", row.memberId);
+  //
+  // Written to the suppression list rather than to the record we happened to
+  // mail, because the same person may exist as several leads - they came from
+  // two campaigns - and suppressing one copy would leave the others mailable.
+  const address = (row.toAddress as string | null)?.toLowerCase().trim();
+
+  if (address && (event.type === "email.bounced" || event.type === "email.complained")) {
+    const bounced = event.type === "email.bounced";
+    await db.from("email_suppression").upsert(
+      {
+        email: address,
+        reason: bounced ? "BOUNCED" : "COMPLAINED",
+        notes: bounced
+          ? "Mail to this address hard-bounced"
+          : "Reported an email as spam",
+        sourceActivityId: row.id as string,
+        suppressedAt: now,
+      },
+      // An address already suppressed stays as it was: the earliest reason is
+      // the true one, and a later bounce does not undo an unsubscribe.
+      { onConflict: "email", ignoreDuplicates: true },
+    );
   }
 
   return NextResponse.json({ ok: true });

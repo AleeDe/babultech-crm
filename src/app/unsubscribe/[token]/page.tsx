@@ -29,7 +29,7 @@ export default async function UnsubscribePage({
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       { auth: { persistSession: false, autoRefreshToken: false } },
     );
-    const { error } = await db.rpc("unsubscribe_by_token", { p_token: token });
+    const { error } = await db.rpc("unsubscribe_activity", { p_activity: token });
     done = !error;
   }
 

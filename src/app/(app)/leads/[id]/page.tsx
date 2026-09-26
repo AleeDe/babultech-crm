@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
 import { NotesSection } from "@/components/notes-section";
+import { ActivitiesPanel } from "@/components/activities-panel";
+import { listActivitiesFor } from "@/server/activities";
 import { AuditPanel } from "@/components/audit-panel";
 import { getAuditTrail } from "@/lib/audit";
 import { DocumentsPanel } from "@/components/documents-panel";
@@ -33,10 +35,11 @@ export default async function LeadDetailPage({
   // getLead joins the group rather than following it: it takes only `id`, so
    // waiting for the other three to finish first bought nothing but a second
    // round trip. See the note on the project page for the latency arithmetic.
-  const [notes, documents, audit, lead] = await Promise.all([
+  const [notes, documents, audit, activities, lead] = await Promise.all([
     listNotes("Lead", id),
     listDocuments("Lead", id),
     getAuditTrail("Lead", id, 15),
+    listActivitiesFor("Lead", id),
     getLead(id),
   ]);
   if (!lead) notFound();
@@ -242,6 +245,15 @@ export default async function LeadDetailPage({
         </Card>
       )}
 
+
+      <div className="mt-6">
+        <ActivitiesPanel
+          entityType="Lead"
+          entityId={id}
+          activities={activities}
+          canWrite={can(me, PERMISSIONS.LEAD_WRITE)}
+        />
+      </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NotesSection entityType="Lead" entityId={id} notes={notes} />
         <DocumentsPanel entityType="Lead" entityId={id} documents={documents} />

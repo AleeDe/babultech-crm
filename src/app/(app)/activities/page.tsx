@@ -87,7 +87,13 @@ export default async function ActivitiesPage({
               name: "activityType",
               allLabel: "All types",
               value: params.activityType,
-              options: optionsFrom(["TASK", "CALL", "MEETING", "REMINDER"]),
+              // Everything we do, in one list. Emails and logs joined the
+              // older types when campaign activities were folded into this
+              // table - so this is the single place outreach can be seen,
+              // rather than one screen per channel.
+              options: optionsFrom([
+                "EMAIL", "EVENT", "LOG", "TASK", "CALL", "MEETING", "REMINDER",
+              ]),
             },
             {
               name: "status",
@@ -106,7 +112,7 @@ export default async function ActivitiesPage({
         <CardContent className="px-0">
           {activities.length === 0 ? (
             <div className="px-5">
-              <EmptyState title="Nothing scheduled" description="Activities can be logged against any lead, deal, case or project." />
+              <EmptyState title="Nothing here yet" description="Emails, events and logged calls all appear here, against whichever lead, customer or partner they were for." />
             </div>
           ) : (
             <Table>

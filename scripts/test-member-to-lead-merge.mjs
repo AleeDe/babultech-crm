@@ -482,6 +482,38 @@ try {
   // ═══════════════════════════════════════════════════════════════════════
   step("08", "The scorecard");
   // ═══════════════════════════════════════════════════════════════════════
+  step("09", "A later bounce does not overwrite an unsubscribe");
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // The webhook upserts with ignoreDuplicates, so the FIRST reason recorded is
+  // the one that stands. It matters which: "unsubscribed" is the person telling
+   // us to stop, and a later bounce from the same dead-lettered mailbox must not
+  // rewrite that into a technical failure - the distinction is what we would
+  // point at if they ever asked whether we honoured their request.
+
+  const bounceOverwrite = await admin.from("email_suppression").upsert(
+    {
+      email: sharedEmail.toLowerCase(),
+      reason: "BOUNCED",
+      notes: "Mail to this address hard-bounced",
+      suppressedAt: now(),
+    },
+    { onConflict: "email", ignoreDuplicates: true },
+  );
+  assert.ok(!bounceOverwrite.error, `The upsert must not fail: ${bounceOverwrite.error?.message}`);
+
+  const stillUnsubscribed = await ok(
+    admin.from("email_suppression").select("reason, notes")
+      .eq("email", sharedEmail.toLowerCase()).single(),
+    "Re-read the suppression",
+  );
+  assert.equal(
+    stillUnsubscribed.reason, "UNSUBSCRIBED",
+    "The original reason must stand - she asked us to stop, she did not merely bounce",
+  );
+  pass("The first reason stands: still UNSUBSCRIBED, not rewritten as a bounce");
+
+  // ═══════════════════════════════════════════════════════════════════════
 
   await ok(
     admin.from("activity").update({

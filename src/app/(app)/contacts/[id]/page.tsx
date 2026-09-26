@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
 import { NotesSection } from "@/components/notes-section";
+import { ActivitiesPanel } from "@/components/activities-panel";
+import { listActivitiesFor } from "@/server/activities";
 import { PortalAccessPanel } from "./portal-access-panel";
 import { getPortalAccess } from "@/server/customer-access";
 import { DocumentsPanel } from "@/components/documents-panel";
@@ -25,10 +27,11 @@ export default async function ContactDetailPage({
 
   const { id } = await params;
 
-  const [notes, documents, portalAccess] = await Promise.all([
+  const [notes, documents, portalAccess, activities] = await Promise.all([
     listNotes("Contact", id),
     listDocuments("Contact", id),
     getPortalAccess(id),
+    listActivitiesFor("Contact", id),
   ]);
   const contact = await getContact(id);
   if (!contact) notFound();
@@ -151,6 +154,15 @@ export default async function ContactDetailPage({
         />
       </div>
 
+
+      <div className="mt-6">
+        <ActivitiesPanel
+          entityType="Contact"
+          entityId={id}
+          activities={activities}
+          canWrite={can(me, PERMISSIONS.LEAD_WRITE)}
+        />
+      </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NotesSection entityType="Contact" entityId={id} notes={notes} />
         <DocumentsPanel entityType="Contact" entityId={id} documents={documents} />
