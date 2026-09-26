@@ -7,6 +7,7 @@ import {
   Alert, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Textarea,
 } from "@/components/ui";
 import { PicklistSelect } from "@/components/picklist-select";
+import { RecordLookup } from "@/components/record-lookup";
 import { saveCampaignMember, type CampaignMember } from "@/server/campaign-members";
 
 /**
@@ -32,7 +33,9 @@ export function CampaignMemberForm({ defaults }: { defaults?: CampaignMember | n
     start(async () => {
       const result = await saveCampaignMember({
         id: defaults?.id ?? null,
+        campaignId: text("campaignId"),
         firstName: text("firstName"),
+        jobTitle: text("jobTitle"),
         lastName: text("lastName"),
         email: text("email"),
         phone: text("phone"),
@@ -78,6 +81,9 @@ export function CampaignMemberForm({ defaults }: { defaults?: CampaignMember | n
           <Field label="Last name">
             <Input id="lastName" name="lastName" maxLength={100} defaultValue={defaults?.lastName ?? ""} />
           </Field>
+          <Field label="Job title">
+            <Input id="jobTitle" name="jobTitle" maxLength={150} defaultValue={defaults?.jobTitle ?? ""} />
+          </Field>
           <Field
             label="Email"
             error={fieldErrors.email?.[0]}
@@ -91,8 +97,25 @@ export function CampaignMemberForm({ defaults }: { defaults?: CampaignMember | n
           <Field label="WhatsApp number" help="Leave blank if it is the same as the contact number.">
             <Input id="whatsapp" name="whatsapp" maxLength={50} defaultValue={defaults?.whatsapp ?? ""} />
           </Field>
-          <Field label="Where they came from" help="The list, event or referral this person came off.">
-            <Input id="source" name="source" maxLength={100} defaultValue={defaults?.source ?? ""} placeholder="Trade show, October" />
+          <Field
+            label="Campaign"
+            error={fieldErrors.campaignId?.[0]}
+            help="The campaign that produced this person. The same person from a second campaign is a separate record, so both campaigns stay credited."
+          >
+            <RecordLookup
+              entity="campaign"
+              name="campaignId"
+              defaultValue={defaults?.campaignId ?? ""}
+              emptyLabel="No campaign yet"
+            />
+          </Field>
+          <Field label="How we got them" help="The channel that produced them, so a source can actually be reported on.">
+            <PicklistSelect
+              name="source"
+              defaultValue={defaults?.source ?? ""}
+              list="member_source"
+              emptyLabel="Not recorded"
+            />
           </Field>
         </CardContent>
       </Card>

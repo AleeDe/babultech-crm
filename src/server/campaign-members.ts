@@ -12,9 +12,14 @@ import type { ActionResult } from "./partners";
 /**
  * Campaign members: the people marketing talks to.
  *
- * A member exists once, not once per campaign. Which campaigns somebody took
- * part in is recorded by the activity that contacted them, so correcting a
- * phone number is one edit rather than a hunt through every list they are on.
+ * A member belongs to the campaign that produced them - the webinar they came
+ * to, the form they filled in - so one person on two lists is two rows. That is
+ * deliberate: it keeps the fact that they came from both places, which a single
+ * global record would lose. The duplicate is resolved later, by the agent who
+ * merges the leads, because they are the one who can tell.
+ *
+ * Consent does not wait for that merge. It is keyed on the address, in
+ * email_suppression, so one unsubscribe stops mail to every copy at once.
  *
  * Gated on lead:read and lead:write throughout. A campaign member is a prospect
  * who has not become a lead yet, and the people who work leads are the people
@@ -23,6 +28,11 @@ import type { ActionResult } from "./partners";
 
 export interface CampaignMember {
   id: string;
+  campaignId: string | null;
+  campaign?: { id: string; name: string } | null;
+  jobTitle: string | null;
+  leadId: string | null;
+  convertedAt: string | null;
   firstName: string;
   lastName: string | null;
   email: string | null;
@@ -51,11 +61,13 @@ export interface CampaignMember {
 }
 
 const SELECT = `
-  id, firstName, lastName, email, phone, whatsapp, companyName, website,
+  id, campaignId, jobTitle, leadId, convertedAt,
+  firstName, lastName, email, phone, whatsapp, companyName, website,
   businessType, companySize, street, city, state, postalCode, country,
   lastCampaignRunAt, lastCampaignId, campaignCount, emailOptOut, emailBounced,
   source, notes, active, createdAt,
-  lastCampaign:campaign ( name ),
+  campaign:campaign!campaign_member_campaignId_fkey ( id, name ),
+  lastCampaign:campaign!campaign_member_lastCampaignId_fkey ( name ),
   owner:app_user!campaign_member_ownerUserId_fkey ( fullName )
 `;
 
@@ -68,6 +80,11 @@ export interface MemberFilters {
   contactableOnly?: boolean;
   /** Only people no campaign has touched since this date. */
   notContactedSince?: string;
+  /** The campaign that produced them. */
+  campaignId?: string;
+  source?: string;
+  /** "yes" or "no" — whether they have been turned into a lead. */
+  converted?: string;
 }
 
 export async function listCampaignMembers(filters: MemberFilters = {}): Promise<CampaignMember[]> {
@@ -82,6 +99,10 @@ export async function listCampaignMembers(filters: MemberFilters = {}): Promise<
       `firstName.ilike.${term},lastName.ilike.${term},companyName.ilike.${term},email.ilike.${term}`,
     );
   }
+  if (filters.campaignId) query = query.eq("campaignId", filters.campaignId);
+  if (filters.source) query = query.eq("source", filters.source);
+  if (filters.converted === "yes") query = query.not("convertedAt", "is", null);
+  if (filters.converted === "no") query = query.is("convertedAt", null);
   if (filters.businessType) query = query.eq("businessType", filters.businessType);
   if (filters.companySize) query = query.eq("companySize", filters.companySize);
   if (filters.contactableOnly) {
@@ -121,7 +142,9 @@ export async function getCampaignMember(id: string): Promise<CampaignMember | nu
 
 const memberSchema = z.object({
   id: z.string().uuid().optional().nullable(),
+  campaignId: z.string().uuid("Choose the campaign this person came from.").optional().or(z.literal("")),
   firstName: z.string().trim().min(1, "A member needs a first name.").max(100),
+  jobTitle: z.string().trim().max(150).optional().or(z.literal("")),
   lastName: z.string().trim().max(100).optional().or(z.literal("")),
   email: z.string().trim().email("That does not look like an email address.").optional().or(z.literal("")),
   phone: z.string().trim().max(50).optional().or(z.literal("")),
@@ -135,7 +158,7 @@ const memberSchema = z.object({
   state: z.string().trim().max(100).optional().or(z.literal("")),
   postalCode: z.string().trim().max(30).optional().or(z.literal("")),
   country: z.string().trim().max(100).optional().or(z.literal("")),
-  source: z.string().trim().max(100).optional().or(z.literal("")),
+  source: picklistCode.optional().or(z.literal("")),
   notes: z.string().trim().max(4000).optional().or(z.literal("")),
   active: z.coerce.boolean().default(true),
 });
@@ -163,7 +186,9 @@ export async function saveCampaignMember(
   const d = parsed.data;
 
   const row = {
+    campaignId: nullable(d.campaignId),
     firstName: d.firstName,
+    jobTitle: nullable(d.jobTitle),
     lastName: nullable(d.lastName),
     email: nullable(d.email)?.toLowerCase() ?? null,
     phone: nullable(d.phone),
@@ -187,12 +212,19 @@ export async function saveCampaignMember(
 
   // The unique index would catch this, but its error message is a constraint
   // name. Saying whose address it is lets them go and find the person.
+  //
+  // Scoped to the campaign, matching the index: the same address in a DIFFERENT
+  // campaign is a second real event, not a mistake, and refusing it here would
+  // undo the point of the redesign.
   if (row.email) {
     let clash = db
       .from("campaign_member")
       .select("id, firstName, lastName")
       .eq("email", row.email)
       .is("deletedAt", null);
+    clash = row.campaignId
+      ? clash.eq("campaignId", row.campaignId)
+      : clash.is("campaignId", null);
     if (d.id) clash = clash.neq("id", d.id);
 
     const { data: existing } = await clash.maybeSingle();
@@ -200,8 +232,8 @@ export async function saveCampaignMember(
       return {
         ok: false,
         error: `${existing.firstName} ${existing.lastName ?? ""}`.trim() +
-          ` already uses ${row.email}.`,
-        fieldErrors: { email: ["Already on the list."] },
+          ` is already on this campaign with ${row.email}.`,
+        fieldErrors: { email: ["Already on this campaign."] },
       };
     }
   }
@@ -369,4 +401,38 @@ export async function getCampaignMemberTotals() {
     optedOut: optedOut.count ?? 0,
     neverContacted: untouched.count ?? 0,
   };
+}
+
+/**
+ * Turn a campaign member into a lead.
+ *
+ * All the work is in convert_member_to_lead(), in the database, because it has
+ * to allocate a lead number and write to two tables and an audit row as one
+ * act - split across calls, a failure between them burns a number or leaves a
+ * member pointing at a lead that does not exist.
+ *
+ * Idempotent: the function returns the existing lead rather than making a second
+ * one, so a double-click is harmless and the caller is told which happened.
+ */
+export async function convertMemberToLead(
+  memberId: string,
+  ownerUserId?: string,
+): Promise<ActionResult<{ leadId: string; leadNumber?: string; alreadyConverted: boolean }>> {
+  const auth = await authorize(PERMISSIONS.LEAD_WRITE);
+  if (!auth.ok) return { ok: false, error: auth.error };
+
+  const db = await supabaseServer();
+  const { data, error } = await db.rpc("convert_member_to_lead", {
+    p_member_id: memberId,
+    p_owner_id: ownerUserId ?? null,
+  });
+
+  if (error) return { ok: false, error: error.message };
+
+  const result = data as { leadId: string; leadNumber?: string; alreadyConverted: boolean };
+
+  revalidatePath("/campaign-members");
+  revalidatePath(`/campaign-members/${memberId}`);
+  revalidatePath("/leads");
+  return { ok: true, data: result };
 }

@@ -41,6 +41,14 @@ export interface LeadDefaults {
   phone: string | null;
   whatsapp: string | null;
   industry: string | null;
+  website: string | null;
+  businessType: string | null;
+  companySize: string | null;
+  street: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  country: string | null;
   leadSource: string | null;
   campaignId: string | null;
   referredByPartnerId: string | null;
@@ -100,6 +108,14 @@ export function LeadForm({
       phone: get("phone"),
       whatsapp: get("whatsapp"),
       industry: get("industry"),
+      website: get("website"),
+      businessType: get("businessType"),
+      companySize: get("companySize"),
+      street: get("street"),
+      city: get("city"),
+      state: get("state"),
+      postalCode: get("postalCode"),
+      country: get("country"),
       leadSource: get("leadSource"),
       campaignId: get("campaignId"),
       referredByPartnerId: get("referredByPartnerId"),
@@ -180,6 +196,39 @@ export function LeadForm({
           <Field label="Industry"
             help="The sector they operate in. Used for reporting on where your leads come from.">
             <PicklistSelect list="industry" name="industry" defaultValue={defaults?.industry ?? ""} addLabel="Add an industry" />
+          </Field>
+          <Field label="Website">
+            <Input name="website" maxLength={255} defaultValue={defaults?.website ?? ""} />
+          </Field>
+          <Field label="Business type"
+            help="What their company does. Carried over when a campaign member becomes a lead.">
+            <PicklistSelect list="business_type" name="businessType" emptyLabel="Not stated" defaultValue={defaults?.businessType ?? ""} addLabel="Add a business type" />
+          </Field>
+          <Field label="Company size">
+            <PicklistSelect list="company_size" name="companySize" emptyLabel="Not stated" defaultValue={defaults?.companySize ?? ""} addLabel="Add a size" />
+          </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Where they are</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <Field label="Street">
+            <Input name="street" maxLength={255} defaultValue={defaults?.street ?? ""} />
+          </Field>
+          <Field label="City">
+            <Input name="city" maxLength={100} defaultValue={defaults?.city ?? ""} />
+          </Field>
+          <Field label="State or province">
+            <Input name="state" maxLength={100} defaultValue={defaults?.state ?? ""} />
+          </Field>
+          <Field label="Postal code">
+            <Input name="postalCode" maxLength={30} defaultValue={defaults?.postalCode ?? ""} />
+          </Field>
+          <Field label="Country">
+            <Input name="country" maxLength={100} defaultValue={defaults?.country ?? ""} />
           </Field>
         </CardContent>
       </Card>

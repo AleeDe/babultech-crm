@@ -19,7 +19,10 @@ import { formatDate, humanize } from "@/lib/utils";
 export default async function CampaignMembersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string; businessType?: string; companySize?: string }>;
+  searchParams: Promise<{
+    search?: string; businessType?: string; companySize?: string;
+    campaignId?: string; source?: string; converted?: string;
+  }>;
 }) {
   const me = await requireUser();
   if (!can(me, PERMISSIONS.LEAD_READ)) return <Forbidden what="campaign members" />;
@@ -98,6 +101,18 @@ export default async function CampaignMembersPage({
               <option key={v.value} value={v.value}>{v.label}</option>
             ))}
           </Select>
+          <Select name="source" defaultValue={params.source ?? ""} aria-label="How we got them">
+            <option value="">Any source</option>
+            {(lists.member_source ?? []).map((v) => (
+              <option key={v.value} value={v.value}>{v.label}</option>
+            ))}
+          </Select>
+          {/* The one filter an agent uses every day: who is still to be worked. */}
+          <Select name="converted" defaultValue={params.converted ?? ""} aria-label="Converted">
+            <option value="">Converted or not</option>
+            <option value="no">Not yet a lead</option>
+            <option value="yes">Already a lead</option>
+          </Select>
           <Button type="submit" variant="secondary">Filter</Button>
         </form>
 
@@ -123,6 +138,7 @@ export default async function CampaignMembersPage({
               <TR>
                 <TH>Name</TH>
                 <TH>Company</TH>
+                <TH priority="secondary">Campaign</TH>
                 <TH priority="secondary">Business type</TH>
                 <TH priority="tertiary">Size</TH>
                 <TH priority="secondary">Last contacted</TH>
@@ -148,6 +164,12 @@ export default async function CampaignMembersPage({
                     {member.companyName ?? "—"}
                     {member.city && (
                       <p className="text-xs text-muted-foreground">{member.city}</p>
+                    )}
+                  </TD>
+                  <TD className="text-sm" priority="secondary">
+                    {member.campaign?.name ?? "—"}
+                    {member.source && (
+                      <p className="text-xs text-muted-foreground">{humanize(member.source)}</p>
                     )}
                   </TD>
                   <TD className="text-sm">

@@ -402,6 +402,17 @@ const leadSchema = z.object({
   phone: z.string().max(50).optional().nullable(),
   whatsapp: z.string().max(50).optional().nullable(),
   industry: z.string().max(100).optional().nullable(),
+  // Carried over from a campaign member on conversion, and editable after.
+  // Without these, converting a trade-show record dropped the company details
+  // and the whole address - often the only useful thing on it.
+  website: z.string().max(255).optional().nullable(),
+  businessType: picklistCode.optional().nullable().or(z.literal("")),
+  companySize: picklistCode.optional().nullable().or(z.literal("")),
+  street: z.string().max(255).optional().nullable(),
+  city: z.string().max(100).optional().nullable(),
+  state: z.string().max(100).optional().nullable(),
+  postalCode: z.string().max(30).optional().nullable(),
+  country: z.string().max(100).optional().nullable(),
   leadSource: z.string().max(100).optional().nullable(),
   campaignId: z.string().uuid().optional().nullable(),
   /** Credits a partner for the referral — carries through to the opportunity. */
@@ -764,7 +775,7 @@ export async function listCampaigns(filters?: { search?: string; status?: string
       `*,
        campaignType:campaign_type ( * ),
        owner:app_user!campaign_ownerUserId_fkey ( fullName ),
-       members:campaign_member ( count ),
+       members:campaign_member!campaign_member_campaignId_fkey ( count ),
        leads:lead ( count ),
        opportunities:opportunity ( count )`,
     )

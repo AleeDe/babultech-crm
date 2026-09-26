@@ -31,7 +31,7 @@ export default async function CampaignDetailPage({
        parentCampaign:parentCampaignId ( id, name ),
        leads:lead ( id, leadNumber, firstName, lastName, companyName, status, estimatedValue, createdAt ),
        opportunities:opportunity ( id, opportunityNumber, name, stage, amount, currencyCode, expectedCloseDate, account ( id, name ) ),
-       members:campaign_member ( count )`,
+       members:campaign_member!campaign_member_campaignId_fkey ( count )`,
     )
     .eq("id", id)
     .maybeSingle();
