@@ -22,6 +22,12 @@ import type { CommissionBasis, CommissionTier, PlanWithTiers } from "@/lib/types
  *   1. OpportunityPartner.commissionPercentOverride  — negotiated for this deal
  *   2. Plan tiers (TIERED_PERCENT) / flatPercent / fixedAmount
  *   3. Partner.defaultCommissionPercent
+ *
+ * What commission is paid on: the amount the customer pays, tax included. At
+ * Close Won that is the deal amount (the sum of its line totals, tax and all);
+ * when an invoice is sent, the invoice total; when a payment clears, what it
+ * pays against each invoice. The three agree, so a partner earns the same on
+ * a deal whichever trigger their plan uses.
  */
 
 /**
@@ -400,7 +406,7 @@ export async function accrueForInvoice(invoiceId: string, actorUserId: string) {
   const { data: invoice, error } = await db
     .from("invoice")
     .select(
-      `id, totalAmount, taxAmount, currencyCode, invoiceDate,
+      `id, totalAmount, currencyCode, invoiceDate,
        project ( opportunityId ), contract ( opportunityId )`,
     )
     .eq("id", invoiceId)
@@ -415,8 +421,8 @@ export async function accrueForInvoice(invoiceId: string, actorUserId: string) {
 
   return accrue({
     opportunityId,
-    // Commission is earned on revenue, not on the tax you collect for the state.
-    grossAmount: toDecimal(invoice.totalAmount).minus(toDecimal(invoice.taxAmount)),
+    // The invoice total, tax included - the same base the deal amount uses.
+    grossAmount: toDecimal(invoice.totalAmount),
     currencyCode: invoice.currencyCode,
     earnedDate: new Date(invoice.invoiceDate),
     invoiceId: invoice.id,
@@ -435,8 +441,7 @@ export async function accrueForPayment(paymentId: string, actorUserId: string) {
       `id, status, currencyCode, paymentDate,
        allocations:payment_allocation (
          allocatedAmount,
-         invoice ( id, totalAmount, taxAmount,
-           project ( opportunityId ), contract ( opportunityId ) )
+         invoice ( id, project ( opportunityId ), contract ( opportunityId ) )
        )`,
     )
     .eq("id", paymentId)
@@ -456,16 +461,11 @@ export async function accrueForPayment(paymentId: string, actorUserId: string) {
     const opportunityId = project?.opportunityId ?? contract?.opportunityId;
     if (!opportunityId) continue;
 
-    // Strip the tax portion from the allocated amount, pro rata.
-    const total = toDecimal(inv.totalAmount);
-    const netRatio = total.isZero()
-      ? ZERO
-      : total.minus(toDecimal(inv.taxAmount)).dividedBy(total);
-    const netCollected = toDecimal(alloc.allocatedAmount).times(netRatio);
-
     const created = await accrue({
       opportunityId,
-      grossAmount: netCollected,
+      // What the customer paid against this invoice, tax included - the same
+      // base as the invoice total and the deal amount.
+      grossAmount: toDecimal(alloc.allocatedAmount),
       currencyCode: payment.currencyCode,
       earnedDate: new Date(payment.paymentDate),
       invoiceId: inv.id as string,

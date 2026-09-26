@@ -218,16 +218,21 @@ export function OpportunityProductServices({
         setError(result.error);
         return;
       }
-      // A full reload, deliberately, rather than router.refresh().
+      // A full reload, deliberately, rather than relying on the refreshed page
+      // that the save sends back.
       //
-      // In the production build the in-place refresh never landed on this page:
-      // the save had worked - the lines, the amount and the book were all in the
-      // database - but the screen kept the old page and still said "Nothing
-      // added yet", which would lead anybody to save again. It worked in
-      // development, and a reload always showed the right data. Until the router
-      // behaviour on this page is understood, a reload is the one thing that is
-      // guaranteed to show the deal as it now stands, including the value tiles
-      // above that also depend on these lines.
+      // In the production build that refreshed page arrives complete but is
+      // never shown: the screen keeps the old page and still says "Nothing
+      // added yet", which would lead anybody to save again. The cause is in
+      // React 19.2 itself (pingSuspendedRoot in react-dom): when a piece of the
+      // streamed page resolves at the very moment React attaches its wake-up
+      // callback, the wake-up fires in the middle of a render that React has
+      // already decided to delay, is ignored, and the update then waits forever
+      // for a signal that has already come. Whether it happens depends on how
+      // the stream is split into packets, so it showed in production and not in
+      // development. A reload does not go through that path, and shows the deal
+      // as it now stands, including the value tiles above that depend on these
+      // lines.
       window.location.reload();
     });
   }
