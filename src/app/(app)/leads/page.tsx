@@ -41,6 +41,8 @@ export default async function LeadsPage({
         title="Leads"
         description="Unqualified prospects. Converting one creates the account, contact and deal - and carries any partner referral through."
       >
+        <Button asChild variant="outline"><Link href="/leads/duplicates">Duplicates</Link></Button>
+        <Button asChild variant="outline"><Link href="/leads/email/sends">Emails sent</Link></Button>
         <Button asChild variant="outline"><Link href="/leads/calling">My calling queue</Link></Button>
         <Button asChild variant="outline"><Link href="/leads/handoffs">Sales handoffs</Link></Button>
         <Button asChild variant="outline"><Link href="/leads/research">Research quality</Link></Button>

@@ -8,7 +8,7 @@ import {
   Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
-import { listCampaignActivities } from "@/server/campaign-activities";
+import { getCampaignEmailStats } from "@/server/activities";
 import { Megaphone, Plus } from "lucide-react";
 
 export default async function CampaignDetailPage({
@@ -20,7 +20,10 @@ export default async function CampaignDetailPage({
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.LEAD_READ)) return <Forbidden what="campaigns" />;
   const db = await supabaseServer();
-  const activities = await listCampaignActivities(id);
+  // Grouped through the LEADS rather than off a send, because one email may go
+  // to leads from several campaigns and each lead already records the campaign
+  // that produced it. This gives this campaign only its own share.
+  const emailStats = await getCampaignEmailStats(id);
 
   const { data: campaignRow } = await db
     .from("campaign")
@@ -261,61 +264,54 @@ export default async function CampaignDetailPage({
             </Card>
           )}
 
+          {/*
+            What the emails to this campaign's leads achieved.
+
+            Campaign activities used to live here as their own records with their
+            own audiences. Emails are now activities against a lead, so this is
+            rolled up from them - and a lead carries the campaign that produced
+            it, so the roll-up stays right however mixed a send was.
+          */}
           <Card>
             <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2">
               <CardTitle className="flex items-center gap-2">
-                <Megaphone className="h-4 w-4" /> Activities ({activities.length})
+                <Megaphone className="h-4 w-4" /> Email to these leads
               </CardTitle>
               {can(_me, PERMISSIONS.LEAD_WRITE) && (
                 <Button asChild size="sm" variant="secondary">
-                  <Link href={`/campaigns/activities/new?campaignId=${id}`}>
-                    <Plus className="h-4 w-4" /> New activity
+                  <Link href={`/leads?campaignId=${id}`}>
+                    <Plus className="h-4 w-4" /> Email this campaign
                   </Link>
                 </Button>
               )}
             </CardHeader>
-            <CardContent className="px-0">
-              {activities.length === 0 ? (
-                <p className="px-6 pb-4 text-sm text-muted-foreground">
-                  Nothing has been run for this campaign yet. An activity is one round of
-                  outreach — an email, some calls, a webinar.
+            <CardContent>
+              {emailStats.audience === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No email has gone to a lead from this campaign yet. Open the leads list,
+                  choose the people you want, and press Email.
                 </p>
               ) : (
-                <Table>
-                  <THead>
-                    <TR>
-                      <TH>Activity</TH>
-                      <TH>How</TH>
-                      <TH>Status</TH>
-                      <TH className="text-right">Audience</TH>
-                      <TH priority="tertiary">When</TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {activities.map((activity) => (
-                      <TR key={activity.id}>
-                        <TD>
-                          <Link
-                            href={`/campaigns/activities/${activity.id}`}
-                            className="text-sm font-medium hover:underline"
-                          >
-                            {activity.name}
-                          </Link>
-                        </TD>
-                        <TD className="text-sm">{humanize(activity.activityType)}</TD>
-                        <TD>
-                          <Badge tone={activity.status === "COMPLETED" ? "success" : "info"}>
-                            {humanize(activity.status)}
-                          </Badge>
-                        </TD>
-                        <TD className="text-right tabular">{activity.audienceCount ?? 0}</TD>
-                        <TD className="whitespace-nowrap text-sm">
-                          {formatDate(activity.completedAt ?? activity.scheduledAt ?? activity.createdAt)}
-                        </TD>
-                      </TR>
-                    ))}
-                  </TBody>
-                </Table>
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <StatTile label="Emails sent" value={String(emailStats.sent)} />
+                    <StatTile
+                      label="Delivered"
+                      value={String(emailStats.delivered)}
+                      tone="success"
+                    />
+                    {/* Clicks before opens: a click is somebody deciding to act. */}
+                    <StatTile label="Clicked" value={String(emailStats.clicked)} tone="info" />
+                    <StatTile label="Opened" value={String(emailStats.opened)} />
+                  </div>
+                  {(emailStats.bounced > 0 || emailStats.unsubscribed > 0) && (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      {emailStats.bounced > 0 && `${emailStats.bounced} bounced. `}
+                      {emailStats.unsubscribed > 0 &&
+                        `${emailStats.unsubscribed} unsubscribed - suppressed everywhere, not only here.`}
+                    </p>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>

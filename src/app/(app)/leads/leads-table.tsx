@@ -1,8 +1,9 @@
 "use client";
 
+import { Mail } from "lucide-react";
 import Link from "next/link";
 import {
-  Table, THead, TBody, TR, TH, TD, Badge, statusTone, EmptyState,
+  Table, THead, TBody, TR, TH, TD, Badge, statusTone, EmptyState, Button,
 } from "@/components/ui";
 import {
   BulkBar, SelectAllBox, SelectBox, useSelection,
@@ -29,6 +30,14 @@ export function LeadsTable({
 }) {
   const selection = useSelection(leads);
 
+  // Emailing is not a BulkBar action. Those take one value and run immediately;
+  // an email needs a subject, a message and a chance to read it back before
+  // anything leaves the building. So it hands the selection to a compose screen.
+  const emailHref = `/leads/email?ids=${selection.ids.join(",")}`;
+  const withEmail = leads.filter(
+    (l) => selection.ids.includes(l.id) && l.email,
+  ).length;
+
   if (leads.length === 0) {
     return (
       <EmptyState
@@ -40,6 +49,23 @@ export function LeadsTable({
 
   return (
     <>
+      {canWrite && selection.ids.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md border bg-muted/40 px-4 py-3">
+          <Button asChild size="sm" disabled={withEmail === 0}>
+            <Link href={emailHref}>
+              <Mail className="h-4 w-4" />
+              Email {withEmail} {withEmail === 1 ? "lead" : "leads"}
+            </Link>
+          </Button>
+          {withEmail < selection.ids.length && (
+            <p className="text-xs text-muted-foreground">
+              {selection.ids.length - withEmail} of the selected have no email address and
+              will be left out.
+            </p>
+          )}
+        </div>
+      )}
+
       {canWrite && (
         <BulkBar
           selected={selection.ids}

@@ -40,7 +40,7 @@ export type PicklistKey =
   | "user_status"
   // Marketing lists, added with the campaign member entity.
   | "business_type" | "company_size"
-  | "campaign_activity_type" | "call_outcome" | "webinar_outcome"
+  | "call_outcome" | "webinar_outcome"
   // How a campaign member reached us, and what kind of activity was carried out.
   | "member_source" | "activity_log_kind";
 
