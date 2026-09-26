@@ -2,6 +2,10 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { config } from "dotenv";
+// .env.local first: it holds the management token, kept out of .env so it is
+// never mistaken for app configuration. dotenv does not override, so a value
+// in .env.local wins over the same key in .env.
+config({ path: ".env.local", quiet: true });
 config({ path: ".env", quiet: true });
 
 const [mode, path, ...testPaths] = process.argv.slice(2);

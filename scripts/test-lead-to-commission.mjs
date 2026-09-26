@@ -44,7 +44,7 @@ const passed = [];
  */
 const ids = {
   authUsers: [], appUsers: [], partnerLogins: [],
-  leads: [], accounts: [], contacts: [], partners: [], products: [], projects: [],
+  leads: [], accounts: [], contacts: [], partners: [], products: [], projects: [], priceBooks: [],
   opportunities: [], invoices: [], payments: [],
   commissions: [], payouts: [], transactions: [],
   teardown() {
@@ -58,11 +58,14 @@ const ids = {
       del("payment", "id", this.payments),
       del("invoice_line", "invoiceId", this.invoices),
       del("invoice", "id", this.invoices),
+      del("project_task", "projectId", this.projects),
       del("project_member", "projectId", this.projects),
       del("project", "id", this.projects),
       del("opportunity_partner", "opportunityId", this.opportunities),
       del("opportunity", "id", this.opportunities),
       del("lead", "id", this.leads),
+      del("price_book_entry", "priceBookId", this.priceBooks),
+      del("price_book", "id", this.priceBooks),
       del("product", "id", this.products),
       // Portal logins first: each names a partner and a contact, and nulling
       // either on delete would trip app_user_type_links_check.
@@ -326,26 +329,57 @@ try {
     .update({ stage: "CLOSED_WON", actualCloseDate: today(), updatedAt: now() })
     .eq("id", opportunityId).select("id");
   assert.ok(tooEarly.error, "Winning without a product must be refused");
-  assert.match(tooEarly.error.message, /needs a product/i, "The refusal should say why");
-  pass("Winning refused — the deal has no product yet");
+  assert.match(tooEarly.error.message, /needs at least one product or service/i, "The refusal should say why");
+  pass("Winning refused — nothing has been sold on the deal yet");
+
+  // A service sold in hours: Add in Task, so winning the deal turns its hours
+  // into a project task. 160 hours at 5,000 keeps the deal at the same 800,000
+  // the commission figures below are worked out from.
+  const HOURS = 160;
+  const RATE_PER_HOUR = DEAL / HOURS;
 
   const productId = randomUUID();
   await ok(
     admin.from("product").insert({
-      id: productId, productCode: `L2C-${run}`, name: `Warehouse platform ${run}`,
-      // Pricing lives in the price books now, not on the product.
-      productType: "SERVICE", commissionable: true, active: true, updatedAt: now(),
+      id: productId, productCode: "pending", name: `Warehouse rollout ${run}`,
+      productType: "SERVICE", addInTask: true, active: true, updatedAt: now(),
     }),
-    "Create the product being sold",
+    "Create the service being sold",
   );
   ids.products.push(productId);
 
+  const bookId = randomUUID();
   await ok(
-    sales.client.from("opportunity")
-      .update({ productId, implementationCost: DEAL, updatedAt: now() })
-      .eq("id", opportunityId),
-    "Put the product on the deal",
+    admin.from("price_book").insert({
+      id: bookId, name: `L2C rates ${run}`, currencyCode: "PKR", active: true, updatedAt: now(),
+    }),
+    "Create a price book",
   );
+  ids.priceBooks.push(bookId);
+
+  const entry = await ok(
+    admin.from("price_book_entry").insert({
+      priceBookId: bookId, productId, quantity: HOURS, rate: RATE_PER_HOUR,
+    }).select("id").single(),
+    "Price the service in the book",
+  );
+
+  // Saved the way the Add Product & Service screen saves: every line at once,
+  // through the one function that checks the caller may edit this deal.
+  const saved = await ok(
+    sales.client.rpc("save_opportunity_lines", {
+      p_opportunity: opportunityId,
+      p_price_book: bookId,
+      p_lines: [{
+        productId, priceBookEntryId: entry.id,
+        quantity: HOURS, unitPrice: RATE_PER_HOUR,
+        licenseCost: 0, maintenanceCost: 0, cloudCost: 0, aiCost: 0, discountPercent: 0,
+      }],
+    }),
+    "Add the service to the deal",
+  );
+  assert.equal(money(saved.amount), DEAL, "The deal's amount must become the total of its lines");
+  pass(`Service added: ${HOURS}h × ${fmt(RATE_PER_HOUR)} — deal amount now ${fmt(saved.amount)}, from its line`);
 
   await ok(
     sales.client.from("opportunity")
@@ -365,7 +399,18 @@ try {
   const project = parse(projectRaw);
   assert.ok(project?.id, "A won deal with a product must produce a delivery project");
   ids.projects.push(project.id);
-  pass(`Delivery project ${project.projectNumber} created from the won deal`);
+  assert.match(project.name, /^Project-/, "A project from a sale is named Project-<deal>");
+  pass(`Delivery project ${project.projectNumber} "${project.name}" created from the won deal`);
+
+  const tasks = await ok(
+    admin.from("project_task").select("name, soldHours, soldRate, estimatedHours")
+      .eq("projectId", project.id),
+    "Read the project's tasks",
+  );
+  assert.equal(tasks.length, 1, "The service sold in hours must become one task");
+  assert.equal(money(tasks[0].soldHours), HOURS, "With the hours sold as its budget");
+  assert.equal(money(tasks[0].soldRate), RATE_PER_HOUR, "And the rate sold");
+  pass(`Task "${tasks[0].name}" created — ${HOURS}h sold at ${fmt(RATE_PER_HOUR)}`);
 
   const invoiceId = randomUUID();
   await ok(

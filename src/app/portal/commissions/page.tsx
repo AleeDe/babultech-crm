@@ -3,7 +3,7 @@ import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, StatTile, Select, Button, Alert,
 } from "@/components/ui";
-import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
+import { formatMoneyPlain as formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
 
 const STATUSES = [
   "ACCRUED", "PENDING_APPROVAL", "APPROVED", "PAYABLE", "PAID", "CLAWED_BACK", "REJECTED",

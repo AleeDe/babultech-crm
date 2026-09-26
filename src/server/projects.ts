@@ -7,13 +7,12 @@ import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { createRecord, updateRecord, LIST_LIMIT } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
-import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
+import { PERMISSIONS, authorize, authorizeAny, requirePermission } from "@/lib/authz";
 import { sanitizeRichText } from "@/lib/rich-text";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionResult } from "./partners";
 import { MEMBER_PUBLIC_COLUMNS, TIME_PUBLIC_COLUMNS, withRateSnapshots } from "@/lib/rate-snapshots";
 import { getProjectPeople } from "./project-directory";
-import { TASK_CATEGORIES } from "@/lib/picklists";
 
 /** The slice of the Supabase client the roll-up helper needs. */
 type Db = Pick<SupabaseClient, "from">;
@@ -449,6 +448,21 @@ export async function getProject(id: string) {
   // Subtask counts are not available as an embedded aggregate alongside the
   // task's own columns, so they are derived from the task list itself.
   const taskRows = rows(data.tasks);
+
+  // Hours booked per task, for sold-versus-used. Rejected time is left out: it
+  // was sent back, so it neither used the budget nor gets billed.
+  const { data: logged } = await db
+    .from("time_log")
+    .select("projectTaskId, hours")
+    .eq("projectId", id)
+    .not("projectTaskId", "is", null)
+    .neq("approvalStatus", "REJECTED");
+  const loggedByTask = new Map<string, number>();
+  for (const l of logged ?? []) {
+    const key = l.projectTaskId as string;
+    loggedByTask.set(key, (loggedByTask.get(key) ?? 0) + Number(l.hours ?? 0));
+  }
+
   const subtaskCount = new Map<string, number>();
   for (const t of taskRows) {
     const parent = t.parentTaskId as string | null;
@@ -472,6 +486,7 @@ export async function getProject(id: string) {
         assignedUser: one(t.assignedUser as never),
         phase: one(t.phase as never),
         milestone: one(t.milestone as never),
+        loggedHours: String(loggedByTask.get(t.id as string) ?? 0),
         _count: { subtasks: subtaskCount.get(t.id as string) ?? 0 },
       }))
       .sort((a, b) => num(a.sortOrder) - num(b.sortOrder) || asc(a.createdAt, b.createdAt)),
@@ -754,27 +769,13 @@ const taskSchema = z.object({
   completionPercent: z.coerce.number().min(0).max(100).optional().nullable(),
   billable: z.boolean().default(true),
   acceptanceCriteria: z.string().optional().nullable(),
-  // Costing. Hours is estimatedHours; the line total (hours x rate - discount)
-  // is computed by the database, and the Implementation / Training totals on
-  // the project and its deal follow from it.
+  // What kind of work it is. Tasks no longer carry a price: what the customer
+  // pays was settled on the deal, and a task that came from it records the
+  // hours and rate sold (soldHours, soldRate), which are set by the database
+  // when the deal is won and are not editable here.
   taskType: z.string().trim().max(100).optional().nullable(),
-  taskCategory: z.enum(TASK_CATEGORIES).optional().nullable(),
-  rate: z.coerce.number().min(0, "Rate cannot be negative.").optional().nullable(),
-  discountAmount: z.coerce.number().min(0, "Discount cannot be negative.").optional().nullable(),
 });
 
-/** A discount larger than the work it is taken from would make a negative cost. */
-function discountProblem(data: { estimatedHours?: number | null; rate?: number | null; discountAmount?: number | null }) {
-  const gross = (data.estimatedHours ?? 0) * (data.rate ?? 0);
-  if ((data.discountAmount ?? 0) > gross) {
-    return {
-      ok: false as const,
-      error: "The discount is larger than hours x rate.",
-      fieldErrors: { discountAmount: ["Cannot exceed hours x rate."] },
-    };
-  }
-  return null;
-}
 
 async function assertAssigneeIsOnProject(
   db: Db,
@@ -853,9 +854,6 @@ export async function createTask(
     };
   }
 
-  const discountError = discountProblem(data);
-  if (discountError) return discountError;
-
   try {
     const db = await supabaseServer();
 
@@ -915,9 +913,6 @@ export async function updateTask(
       fieldErrors: { dueDate: ["Must be on or after the start date."] },
     };
   }
-
-  const discountError = discountProblem(data);
-  if (discountError) return discountError;
 
   try {
     const db = await supabaseServer();
@@ -1526,4 +1521,23 @@ export async function getProjectFormOptions() {
   const products = productsRes.data ?? [];
 
   return { accounts, users, opportunities, contracts, currencies, products };
+}
+
+/**
+ * Add tasks for products and services sold on the deal since the project began.
+ *
+ * Only ADDS. A line that already has a task is skipped, and nothing a project
+ * manager changed on an existing task is touched - so pressing it twice, or
+ * after rearranging the plan, is always safe.
+ */
+export async function syncProjectFromDeal(projectId: string): Promise<ActionResult<{ added: number }>> {
+  const auth = await authorizeAny(PERMISSIONS.PROJECT_MANAGE, PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!auth.ok) return { ok: false, error: auth.error };
+
+  const db = await supabaseServer();
+  const { data, error } = await db.rpc("sync_project_from_opportunity", { p_project: projectId });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/projects/${projectId}`);
+  return { ok: true, data: { added: (data as { added: number }).added } };
 }

@@ -4,7 +4,7 @@ import {
   EmptyState, StatTile, Alert,
 } from "@/components/ui";
 import { ListFilters, optionsFrom } from "@/components/list-filters";
-import { formatMoney, formatDate, humanize } from "@/lib/utils";
+import { formatMoneyPlain as formatMoney, formatDate, humanize } from "@/lib/utils";
 
 const STATUSES = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "PAID", "CANCELLED"] as const;
 

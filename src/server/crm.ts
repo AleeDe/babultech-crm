@@ -871,7 +871,7 @@ export async function getFormOptions() {
 
   const db = await supabaseServer();
 
-  const [users, accounts, campaigns, plans, currencies, partners, contacts, products, taxRates, priceBooks] =
+  const [users, accounts, campaigns, plans, currencies, partners, contacts, products, taxRates] =
     await Promise.all([
       db
         .from("app_user")
@@ -920,13 +920,6 @@ export async function getFormOptions() {
         .select("id, name, ratePercent")
         .eq("active", true)
         .order("name"),
-      // Inactive books are included so a deal priced from one still shows it;
-      // the form offers only active ones for a new choice.
-      db
-        .from("price_book")
-        .select("id, productId, name, currencyCode, licenseCost, maintenanceCost, cloudCost, aiCost, active")
-        .is("deletedAt", null)
-        .order("name"),
     ]);
 
   return {
@@ -939,7 +932,6 @@ export async function getFormOptions() {
     contacts: contacts.data ?? [],
     products: products.data ?? [],
     taxRates: taxRates.data ?? [],
-    priceBooks: priceBooks.data ?? [],
   };
 }
 

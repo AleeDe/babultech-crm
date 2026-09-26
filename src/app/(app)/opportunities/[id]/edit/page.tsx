@@ -36,22 +36,9 @@ export default async function EditOpportunityPage({
     leadSource: opp.leadSource,
     nextStep: opp.nextStep,
     description: opp.description,
-    productId: opp.productId ?? null,
-    priceBookId: opp.priceBookId ?? null,
-    discountPercent: opp.discountPercent ?? 0,
-    licenseCost: opp.licenseCost ?? 0,
-    maintenanceCost: opp.maintenanceCost ?? 0,
-    cloudCost: opp.cloudCost ?? 0,
-    aiCost: opp.aiCost ?? 0,
-    implementationCost: opp.implementationCost ?? 0,
-    trainingCost: opp.trainingCost ?? 0,
-    lines: opp.lines.map((l: Record<string, any>) => ({
-      productId: l.productId,
-      quantity: l.quantity,
-      unitPrice: l.unitPrice,
-      discountPercent: l.discountPercent,
-      taxRateId: l.taxRateId,
-    })),
+    // Once the deal has lines, the amount is theirs and the form will not
+    // let it be typed over.
+    pricedByLines: Boolean(opp.pricedByLines),
   }) as unknown as OpportunityDefaults;
 
   const accrued = opp.commissionRecords.length > 0;

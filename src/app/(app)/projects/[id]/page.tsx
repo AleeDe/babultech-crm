@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SyncFromDeal } from "./sync-from-deal";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
@@ -82,6 +83,12 @@ export default async function ProjectWorkspacePage({
     users: options.users,
   });
 
+  // Sold versus used, across the tasks that came from the deal. Going over is
+  // shown rather than refused: the work happened and has to be recorded.
+  const soldTasks = (project.tasks as Record<string, any>[]).filter((t) => t.soldHours != null && t.status !== "CANCELLED");
+  const soldHours = soldTasks.reduce((sum, t) => sum + Number(t.soldHours), 0);
+  const usedHours = soldTasks.reduce((sum, t) => sum + Number(t.loggedHours ?? 0), 0);
+
   return (
     <>
       <PageHeader
@@ -125,28 +132,44 @@ export default async function ProjectWorkspacePage({
         /></>}
       </div>
 
-      {/* Hours x rate - discount of the tasks in each category. These are what
-          the deal's Implementation and Training costs are made of. */}
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile
-          label="Implementation total"
-          value={formatMoney(project.implementationTotal ?? 0, project.currencyCode)}
-          sublabel={`${project.tasks.filter((t: Record<string, any>) => t.taskCategory === "IMPLEMENTATION" && t.status !== "CANCELLED").length} implementation task(s)`}
-        />
-        <StatTile
-          label="Training total"
-          value={formatMoney(project.trainingTotal ?? 0, project.currencyCode)}
-          sublabel={`${project.tasks.filter((t: Record<string, any>) => t.taskCategory === "TRAINING" && t.status !== "CANCELLED").length} training task(s)`}
-        />
-        {project.opportunity && (
+      {/* What was sold against what has been used, for the tasks that came from
+          the deal. Replaces the old cost totals, which flowed the other way -
+          from task estimates back into the deal's price. */}
+      {soldTasks.length > 0 && (
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatTile
-            label="Deal"
-            value={project.opportunity.opportunityNumber}
-            sublabel="Its implementation and training costs follow these totals"
-            href={`/opportunities/${project.opportunity.id}`}
+            label="Hours sold"
+            value={formatNumber(soldHours, 1)}
+            sublabel={`${soldTasks.length} task(s) from the deal`}
           />
-        )}
-      </div>
+          <StatTile
+            label="Hours used"
+            value={formatNumber(usedHours, 1)}
+            sublabel={soldHours > 0 ? `${formatPercent((usedHours / soldHours) * 100, 0)} of what was sold` : undefined}
+            tone={usedHours > soldHours ? "danger" : usedHours > soldHours * 0.8 ? "warning" : "neutral"}
+          />
+          <StatTile
+            label="Hours remaining"
+            value={formatNumber(Math.max(soldHours - usedHours, 0), 1)}
+            sublabel={usedHours > soldHours ? `${formatNumber(usedHours - soldHours, 1)}h over what was sold` : "Of the hours sold"}
+            tone={usedHours > soldHours ? "danger" : "success"}
+          />
+          {project.opportunity && (
+            <StatTile
+              label="Deal"
+              value={project.opportunity.opportunityNumber}
+              sublabel="Where these hours were sold"
+              href={`/opportunities/${project.opportunity.id}`}
+            />
+          )}
+        </div>
+      )}
+
+      {project.opportunity && canManage && (
+        <div className="mt-4">
+          <SyncFromDeal projectId={project.id} />
+        </div>
+      )}
 
       {(overBudget || overdueTasks.length > 0) && (
         <div className="mt-5 space-y-3">

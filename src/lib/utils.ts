@@ -1,6 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import Decimal from "decimal.js";
+import { convert, companionCurrency } from "./currency-context";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -15,38 +16,72 @@ export function toDecimal(value: Numeric): Decimal {
 }
 
 /**
- * Money, formatted the same on the server and in the browser.
+ * One amount in one currency: "PKR 5,000.00".
  *
- * minimumFractionDigits is set explicitly, and that is the whole point of it.
- * PKR's standard is zero decimal places, so the two ICU builds disagreed about
- * the default: Node rendered "Rs 1,234.50" and Chromium "Rs 1,234.5". Because
- * money is formatted inside client components, React saw server text that did
- * not match the client, threw a hydration error, and threw away the
- * server-rendered table to re-render it - on five pages.
+ * The currency CODE rather than a symbol. With CAD, AUD and USD all written "$",
+ * a symbol stops saying which dollar - and a second currency sits beside most
+ * amounts now, so the two have to be told apart at a glance.
  *
- * maximumFractionDigits alone does not pin the minimum, which is why the
- * mismatch survived having one of the two set.
+ * minimumFractionDigits is pinned deliberately. PKR's standard is zero decimal
+ * places, so without it the two ICU builds disagreed: Node wrote "1,234.50" and
+ * Chromium "1,234.5", React saw server text that did not match the client, and
+ * threw away five server-rendered pages to redraw them.
  */
-export function formatMoney(value: Numeric, currency = "PKR"): string {
+export function formatMoneyPlain(value: Numeric, currency = "PKR"): string {
   const n = Number(toDecimal(value));
   return new Intl.NumberFormat("en-PK", {
     style: "currency",
     currency,
+    currencyDisplay: "code",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n);
 }
 
-/** Compact form for dashboard tiles: 1.2M, 850K. Pinned for the same reason. */
-export function formatCompactMoney(value: Numeric, currency = "PKR"): string {
+/** Compact, single currency: "PKR 1.2M". Pinned for the same reason. */
+export function formatCompactMoneyPlain(value: Numeric, currency = "PKR"): string {
   const n = Number(toDecimal(value));
   return new Intl.NumberFormat("en-PK", {
     style: "currency",
     currency,
+    currencyDisplay: "code",
     notation: "compact",
     minimumFractionDigits: 0,
     maximumFractionDigits: 1,
   }).format(n);
+}
+
+/**
+ * An amount with its reference conversion: "PKR 5,000.00 (≈ USD 17.99)".
+ *
+ * Every calculation stays in the amount's own currency. The figure in brackets
+ * is for reading only, at today's rate, and is marked ≈ so nobody takes it for
+ * the recorded amount: rates move, and a March invoice converted at September's
+ * rate is not what anybody was charged.
+ *
+ * NOT for anything a customer receives. An approximate conversion at an
+ * internal rate has no place on an invoice or a quote - use formatMoneyPlain.
+ */
+export function formatMoney(value: Numeric, currency = "PKR"): string {
+  return withCompanion(value, currency, formatMoneyPlain);
+}
+
+/** Compact, with its conversion: "PKR 1.2M (≈ USD 4.4K)". */
+export function formatCompactMoney(value: Numeric, currency = "PKR"): string {
+  return withCompanion(value, currency, formatCompactMoneyPlain);
+}
+
+function withCompanion(
+  value: Numeric,
+  currency: string,
+  format: (value: Numeric, currency: string) => string,
+): string {
+  const primary = format(value, currency);
+  const other = companionCurrency(currency);
+  if (!other) return primary;
+  const converted = convert(Number(toDecimal(value)), currency, other);
+  if (converted === null) return primary;
+  return `${primary} (≈ ${format(converted, other)})`;
 }
 
 export function formatNumber(value: Numeric, digits = 0): string {

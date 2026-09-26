@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui";
-import { setProductActive } from "@/server/crm";
+import { setProductServiceActive } from "@/server/products-services";
 
 /**
  * Retire a product, or put it back on sale.
@@ -20,7 +20,7 @@ export function ProductActiveToggle({ productId, active }: { productId: string; 
   function onClick() {
     setError(null);
     start(async () => {
-      const result = await setProductActive(productId, !active);
+      const result = await setProductServiceActive(productId, !active);
       if (result.ok) router.refresh();
       else setError(result.error);
     });

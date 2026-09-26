@@ -4,6 +4,8 @@ import { PageGuide } from "@/components/page-guide";
 import { requireUser, can, AuthorizationError, PERMISSIONS } from "@/lib/authz";
 import { PicklistProvider } from "@/components/picklist";
 import { getPicklistMap } from "@/server/picklists";
+import { CurrencyContextProvider } from "@/components/currency-context-provider";
+import { ensureCurrencyContext } from "@/lib/currency-loader";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   try {
@@ -16,7 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     if (user.userType === "CUSTOMER") redirect("/support");
 
     // The configurable dropdown values, loaded once for every form.
-    const picklists = await getPicklistMap();
+    const [picklists, currencies] = await Promise.all([getPicklistMap(), ensureCurrencyContext()]);
 
     return (
       <AppShell
@@ -29,7 +31,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             forgotten. The guide keys off the pathname, so it knows which screen
             it is on without being told. */}
         <PageGuide />
-        <PicklistProvider value={picklists}>{children}</PicklistProvider>
+        {/* The browser formats money with the same rates the server just used,
+            or the two would render different text and fail to hydrate. */}
+        <CurrencyContextProvider value={currencies}>
+          <PicklistProvider value={picklists}>{children}</PicklistProvider>
+        </CurrencyContextProvider>
       </AppShell>
     );
   } catch (err) {

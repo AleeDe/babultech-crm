@@ -10,7 +10,7 @@ import {
 } from "@/components/ui";
 import { RankedList, AttentionList } from "@/components/dashboard-kit";
 import { Sparkline, Delta } from "@/components/sparkline";
-import { formatMoney, formatDate, formatPercent, humanize, daysBetween } from "@/lib/utils";
+import { formatMoneyPlain as formatMoney, formatDate, formatPercent, humanize, daysBetween } from "@/lib/utils";
 
 export default async function PortalHomePage() {
   const [summary, partner, recent, unread, stats] = await Promise.all([

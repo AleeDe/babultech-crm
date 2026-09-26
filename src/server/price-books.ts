@@ -4,49 +4,131 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
+import { one } from "@/lib/decimal";
 import type { ActionResult } from "./partners";
 
 /**
- * Price books: a product's priced offers.
+ * Price books: our prices for a period, for everything we sell.
  *
- * One product can carry several at once (Standard, Premium) and over time
- * (2025 rates, 2026 rates). A deal copies the book's four costs when it picks
- * one, so changing or retiring a book never rewrites deals already priced from
- * it - the old customers keep the old price.
+ * A book is a catalogue - "2026 Standard Rates" - and each entry prices one
+ * product or service in it. An opportunity chooses ONE book and then picks its
+ * products from it, which is what this shape makes possible; under the old
+ * shape each product carried its own books and there was no single book to
+ * choose.
+ *
+ * Lines COPY an entry's figures when they are added, so revising or retiring a
+ * book never re-prices a deal that was already priced from it.
  */
 
 export interface PriceBook {
   id: string;
-  productId: string;
   name: string;
   description: string | null;
   currencyCode: string;
+  validFrom: string | null;
+  validTo: string | null;
+  active: boolean;
+  entryCount: number;
+}
+
+export interface PriceBookEntry {
+  id: string;
+  priceBookId: string;
+  productId: string;
+  quantity: string;
+  rate: string;
   licenseCost: string;
   maintenanceCost: string;
   cloudCost: string;
   aiCost: string;
-  validFrom: string | null;
-  validTo: string | null;
   active: boolean;
+  product: {
+    id: string;
+    name: string;
+    productCode: string;
+    productType: "PRODUCT" | "SERVICE";
+    addInTask: boolean;
+  } | null;
 }
 
 const money = z.preprocess(
   (v) => (v === "" || v == null ? 0 : v),
-  z.coerce.number().finite().min(0, "Costs cannot be negative."),
+  z.coerce.number().finite().min(0, "Amounts cannot be negative."),
 );
-const optionalDate = z.preprocess((v) => (v === "" || v == null ? null : v), z.string().date().nullable());
+const optionalDate = z.preprocess(
+  (v) => (v === "" || v == null ? null : v),
+  z.string().date().nullable(),
+);
 
-const priceBookSchema = z
+// ---------------------------------------------------------------------------
+// Books
+// ---------------------------------------------------------------------------
+
+export async function listPriceBooks(filters?: { activeOnly?: boolean }): Promise<PriceBook[]> {
+  await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
+  const db = await supabaseServer();
+
+  let query = db
+    .from("price_book")
+    .select(
+      `id, name, description, currencyCode, validFrom, validTo, active,
+       entries:price_book_entry ( count )`,
+    )
+    .is("deletedAt", null)
+    .order("active", { ascending: false })
+    .order("name");
+
+  if (filters?.activeOnly) query = query.eq("active", true);
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Could not load price books: ${error.message}`);
+
+  return (data ?? []).map((b) => ({
+    id: b.id as string,
+    name: b.name as string,
+    description: (b.description as string) ?? null,
+    currencyCode: b.currencyCode as string,
+    validFrom: (b.validFrom as string) ?? null,
+    validTo: (b.validTo as string) ?? null,
+    active: Boolean(b.active),
+    entryCount: (b.entries as { count: number }[] | undefined)?.[0]?.count ?? 0,
+  }));
+}
+
+export async function getPriceBook(id: string): Promise<(PriceBook & { entries: PriceBookEntry[] }) | null> {
+  await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
+  const db = await supabaseServer();
+
+  const { data: book } = await db
+    .from("price_book")
+    .select("id, name, description, currencyCode, validFrom, validTo, active")
+    .eq("id", id)
+    .is("deletedAt", null)
+    .maybeSingle();
+
+  if (!book) return null;
+
+  const entries = await listPriceBookEntries(id);
+
+  return {
+    id: book.id as string,
+    name: book.name as string,
+    description: (book.description as string) ?? null,
+    currencyCode: book.currencyCode as string,
+    validFrom: (book.validFrom as string) ?? null,
+    validTo: (book.validTo as string) ?? null,
+    active: Boolean(book.active),
+    entryCount: entries.length,
+    entries,
+  };
+}
+
+const bookSchema = z
   .object({
     id: z.string().uuid().optional().nullable(),
-    productId: z.string().uuid(),
     name: z.string().trim().min(1, "Give the price book a name.").max(100, "That name is too long."),
     description: z.string().trim().max(2000).optional().nullable(),
     currencyCode: z.string().length(3).default("PKR"),
-    licenseCost: money,
-    maintenanceCost: money,
-    cloudCost: money,
-    aiCost: money,
     validFrom: optionalDate,
     validTo: optionalDate,
     active: z.boolean().default(true),
@@ -56,29 +138,13 @@ const priceBookSchema = z
     message: "Must be on or after the start date.",
   });
 
-export async function listPriceBooks(productId: string): Promise<PriceBook[]> {
-  await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
-  const db = await supabaseServer();
-  const { data, error } = await db
-    .from("price_book")
-    .select("*")
-    .eq("productId", productId)
-    .is("deletedAt", null)
-    .order("active", { ascending: false })
-    .order("name");
-  // Before the migration is applied the table does not exist; show no books
-  // rather than breaking the product page.
-  if (error) return [];
-  return (data ?? []) as PriceBook[];
-}
-
 export async function savePriceBook(
-  input: z.input<typeof priceBookSchema>,
+  input: z.infer<typeof bookSchema>,
 ): Promise<ActionResult<{ id: string }>> {
   const auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
   if (!auth.ok) return { ok: false, error: auth.error };
 
-  const parsed = priceBookSchema.safeParse(input);
+  const parsed = bookSchema.safeParse(input);
   if (!parsed.success) {
     return {
       ok: false,
@@ -86,58 +152,220 @@ export async function savePriceBook(
       fieldErrors: parsed.error.flatten().fieldErrors,
     };
   }
-  const { id, ...values } = parsed.data;
+  const { id, ...row } = parsed.data;
   const db = await supabaseServer();
-  const row = { ...values, description: values.description || null, updatedAt: new Date().toISOString() };
 
+  const payload = { ...row, description: row.description || null, updatedAt: new Date().toISOString() };
   const { data, error } = id
-    ? await db.from("price_book").update(row).eq("id", id).is("deletedAt", null).select("id").maybeSingle()
-    : await db.from("price_book").insert(row).select("id").single();
+    ? await db.from("price_book").update(payload).eq("id", id).select("id").maybeSingle()
+    : await db.from("price_book").insert(payload).select("id").single();
 
   if (error) {
-    return {
-      ok: false,
-      error: error.code === "23505" ? "This product already has a price book with that name." : error.message,
-    };
+    // The unique index is on the name; say it in words.
+    if (error.code === "23505") {
+      return { ok: false, error: "A price book with that name already exists.", fieldErrors: { name: ["Already in use."] } };
+    }
+    return { ok: false, error: error.message };
   }
   if (!data) return { ok: false, error: "That price book no longer exists." };
 
-  revalidatePath(`/products/${values.productId}`);
-  return { ok: true, data: { id: data.id } };
+  revalidatePath("/price-books");
+  revalidatePath(`/price-books/${data.id}`);
+  return { ok: true, data: { id: data.id as string } };
 }
 
 /**
- * Removes a price book from the product.
+ * Copy a book, with every price in it - how next year's rates are started.
  *
- * Deals that used it keep their copied costs and their link, so this is a soft
- * delete. To stop offering a book while keeping it visible, mark it inactive.
+ * Copying rather than editing is the point: the old book stays exactly as it
+ * was, so deals priced from it still show where their numbers came from.
  */
+export async function copyPriceBook(
+  sourceId: string,
+  name: string,
+): Promise<ActionResult<{ id: string }>> {
+  const auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!auth.ok) return { ok: false, error: auth.error };
+
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, error: "Give the new price book a name." };
+
+  const db = await supabaseServer();
+  const source = await getPriceBook(sourceId);
+  if (!source) return { ok: false, error: "That price book no longer exists." };
+
+  const { data: created, error } = await db
+    .from("price_book")
+    .insert({
+      name: trimmed,
+      description: source.description,
+      currencyCode: source.currencyCode,
+      active: false,
+      updatedAt: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    if (error.code === "23505") return { ok: false, error: "A price book with that name already exists." };
+    return { ok: false, error: error.message };
+  }
+
+  if (source.entries.length) {
+    const { error: entryError } = await db.from("price_book_entry").insert(
+      source.entries.map((e) => ({
+        priceBookId: created.id,
+        productId: e.productId,
+        quantity: e.quantity,
+        rate: e.rate,
+        licenseCost: e.licenseCost,
+        maintenanceCost: e.maintenanceCost,
+        cloudCost: e.cloudCost,
+        aiCost: e.aiCost,
+        active: e.active,
+      })),
+    );
+    if (entryError) return { ok: false, error: entryError.message };
+  }
+
+  revalidatePath("/price-books");
+  return { ok: true, data: { id: created.id as string } };
+}
+
 export async function deletePriceBook(id: string): Promise<ActionResult> {
   const auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
   if (!auth.ok) return { ok: false, error: auth.error };
 
   const db = await supabaseServer();
-  const now = new Date().toISOString();
-  const { data, error } = await db
+
+  // A book deals were priced from is retired, not deleted: those deals still
+  // point at it, and "where did this price come from" should keep an answer.
+  const { count } = await db
+    .from("opportunity")
+    .select("id", { count: "exact", head: true })
+    .eq("priceBookId", id)
+    .is("deletedAt", null);
+
+  if (count && count > 0) {
+    return {
+      ok: false,
+      error: `${count} deal(s) were priced from this book. Mark it inactive instead, so it stops being offered but those deals keep their history.`,
+    };
+  }
+
+  const { error } = await db
     .from("price_book")
-    .update({ deletedAt: now, active: false, updatedAt: now })
-    .eq("id", id)
-    .is("deletedAt", null)
-    .select("productId")
-    .maybeSingle();
+    .update({ deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+    .eq("id", id);
 
   if (error) return { ok: false, error: error.message };
-  if (!data) return { ok: false, error: "That price book no longer exists." };
-
-  revalidatePath(`/products/${data.productId}`);
+  revalidatePath("/price-books");
   return { ok: true, data: undefined };
 }
 
+// ---------------------------------------------------------------------------
+// Entries
+// ---------------------------------------------------------------------------
+
+const ENTRY_SELECT = `
+  id, priceBookId, productId, quantity, rate,
+  licenseCost, maintenanceCost, cloudCost, aiCost, active,
+  product ( id, name, productCode, productType, addInTask )
+`;
+
+export async function listPriceBookEntries(priceBookId: string): Promise<PriceBookEntry[]> {
+  await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
+  const db = await supabaseServer();
+
+  const { data, error } = await db
+    .from("price_book_entry")
+    .select(ENTRY_SELECT)
+    .eq("priceBookId", priceBookId)
+    .is("deletedAt", null);
+
+  if (error) throw new Error(`Could not load prices: ${error.message}`);
+
+  return (data ?? [])
+    .map((e) => ({ ...e, product: one(e.product as never) }))
+    .sort((a, b) =>
+      String((a.product as { productCode?: string } | null)?.productCode ?? "").localeCompare(
+        String((b.product as { productCode?: string } | null)?.productCode ?? ""),
+      ),
+    ) as unknown as PriceBookEntry[];
+}
+
+const entrySchema = z.object({
+  id: z.string().uuid().optional().nullable(),
+  priceBookId: z.string().uuid(),
+  productId: z.string().uuid("Choose a product or service."),
+  quantity: money,
+  rate: money,
+  licenseCost: money,
+  maintenanceCost: money,
+  cloudCost: money,
+  aiCost: money,
+  active: z.boolean().default(true),
+});
+
+export async function savePriceBookEntry(
+  input: z.infer<typeof entrySchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!auth.ok) return { ok: false, error: auth.error };
+
+  const parsed = entrySchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  const { id, ...row } = parsed.data;
+  const db = await supabaseServer();
+
+  const payload = { ...row, updatedAt: new Date().toISOString() };
+  const { data, error } = id
+    ? await db.from("price_book_entry").update(payload).eq("id", id).select("id").maybeSingle()
+    : await db.from("price_book_entry").insert(payload).select("id").single();
+
+  if (error) {
+    if (error.code === "23505") {
+      return { ok: false, error: "That product or service is already priced in this book. Edit its existing price instead." };
+    }
+    return { ok: false, error: error.message };
+  }
+  if (!data) return { ok: false, error: "That price no longer exists." };
+
+  revalidatePath(`/price-books/${row.priceBookId}`);
+  return { ok: true, data: { id: data.id as string } };
+}
+
+export async function deletePriceBookEntry(id: string, priceBookId: string): Promise<ActionResult> {
+  const auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!auth.ok) return { ok: false, error: auth.error };
+
+  const db = await supabaseServer();
+  const { error } = await db
+    .from("price_book_entry")
+    .update({ deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+    .eq("id", id);
+
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/price-books/${priceBookId}`);
+  return { ok: true, data: undefined };
+}
+
+// ---------------------------------------------------------------------------
+// For quotes and invoices
+// ---------------------------------------------------------------------------
+
 /**
- * The sellable catalogue: active products, each with its active price books.
+ * Active products and services, with the books that price them.
  *
- * Quote, invoice and deal lines price from these. A product with no price book
- * can still be put on a line; its price is then typed in.
+ * Quotes and invoices read this shape - a product and a list of priced offers -
+ * so it is kept, now built from book entries. An item in no book can still be
+ * put on a line; its price is then typed in.
  */
 export async function listCatalogueProducts(): Promise<
   {
@@ -151,28 +379,35 @@ export async function listCatalogueProducts(): Promise<
   await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
   const db = await supabaseServer();
 
-  const [products, books] = await Promise.all([
+  const [products, entries] = await Promise.all([
     db
       .from("product")
       .select("id, name, productCode, defaultTaxRateId")
       .is("deletedAt", null)
       .eq("active", true)
-      .order("name"),
+      .order("productCode"),
     db
-      .from("price_book")
-      .select("id, productId, name, licenseCost, maintenanceCost, cloudCost, aiCost")
+      .from("price_book_entry")
+      .select(
+        `productId, quantity, rate, licenseCost, maintenanceCost, cloudCost, aiCost,
+         book:price_book!inner ( id, name, active, deletedAt )`,
+      )
       .is("deletedAt", null)
       .eq("active", true)
-      .order("name"),
+      .eq("book.active", true)
+      .is("book.deletedAt", null),
   ]);
 
   const byProduct = new Map<string, { id: string; name: string; total: string }[]>();
-  for (const b of books.data ?? []) {
+  for (const e of entries.data ?? []) {
+    const book = one(e.book as never) as { id: string; name: string } | null;
+    if (!book) continue;
     const total =
-      Number(b.licenseCost) + Number(b.maintenanceCost) + Number(b.cloudCost) + Number(b.aiCost);
-    const list = byProduct.get(b.productId as string) ?? [];
-    list.push({ id: b.id as string, name: b.name as string, total: total.toFixed(2) });
-    byProduct.set(b.productId as string, list);
+      Number(e.quantity) * Number(e.rate) +
+      Number(e.licenseCost) + Number(e.maintenanceCost) + Number(e.cloudCost) + Number(e.aiCost);
+    const list = byProduct.get(e.productId as string) ?? [];
+    list.push({ id: book.id, name: book.name, total: total.toFixed(2) });
+    byProduct.set(e.productId as string, list);
   }
 
   return (products.data ?? []).map((p) => ({

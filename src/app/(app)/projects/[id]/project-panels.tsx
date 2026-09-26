@@ -17,7 +17,6 @@ import {
 } from "@/components/ui";
 import { PicklistOptions } from "@/components/picklist";
 import { PicklistSelect } from "@/components/picklist-select";
-import { TASK_CATEGORIES } from "@/lib/picklists";
 import { cn, formatDate, formatMoney, formatPercent, humanize } from "@/lib/utils";
 import { FormDialog } from "@/components/form-dialog";
 import { RichTextEditor } from "@/components/rich-text-editor";
@@ -60,10 +59,12 @@ export interface Task {
   billable: boolean;
   acceptanceCriteria: string | null;
   taskType: string | null;
-  taskCategory: string | null;
-  rate: string | null;
-  discountAmount: string | null;
-  lineTotal: string | null;
+  /** Set when the task came from a deal: the hours and rate the customer bought. */
+  soldHours: string | null;
+  soldRate: string | null;
+  opportunityProductId: string | null;
+  /** Time booked against it, for sold-versus-used. */
+  loggedHours?: string | null;
   _count: { subtasks: number };
 }
 
@@ -103,32 +104,29 @@ interface UserOption {
 const dateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
 
 /**
- * Hours, rate and discount, with the line total they make. The same sum the
- * database stores in lineTotal and adds up into the project's Implementation
- * and Training totals.
+ * The task's hours - and, for a task that came from a deal, what was sold.
+ *
+ * Tasks no longer carry a price. What the customer pays was agreed on the deal;
+ * a task from it records the hours and rate SOLD, which are shown here but not
+ * editable, because they are the contract rather than the plan. The estimate
+ * beside them is the project manager's, and may change.
  */
 function TaskCosting({ task }: { task: Task | null }) {
-  const [hours, setHours] = useState(task?.estimatedHours ?? "");
-  const [rate, setRate] = useState(task?.rate ?? "");
-  const [discount, setDiscount] = useState(task?.discountAmount ?? "");
-  const total = (Number(hours) || 0) * (Number(rate) || 0) - (Number(discount) || 0);
-
+  const sold = task?.soldHours != null;
   return (
     <>
-      <Field label="Hours" hint="Also the weight used for progress roll-up."
-          help="How long it takes. Hours x rate - discount is this task's amount.">
-        <Input name="estimatedHours" type="number" step="0.5" min="0" value={hours} onChange={(e) => setHours(e.target.value)} />
+      <Field label={sold ? "Estimated hours" : "Hours"} hint="Also the weight used for progress roll-up."
+          help={sold ? "Your plan for the work. The hours sold are shown beside it and do not change." : "How long it takes."}>
+        <Input name="estimatedHours" type="number" step="0.5" min="0" defaultValue={task?.estimatedHours ?? ""} />
       </Field>
-      <Field label="Rate" help="Charge per hour.">
-        <Input name="rate" type="number" step="0.01" min="0" value={rate} onChange={(e) => setRate(e.target.value)} />
-      </Field>
-      <Field label="Discount" help="An amount taken off hours x rate.">
-        <Input name="discountAmount" type="number" step="0.01" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} />
-      </Field>
-      <div className="flex items-end pb-2 text-sm">
-        <span className="text-muted-foreground">Task total:</span>
-        <span className={cn("ml-2 font-semibold tabular", total < 0 && "text-destructive")}>{formatMoney(total)}</span>
-      </div>
+      {sold && (
+        <div className="flex flex-col justify-end pb-2 text-sm">
+          <span className="text-muted-foreground">Sold on the deal</span>
+          <span className="font-semibold tabular">
+            {Number(task!.soldHours)} h @ {formatMoney(task!.soldRate ?? 0)}
+          </span>
+        </div>
+      )}
     </>
   );
 }
@@ -252,9 +250,6 @@ export function TaskBoard({
       billable: isInternal ? false : formData.get("billable") === "on",
       acceptanceCriteria: get("acceptanceCriteria"),
       taskType: get("taskType"),
-      taskCategory: get("taskCategory"),
-      rate: get("rate"),
-      discountAmount: get("discountAmount"),
     } as never;
 
     startTransition(async () => {
@@ -330,13 +325,6 @@ export function TaskBoard({
         <Field label="Task type"
             help="The kind of work, e.g. Installation, Testing, Data migration. Add one here if it is missing.">
           <PicklistSelect list="task_type" name="taskType" defaultValue={task?.taskType ?? ""} addLabel="Add a task type" />
-        </Field>
-        <Field label="Task category"
-            help="Implementation or Training. Decides which project total, and which deal cost, this task's amount counts towards.">
-          <Select name="taskCategory" defaultValue={task?.taskCategory ?? ""}>
-            <option value="">Not costed</option>
-            <PicklistOptions list="task_category" fallback={TASK_CATEGORIES} within={TASK_CATEGORIES} current={task?.taskCategory} />
-          </Select>
         </Field>
         <TaskCosting task={task} />
         <Field label="Start date"
@@ -476,13 +464,16 @@ export function TaskBoard({
               {/* Second line only when there is something to say. An
                   "Unassigned · non-billable" line under every card is noise
                   repeated nine times; absence carries the same meaning. */}
-              {(t.assignedUser || t.dueDate || t.estimatedHours || (t.taskCategory && Number(t.lineTotal) > 0)) && (
+              {(t.assignedUser || t.dueDate || t.estimatedHours || t.soldHours) && (
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">
                   {[
                     t.assignedUser?.fullName,
                     t.dueDate && `due ${formatDate(t.dueDate)}`,
                     t.estimatedHours && `${Number(t.estimatedHours)}h`,
-                    t.taskCategory && Number(t.lineTotal) > 0 && `${humanize(t.taskCategory)} ${formatMoney(t.lineTotal)}`,
+                    // Sold against used, for a task that came from a deal - the
+                    // one figure a project manager needs to see without opening it.
+                    t.soldHours != null &&
+                      `${Number(t.loggedHours ?? 0)} of ${Number(t.soldHours)}h sold used`,
                   ]
                     .filter(Boolean)
                     .join(" · ")}

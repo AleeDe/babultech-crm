@@ -6,7 +6,7 @@ import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, Button,
   Table, THead, TBody, TR, TH, TD, EmptyState, statusTone,
 } from "@/components/ui";
-import { formatMoney, formatDate, humanize } from "@/lib/utils";
+import { formatMoneyPlain as formatMoney, formatDate, humanize } from "@/lib/utils";
 
 /** One label/value row, laid out as the CRM's account page lays them out. */
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {

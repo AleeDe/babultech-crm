@@ -16,6 +16,8 @@ import {
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize, serialize } from "@/lib/utils";
 import { PartnerPanel, StageControl } from "./partner-panel";
+import { OpportunityProductServices } from "./product-services";
+import { getOpportunityPricing } from "@/server/opportunity-lines";
 
 export default async function OpportunityDetailPage({
   params,
@@ -29,7 +31,7 @@ export default async function OpportunityDetailPage({
 
   // One wave: none of these needs a result from another, and each extra wave
   // costs a full round trip against a database ~400ms away.
-  const [notes, documents, opp, availablePartners, audit] = await Promise.all([
+  const [notes, documents, opp, availablePartners, audit, pricing] = await Promise.all([
     listNotes("Opportunity", id),
     listDocuments("Opportunity", id),
     getOpportunity(id),
@@ -44,6 +46,7 @@ export default async function OpportunityDetailPage({
       return data ?? [];
     })(),
     getAuditTrail("Opportunity", id, 15),
+    getOpportunityPricing(id),
   ]);
   if (!opp) notFound();
   const acceptedQuote = opp.quotations.find((q: Record<string, any>) => q.status === "ACCEPTED");
@@ -105,50 +108,13 @@ export default async function OpportunityDetailPage({
             availablePartners={availablePartners}
           />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Line items</CardTitle>
-            </CardHeader>
-            <CardContent className="px-0">
-              {opp.lines.length === 0 ? (
-                <p className="px-5 pb-2 text-sm text-muted-foreground">No products added.</p>
-              ) : (
-                <Table>
-                  <THead>
-                    <TR>
-                      <TH>Product</TH>
-                      <TH priority="secondary" className="text-right">Qty</TH>
-                      <TH priority="secondary" className="text-right">Unit price</TH>
-                      <TH priority="tertiary" className="text-right">Discount</TH>
-                      <TH className="text-right">Total</TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {opp.lines.map((l: Record<string, any>) => (
-                      <TR key={l.id}>
-                        <TD className="text-sm">
-                          <Link href={`/products/${l.product?.id}`} className="font-medium hover:underline">
-                            {l.product?.name}
-                          </Link>
-                          <p className="text-xs text-muted-foreground">{l.product?.productCode}</p>
-                          <p className="mt-0.5 text-xs tabular text-muted-foreground sm:hidden">
-                            {Number(l.quantity)} × {formatMoney(l.unitPrice, opp.currencyCode)}
-                            {Number(l.discountPercent ?? 0) > 0 && ` − ${formatPercent(l.discountPercent)}`}
-                          </p>
-                        </TD>
-                        <TD priority="secondary" className="text-right tabular">{Number(l.quantity)}</TD>
-                        <TD priority="secondary" className="whitespace-nowrap text-right tabular">{formatMoney(l.unitPrice, opp.currencyCode)}</TD>
-                        <TD priority="tertiary" className="text-right tabular">{formatPercent(l.discountPercent)}</TD>
-                        <TD className="whitespace-nowrap text-right font-medium tabular">
-                          {formatMoney(l.lineTotal, opp.currencyCode)}
-                        </TD>
-                      </TR>
-                    ))}
-                  </TBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+          {pricing && (
+            <OpportunityProductServices
+              opportunityId={opp.id}
+              pricing={pricing}
+              canWrite={can(_me, PERMISSIONS.OPPORTUNITY_WRITE)}
+            />
+          )}
 
           <Card>
             <CardHeader>
@@ -214,34 +180,12 @@ export default async function OpportunityDetailPage({
               <div className="space-y-6">
           <StageControl opportunityId={opp.id} currentStage={opp.stage} />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Product &amp; pricing</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <Row label="Product">
-                {opp.product ? (
-                  <Link href={`/products/${opp.product.id}`} className="hover:underline">{opp.product.name}</Link>
-                ) : "—"}
-              </Row>
-              <Row label="Price book">
-                {opp.priceBook ? (
-                  <>{opp.priceBook.name}{!opp.priceBook.active && <span className="text-muted-foreground"> (inactive)</span>}</>
-                ) : "—"}
-              </Row>
-              <Row label="License cost">{formatMoney(opp.licenseCost ?? 0, opp.currencyCode)}</Row>
-              <Row label="Maintenance cost">{formatMoney(opp.maintenanceCost ?? 0, opp.currencyCode)}</Row>
-              <Row label="Cloud cost">{formatMoney(opp.cloudCost ?? 0, opp.currencyCode)}</Row>
-              <Row label="AI cost">{formatMoney(opp.aiCost ?? 0, opp.currencyCode)}</Row>
-              <Row label="Implementation cost">{formatMoney(opp.implementationCost ?? 0, opp.currencyCode)}</Row>
-              <Row label="Training cost">{formatMoney(opp.trainingCost ?? 0, opp.currencyCode)}</Row>
-              <Row label="Discount %">{Number(opp.discountPercent ?? 0)}%</Row>
-              <div className="border-t pt-3">
-                <Row label="Total amount">
-                  <span className="font-semibold">{formatMoney(opp.totalAmount ?? 0, opp.currencyCode)}</span>
-                </Row>
-              </div>
-              {opp.projects.length > 0 && (
+          {opp.projects.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Delivery</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
                 <Row label={opp.projects.length === 1 ? "Project" : "Projects"}>
                   {opp.projects.map((p: Record<string, any>) => (
                     <Link key={p.id} href={`/projects/${p.id}`} className="block hover:underline">
@@ -249,12 +193,12 @@ export default async function OpportunityDetailPage({
                     </Link>
                   ))}
                 </Row>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Implementation and training costs follow the project&apos;s tasks.
-              </p>
-            </CardContent>
-          </Card>
+                <p className="text-xs text-muted-foreground">
+                  Services sold in hours became tasks on the project, with the hours sold as their budget.
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>

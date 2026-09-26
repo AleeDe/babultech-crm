@@ -1,92 +1,117 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { listProducts } from "@/server/crm";
-import { ListFilters, optionsFrom } from "@/components/list-filters";
+import { listProductsServices } from "@/server/products-services";
+import { ListFilters } from "@/components/list-filters";
 import {
-  PageHeader, Button, Card, Table, THead, TBody, TR, TH, TD, Badge, EmptyState, Forbidden
+  PageHeader, Button, Card, Table, THead, TBody, TR, TH, TD, Badge, EmptyState, Forbidden, StatTile,
 } from "@/components/ui";
-import { formatMoney, formatPercent, humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
-import { ExportButton } from "@/components/export-button";
 
-export default async function ProductsPage({
+export default async function ProductsServicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string; productType?: string }>;
+  searchParams: Promise<{ search?: string; productType?: string; active?: string }>;
 }) {
-  const _me = await requireUser();
-  if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="the product catalogue" />;
+  const me = await requireUser();
+  if (!can(me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="products and services" />;
 
   const params = await searchParams;
-  const products = await listProducts(false, params);
+  const items = await listProductsServices(params);
+
+  const products = items.filter((i) => i.productType === "PRODUCT").length;
+  const services = items.length - products;
+  const tasked = items.filter((i) => i.addInTask).length;
 
   return (
     <>
       <PageHeader
-        title="Products & services"
-        description="The catalogue behind quotes and invoices. Commission can be overridden per product."
+        title="Products & Services"
+        description="Everything we and our partners sell. Prices are set in price books; a service marked Add in Task is sold in hours and becomes project work."
       >
-        <ExportButton entity="products" params={{ search: params.search, productType: params.productType }} />
-        {can(_me, PERMISSIONS.OPPORTUNITY_WRITE) && (
+        {can(me, PERMISSIONS.OPPORTUNITY_WRITE) && (
           <Button asChild>
             <Link href="/products/new">
-              <Plus className="h-4 w-4" /> New product
+              <Plus className="h-4 w-4" /> New product or service
             </Link>
           </Button>
         )}
       </PageHeader>
 
-      <ListFilters
-        searchPlaceholder="Search name, code or category…"
-        searchValue={params.search}
-        selects={[
-          {
-            name: "productType",
-            allLabel: "All types",
-            value: params.productType,
-            options: optionsFrom(["PRODUCT", "SERVICE", "SUBSCRIPTION"]),
-          },
-        ]}
-      />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatTile label="Products" value={String(products)} href="/products?productType=PRODUCT" />
+        <StatTile label="Services" value={String(services)} href="/products?productType=SERVICE" />
+        <StatTile
+          label="Add in Task"
+          value={String(tasked)}
+          sublabel="Sold in hours, become project tasks"
+          tone="info"
+        />
+      </div>
+
+      <div className="mt-6">
+        <ListFilters
+          searchPlaceholder="Search name or code…"
+          searchValue={params.search}
+          selects={[
+            {
+              name: "productType",
+              allLabel: "Products and services",
+              value: params.productType,
+              options: [
+                { value: "PRODUCT", label: "Products" },
+                { value: "SERVICE", label: "Services" },
+              ],
+            },
+            {
+              name: "active",
+              allLabel: "Active or not",
+              value: params.active,
+              options: [
+                { value: "yes", label: "Active" },
+                { value: "no", label: "Inactive" },
+              ],
+            },
+          ]}
+        />
+      </div>
 
       <Card>
-        {products.length === 0 ? (
-          <EmptyState title="No products yet" description="Add your saleable products, services and subscriptions." />
+        {items.length === 0 ? (
+          <div className="py-10">
+            <EmptyState title="Nothing matches" description="Clear the filters, or add a product or service." />
+          </div>
         ) : (
           <Table>
             <THead>
               <TR>
-                <TH>Product</TH>
-                <TH priority="tertiary">Category</TH>
-                <TH priority="secondary">Type</TH>
-                <TH className="text-right" priority="tertiary">Commission</TH>
-                <TH priority="tertiary">Tax</TH>
+                <TH>Code</TH>
+                <TH>Name</TH>
+                <TH>Type</TH>
+                <TH priority="secondary">Add in Task</TH>
+                <TH priority="secondary">Owner</TH>
+                <TH>Status</TH>
               </TR>
             </THead>
             <TBody>
-              {products.map((p) => (
-                <TR key={p.id} className={p.active ? "" : "opacity-50"}>
+              {items.map((i) => (
+                <TR key={i.id}>
+                  <TD className="font-mono text-sm">{i.productCode}</TD>
                   <TD>
-                    <Link href={`/products/${p.id}`} className="font-medium hover:underline">
-                      {p.name}
+                    <Link href={`/products/${i.id}`} className="text-sm font-medium hover:underline">
+                      {i.name}
                     </Link>
-                    <p className="text-xs text-muted-foreground">{p.productCode}</p>
                   </TD>
-                  <TD priority="tertiary" className="text-sm text-muted-foreground">{p.category ?? "—"}</TD>
-                  <TD priority="secondary">
-                    <Badge tone="neutral">{humanize(p.productType)}</Badge>
+                  <TD>
+                    <Badge tone={i.productType === "SERVICE" ? "info" : "neutral"}>
+                      {i.productType === "SERVICE" ? "Service" : "Product"}
+                    </Badge>
                   </TD>
-                  <TD priority="tertiary" className="text-right tabular">
-                    {!p.commissionable ? (
-                      <span className="text-muted-foreground">excluded</span>
-                    ) : p.commissionPercent ? (
-                      formatPercent(p.commissionPercent)
-                    ) : (
-                      <span className="text-muted-foreground">plan rate</span>
-                    )}
+                  <TD priority="secondary" className="text-sm">
+                    {i.productType === "SERVICE" ? (i.addInTask ? "Yes — hours" : "No") : "—"}
                   </TD>
-                  <TD priority="tertiary" className="text-sm text-muted-foreground">
-                    {p.defaultTaxRate ? `${p.defaultTaxRate?.name} ${formatPercent(p.defaultTaxRate?.ratePercent, 0)}` : "—"}
+                  <TD priority="secondary" className="text-sm">{i.owner?.name ?? "—"}</TD>
+                  <TD>
+                    {i.active ? <Badge tone="success">Active</Badge> : <Badge tone="warning">Inactive</Badge>}
                   </TD>
                 </TR>
               ))}

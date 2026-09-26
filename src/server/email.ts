@@ -7,7 +7,9 @@ import { Resend } from "resend";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { one } from "@/lib/decimal";
-import { formatMoney, formatDate } from "@/lib/utils";
+// Plain, single-currency formatting: this goes to customers, and an approximate
+// conversion at an internal rate has no place on a quote or an invoice.
+import { formatMoneyPlain as formatMoney, formatDate } from "@/lib/utils";
 import {
   renderDocumentEmail, fillTemplate, type EmailBranding,
 } from "@/lib/email-template";

@@ -9,7 +9,7 @@ import {
   EmptyState, StatTile, Alert, Button,
 } from "@/components/ui";
 import { ListFilters, optionsFrom } from "@/components/list-filters";
-import { formatMoney, formatDate, formatPercent, humanize, daysBetween } from "@/lib/utils";
+import { formatMoneyPlain as formatMoney, formatDate, formatPercent, humanize, daysBetween } from "@/lib/utils";
 import { REGISTRATION_EXPIRY_WARNING_DAYS } from "@/lib/partner-policy";
 
 /** The stages a partner can meaningfully filter by. */

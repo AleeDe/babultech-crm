@@ -6,7 +6,7 @@ import { picklistCode } from "@/lib/picklists";
 import Decimal from "decimal.js";
 import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
-import { updateRecord, applyScope, LIST_LIMIT } from "@/lib/db";
+import { createRecord, updateRecord, applyScope, LIST_LIMIT } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission, scopedContext } from "@/lib/authz";
 import { auditChanges } from "@/lib/audit";
@@ -27,14 +27,6 @@ const STAGE_PROBABILITY: Record<string, number> = {
   ON_HOLD: 15,
 };
 
-const lineSchema = z.object({
-  productId: z.string().uuid(),
-  quantity: z.coerce.number().positive(),
-  unitPrice: z.coerce.number().min(0),
-  discountPercent: z.coerce.number().min(0).max(100).optional().nullable(),
-  taxRateId: z.string().uuid().optional().nullable(),
-});
-
 const opportunitySchema = z.object({
   name: z.string().min(1).max(255),
   accountId: z.string().uuid(),
@@ -48,7 +40,10 @@ const opportunitySchema = z.object({
       "CLOSED_WON", "CLOSED_LOST", "ON_HOLD",
     ])
     .default("DISCOVERY"),
-  amount: z.coerce.number().min(0),
+  // An estimate until the deal has products and services on it. From the
+  // first line onwards the amount is their total and this is ignored - see
+  // updateOpportunity.
+  amount: z.preprocess((v) => (v === "" || v == null ? 0 : v), z.coerce.number().min(0)),
   currencyCode: z.string().length(3).default("PKR"),
   // Nullable, not just optional: z.coerce would turn a blank form field's null
   // into 0 and silently beat the stage default below.
@@ -58,74 +53,15 @@ const opportunitySchema = z.object({
   leadSource: z.string().max(100).optional().nullable(),
   nextStep: z.string().max(500).optional().nullable(),
   description: z.string().optional().nullable(),
-  // The product this deal sells and the price book it is priced from. The
-  // book's costs are copied onto the deal on the server, never taken from the
-  // form, so a deal's price is what the book said when it was chosen.
-  productId: z.string().uuid().optional().nullable(),
-  priceBookId: z.string().uuid().optional().nullable(),
-  discountPercent: z.coerce.number().min(0, "Discount cannot be negative.").max(100, "Discount cannot exceed 100%.").optional().nullable(),
-  lines: z.array(lineSchema).optional(),
 });
 
-function lineTotal(line: z.infer<typeof lineSchema>): Decimal {
-  const gross = toDecimal(line.quantity).times(line.unitPrice);
-  const discount = gross.times(line.discountPercent ?? 0).dividedBy(100);
-  return gross.minus(discount).toDecimalPlaces(2);
-}
-
-type Db = Awaited<ReturnType<typeof supabaseServer>>;
-
 /**
- * The price-book half of a deal's payload.
+ * Create a deal.
  *
- * A newly chosen book has its four costs copied onto the deal. An unchanged
- * book keeps the costs the deal already has, so editing a book later never
- * reprices deals that were sold on it. No book means no book costs.
+ * Products and services are NOT set here. They are added afterwards with Add
+ * Product & Service, which chooses the price book and prices each line - the
+ * deal has to exist first for its lines to belong to it.
  */
-async function pricingPayload(
-  db: Db,
-  data: { productId?: string | null; priceBookId?: string | null; discountPercent?: number | null },
-  existing?: { priceBookId: string | null } | null,
-): Promise<{ ok: true; payload: Record<string, unknown> } | { ok: false; error: string }> {
-  const base = {
-    productId: data.productId ?? null,
-    priceBookId: data.priceBookId ?? null,
-    discountPercent: data.discountPercent ?? 0,
-  };
-
-  if (!data.priceBookId) {
-    return { ok: true, payload: { ...base, licenseCost: 0, maintenanceCost: 0, cloudCost: 0, aiCost: 0 } };
-  }
-  if (!data.productId) {
-    return { ok: false, error: "Choose the product before its price book." };
-  }
-  if (existing && existing.priceBookId === data.priceBookId) {
-    return { ok: true, payload: base };
-  }
-
-  const { data: book, error } = await db
-    .from("price_book")
-    .select("productId, licenseCost, maintenanceCost, cloudCost, aiCost, active, deletedAt")
-    .eq("id", data.priceBookId)
-    .maybeSingle();
-
-  if (error) return { ok: false, error: `Could not load the price book: ${error.message}` };
-  if (!book || book.deletedAt) return { ok: false, error: "That price book no longer exists." };
-  if (book.productId !== data.productId) return { ok: false, error: "That price book belongs to a different product." };
-  if (!book.active) return { ok: false, error: "That price book is inactive. Choose an active one." };
-
-  return {
-    ok: true,
-    payload: {
-      ...base,
-      licenseCost: book.licenseCost,
-      maintenanceCost: book.maintenanceCost,
-      cloudCost: book.cloudCost,
-      aiCost: book.aiCost,
-    },
-  };
-}
-
 export async function createOpportunity(
   input: z.infer<typeof opportunitySchema>,
 ): Promise<ActionResult<{ id: string }>> {
@@ -139,16 +75,9 @@ export async function createOpportunity(
   const data = parsed.data;
 
   try {
-    const db = await supabaseServer();
-
-    const pricing = await pricingPayload(db, data);
-    if (!pricing.ok) return { ok: false, error: pricing.error, fieldErrors: { priceBookId: [pricing.error] } };
-
-    // Deal + its product lines atomically — a deal whose lines failed to write
-    // shows a total that reconciles against nothing.
-    const { data: opp, error } = await db.rpc("create_with_lines", {
-      p_table: "opportunity",
-      p_payload: {
+    const opp = await createRecord<{ id: string }>(
+      "opportunity",
+      {
         name: data.name,
         accountId: data.accountId,
         primaryContactId: data.primaryContactId ?? null,
@@ -163,23 +92,9 @@ export async function createOpportunity(
         leadSource: data.leadSource ?? null,
         nextStep: data.nextStep ?? null,
         description: data.description ?? null,
-        ...pricing.payload,
       },
-      p_line_table: "opportunity_product",
-      p_lines: (data.lines ?? []).map((line) => ({
-        productId: line.productId,
-        quantity: line.quantity,
-        unitPrice: line.unitPrice,
-        discountPercent: line.discountPercent ?? null,
-        taxRateId: line.taxRateId ?? null,
-        lineTotal: lineTotal(line).toFixed(2),
-      })),
-      p_parent_field: "opportunityId",
-      p_number_field: "opportunityNumber",
-      p_sequence: SEQUENCES.OPPORTUNITY,
-    });
-
-    if (error) throw new Error(error.message);
+      { field: "opportunityNumber", sequence: SEQUENCES.OPPORTUNITY },
+    );
 
     revalidatePath("/opportunities");
     return { ok: true, data: { id: opp.id } };
@@ -192,6 +107,14 @@ export async function createOpportunity(
  *  carries the §13 gates and fires commission accrual. */
 const opportunityUpdateSchema = opportunitySchema.omit({ stage: true });
 
+/**
+ * Update a deal's details.
+ *
+ * Deliberately leaves its products and services alone. Those are edited only
+ * through Add Product & Service, which saves them all together. The edit form
+ * used to delete and re-insert every line on every save, which is a quiet way
+ * to lose a line that has since become a project task.
+ */
 export async function updateOpportunity(
   id: string,
   input: z.infer<typeof opportunityUpdateSchema>,
@@ -211,16 +134,21 @@ export async function updateOpportunity(
 
     const { data: before } = await db
       .from("opportunity")
-      .select("amount, probabilityPercent, priceBookId, commissionRecords:commission_record ( id )")
+      .select("amount, probabilityPercent, pricedByLines, commissionRecords:commission_record ( id )")
       .eq("id", id)
       .maybeSingle();
 
     if (!before) return { ok: false, error: "Opportunity not found." };
 
+    // Once a deal has lines, its amount is their total and nothing typed here
+    // may replace it.
+    const pricedByLines = Boolean(before.pricedByLines);
+    const nextAmount = pricedByLines ? before.amount : data.amount;
+
     // Commission has already been calculated off this amount. Changing it now
     // would silently desync the ledger — clawback is the correct path.
     const accrued = ((before.commissionRecords ?? []) as unknown[]).length;
-    if (accrued > 0 && !toDecimal(before.amount).equals(toDecimal(data.amount))) {
+    if (accrued > 0 && !toDecimal(before.amount).equals(toDecimal(nextAmount))) {
       return {
         ok: false,
         error:
@@ -228,22 +156,16 @@ export async function updateOpportunity(
       };
     }
 
-    const pricing = await pricingPayload(db, data, { priceBookId: (before.priceBookId as string | null) ?? null });
-    if (!pricing.ok) return { ok: false, error: pricing.error, fieldErrors: { priceBookId: [pricing.error] } };
-
-    // Line items are replaced wholesale — simpler than diffing, and the lines
-    // carry no downstream references of their own. update_with_lines does the
-    // delete, re-insert and audit in one transaction.
-    const { error: updErr } = await db.rpc("update_with_lines", {
-      p_table: "opportunity",
-      p_id: id,
-      p_payload: {
+    await updateRecord(
+      "opportunity",
+      id,
+      {
         name: data.name,
         accountId: data.accountId,
         primaryContactId: data.primaryContactId ?? null,
         ownerUserId: data.ownerUserId,
         campaignId: data.campaignId ?? null,
-        amount: data.amount,
+        ...(pricedByLines ? {} : { amount: data.amount }),
         currencyCode: data.currencyCode,
         probabilityPercent: data.probabilityPercent ?? before.probabilityPercent,
         expectedCloseDate: data.expectedCloseDate.toISOString().slice(0, 10),
@@ -251,23 +173,10 @@ export async function updateOpportunity(
         leadSource: data.leadSource ?? null,
         nextStep: data.nextStep ?? null,
         description: data.description ?? null,
-        ...pricing.payload,
       },
-      p_line_table: "opportunity_product",
-      p_lines: (data.lines ?? []).map((line) => ({
-        productId: line.productId,
-        quantity: line.quantity,
-        unitPrice: line.unitPrice,
-        discountPercent: line.discountPercent ?? null,
-        taxRateId: line.taxRateId ?? null,
-        lineTotal: lineTotal(line).toFixed(2),
-      })),
-      p_parent_field: "opportunityId",
-      p_entity_type: "Opportunity",
-      p_actor_id: user.id,
-    });
-
-    if (updErr) throw new Error(updErr.message);
+      "Opportunity",
+      user.id,
+    );
 
     revalidatePath("/opportunities");
     revalidatePath(`/opportunities/${id}`);
@@ -313,7 +222,7 @@ export async function changeStage(
     const { data: before } = await db
       .from("opportunity")
       .select(
-        "amount, probabilityPercent, competitorName, productId, quotations:quotation ( id, status )",
+        "amount, probabilityPercent, competitorName, lines:opportunity_product ( id ), quotations:quotation ( id, status )",
       )
       .eq("id", data.id)
       .maybeSingle();
@@ -328,15 +237,15 @@ export async function changeStage(
       if (toDecimal(before.amount).lessThanOrEqualTo(0)) {
         return { ok: false, error: "A won deal needs an amount greater than zero." };
       }
-      // The product is what creates the delivery project, and the project is how
-      // an invoice later finds its way back to this deal to pay partner
-      // commission. Winning without one breaks both, and says nothing while it
-      // does - so it is refused here rather than discovered a quarter later.
-      if (!before.productId) {
+      // The lines are what creates the delivery project and its tasks, and the
+      // project is how an invoice later finds its way back to this deal to pay
+      // partner commission. Winning with none breaks both, silently - so it is
+      // refused here rather than discovered a quarter later.
+      if (((before.lines ?? []) as unknown[]).length === 0) {
         return {
           ok: false,
           error:
-            "A won deal needs a product. Pick the product being sold, then close it - the delivery project and any partner commission are both created from it.",
+            "A won deal needs at least one product or service. Add what is being sold, then close it - the delivery project and its tasks are created from those lines.",
         };
       }
       // Prisma filtered the embedded quotations in the query; PostgREST returns
@@ -479,7 +388,6 @@ export async function getOpportunity(id: string) {
        primaryContact:contact ( * ),
        owner:app_user!opportunity_ownerUserId_fkey ( id, fullName, email ),
        campaign ( id, name ),
-       product:product!opportunity_productId_fkey ( id, name, productCode ),
        priceBook:price_book ( id, name, active ),
        lines:opportunity_product ( *, product ( * ), taxRate:tax_rate ( * ) ),
        quotations:quotation ( * ),
@@ -513,7 +421,6 @@ export async function getOpportunity(id: string) {
     primaryContact: one(data.primaryContact as never),
     owner: one(data.owner as never),
     campaign: one(data.campaign as never),
-    product: one(data.product as never),
     priceBook: one(data.priceBook as never),
     lines: rows(data.lines)
       .map((l): Row => ({ ...l, product: one(l.product as never), taxRate: one(l.taxRate as never) }))

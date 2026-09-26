@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { ensureCurrencyContext } from "@/lib/currency-loader";
 import { supabaseServer, supabaseAdmin } from "./supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { holds } from "./nav-permissions";
@@ -159,7 +160,20 @@ async function loadUser(): Promise<SessionUser> {
   };
 }
 
-export const requireUser: () => Promise<SessionUser> = cache(loadUser);
+/**
+ * The signed-in user - and, alongside, the currencies money is shown in.
+ *
+ * Every page awaits this before rendering anything, which makes it the one place
+ * that is guaranteed to run before an amount is formatted. Loaded in parallel,
+ * so it costs no time; and it never fails the request, because showing money in
+ * one currency is better than not showing the page.
+ */
+async function loadUserAndCurrencies(): Promise<SessionUser> {
+  const [user] = await Promise.all([loadUser(), ensureCurrencyContext()]);
+  return user;
+}
+
+export const requireUser: () => Promise<SessionUser> = cache(loadUserAndCurrencies);
 
 /**
  * Permission strings are "<entity>:<action>", with "*" wildcards allowed,
