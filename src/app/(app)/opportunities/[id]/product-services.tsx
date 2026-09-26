@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Plus, Trash2, BookMarked, ListChecks, X } from "lucide-react";
 import {
   Alert, Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Select,
@@ -86,7 +85,6 @@ export function OpportunityProductServices({
   pricing: OpportunityPricing;
   canWrite: boolean;
 }) {
-  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -216,10 +214,21 @@ export function OpportunityProductServices({
           taxRateId: r.taxRateId || null,
         })),
       });
-      if (result.ok) {
-        setEditing(false);
-        router.refresh();
-      } else setError(result.error);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      // A full reload, deliberately, rather than router.refresh().
+      //
+      // In the production build the in-place refresh never landed on this page:
+      // the save had worked - the lines, the amount and the book were all in the
+      // database - but the screen kept the old page and still said "Nothing
+      // added yet", which would lead anybody to save again. It worked in
+      // development, and a reload always showed the right data. Until the router
+      // behaviour on this page is understood, a reload is the one thing that is
+      // guaranteed to show the deal as it now stands, including the value tiles
+      // above that also depend on these lines.
+      window.location.reload();
     });
   }
 
@@ -385,6 +394,7 @@ export function OpportunityProductServices({
                   value={row[key] as string}
                   onChange={(e) => update(row.key, { [key]: e.target.value } as Partial<Row>)}
                   placeholder="—"
+                  aria-label={`Line ${i + 1} ${label}`}
                 />
               </Field>
             );
@@ -442,6 +452,7 @@ export function OpportunityProductServices({
                           inputMode="decimal"
                           value={row.quantity}
                           onChange={(e) => update(row.key, { quantity: e.target.value })}
+                          aria-label={`Line ${i + 1} ${hours ? "hours" : "quantity"}`}
                         />
                       </Field>
                       {money("unitPrice", hours ? "Rate per hour" : "Unit price")}
@@ -453,11 +464,12 @@ export function OpportunityProductServices({
                           step="0.5"
                           value={row.discountPercent}
                           onChange={(e) => update(row.key, { discountPercent: e.target.value })}
+                          aria-label={`Line ${i + 1} discount percent`}
                           placeholder="0"
                         />
                       </Field>
                       <Field label="Tax">
-                        <Select value={row.taxRateId} onChange={(e) => update(row.key, { taxRateId: e.target.value })}>
+                        <Select value={row.taxRateId} onChange={(e) => update(row.key, { taxRateId: e.target.value })} aria-label={`Line ${i + 1} tax`}>
                           <option value="">No tax</option>
                           {pricing.taxRates.map((t) => (
                             <option key={t.id} value={t.id}>{t.name}</option>

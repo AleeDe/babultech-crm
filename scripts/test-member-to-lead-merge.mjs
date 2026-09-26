@@ -61,6 +61,12 @@ const ids = {
       del("campaign_member", "id", this.members),
       del("lead", "id", this.leads),
       del("campaign", "id", this.campaigns),
+      async () => (this.user ? admin.from("app_user").delete().eq("id", this.user) : { error: null }),
+      async () => {
+        if (this.user) await admin.auth.admin.deleteUser(this.user).catch(() => {});
+        return { error: null };
+      },
+      async () => (this.role ? admin.from("security_role").delete().eq("id", this.role) : { error: null }),
     ];
   },
 };
@@ -72,19 +78,32 @@ try {
   step("00", "Somebody to do the work");
   // ═══════════════════════════════════════════════════════════════════════
 
-  const staff = await ok(
-    admin.from("app_user")
-      .select("id, email, fullName")
-      .eq("status", "ACTIVE")
-      .not("email", "is", null)
-      .is("partnerId", null)
-      .limit(1)
-      .maybeSingle(),
-    "Find an active internal user",
+  // A throwaway user of the test's own, removed afterwards.
+  //
+  // This used to borrow the first active staff member and SET THEIR PASSWORD
+  // to sign in as them - which silently locked the real admin account out.
+  // A test must never change anything about a real person's login.
+  ids.role = randomUUID();
+  await ok(
+    admin.from("security_role").insert({
+      id: ids.role, name: `M2L test ${run}`, permissions: ["*"], dataScope: "ALL", updatedAt: now(),
+    }),
+    "Create a role for the test user",
   );
-  assert.ok(staff, "The test needs at least one active internal user");
+  const password = `T3st-${randomUUID()}`;
+  const email = `m2l-${run.toLowerCase()}@example.com`;
+  const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+  if (created.error) throw new Error(`Create the test login: ${created.error.message}`);
+  ids.user = created.data.user.id;
+  await ok(
+    admin.from("app_user").insert({
+      id: ids.user, fullName: `M2L test ${run}`, email, roleId: ids.role, status: "ACTIVE", updatedAt: now(),
+    }),
+    "Create the test user",
+  );
+  const staff = { id: ids.user, email, fullName: `M2L test ${run}`, password };
   user = staff;
-  note(`Acting as ${staff.fullName}`);
+  note(`Acting as a temporary user, ${email}`);
 
   // ═══════════════════════════════════════════════════════════════════════
   step("01", "Two campaigns produce the same person twice");
@@ -191,12 +210,7 @@ try {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       { auth: { persistSession: false, autoRefreshToken: false } },
     );
-    const password = `T3st-${randomUUID()}`;
-    await admin.auth.admin.updateUserById(
-      (await admin.auth.admin.listUsers()).data.users.find((u) => u.email === staff.email).id,
-      { password },
-    );
-    const { error } = await anon.auth.signInWithPassword({ email: staff.email, password });
+    const { error } = await anon.auth.signInWithPassword({ email: staff.email, password: staff.password });
     if (error) throw new Error(`Sign in as ${staff.email}: ${error.message}`);
     return anon;
   };
