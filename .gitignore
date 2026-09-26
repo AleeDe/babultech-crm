@@ -37,3 +37,5 @@ backups/mumbai-migration/.env.sydney
 # Throwaway patch scripts used to edit files; never part of the project.
 scripts/_patch.cjs
 scripts/_tmp_*
+scripts/_hydration.mjs
+artifacts/
