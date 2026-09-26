@@ -14,22 +14,37 @@ export function toDecimal(value: Numeric): Decimal {
   return new Decimal(value.toString());
 }
 
+/**
+ * Money, formatted the same on the server and in the browser.
+ *
+ * minimumFractionDigits is set explicitly, and that is the whole point of it.
+ * PKR's standard is zero decimal places, so the two ICU builds disagreed about
+ * the default: Node rendered "Rs 1,234.50" and Chromium "Rs 1,234.5". Because
+ * money is formatted inside client components, React saw server text that did
+ * not match the client, threw a hydration error, and threw away the
+ * server-rendered table to re-render it - on five pages.
+ *
+ * maximumFractionDigits alone does not pin the minimum, which is why the
+ * mismatch survived having one of the two set.
+ */
 export function formatMoney(value: Numeric, currency = "PKR"): string {
   const n = Number(toDecimal(value));
   return new Intl.NumberFormat("en-PK", {
     style: "currency",
     currency,
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n);
 }
 
-/** Compact form for dashboard tiles: 1.2M, 850K. */
+/** Compact form for dashboard tiles: 1.2M, 850K. Pinned for the same reason. */
 export function formatCompactMoney(value: Numeric, currency = "PKR"): string {
   const n = Number(toDecimal(value));
   return new Intl.NumberFormat("en-PK", {
     style: "currency",
     currency,
     notation: "compact",
+    minimumFractionDigits: 0,
     maximumFractionDigits: 1,
   }).format(n);
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Plus, Upload } from "lucide-react";
-import { listLeads } from "@/server/crm";
+import { listLeads, listCampaigns } from "@/server/crm";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, Input, Select, Button, StatTile, Forbidden
@@ -19,13 +19,19 @@ const STATUSES = [
 export default async function LeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string; status?: string; source?: string }>;
+  searchParams: Promise<{
+    search?: string; status?: string; source?: string; campaignId?: string;
+  }>;
 }) {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.LEAD_READ)) return <Forbidden what="leads" />;
 
   const params = await searchParams;
-  const [leads, users] = await Promise.all([listLeads(params), getAssignableUsers()]);
+  const [leads, users, campaigns] = await Promise.all([
+    listLeads(params),
+    getAssignableUsers(),
+    listCampaigns(),
+  ]);
 
   const open = leads.filter((l) => !["CONVERTED", "DISQUALIFIED"].includes(l.status));
   const partnerReferred = leads.filter((l) => l.referredByPartnerId).length;
@@ -91,6 +97,14 @@ export default async function LeadsPage({
             <option value="">All statuses</option>
             {STATUSES.map((s) => (
               <option key={s} value={s}>{humanize(s)}</option>
+            ))}
+          </Select>
+          {/* How "email everyone this campaign brought us" is done: narrow to
+              the campaign, tick all, press Email. */}
+          <Select name="campaignId" defaultValue={params.campaignId ?? ""} className="w-52">
+            <option value="">All campaigns</option>
+            {campaigns.map((c: { id: string; name: string }) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </Select>
           <Button type="submit" variant="secondary">Filter</Button>

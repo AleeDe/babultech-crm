@@ -721,7 +721,13 @@ export async function convertLead(
   }
 }
 
-export async function listLeads(filters?: { search?: string; status?: string; source?: string }) {
+export async function listLeads(filters?: {
+  search?: string;
+  status?: string;
+  source?: string;
+  /** The campaign that produced the lead - how a campaign's audience is found. */
+  campaignId?: string;
+}) {
   const { where } = await scopedContext("ownerUserId");
 
   const db = await supabaseServer();
@@ -742,6 +748,7 @@ export async function listLeads(filters?: { search?: string; status?: string; so
   // Deals partners have registered through the portal, awaiting a decision.
   if (filters?.source === "partner") query = query.not("referredByPartnerId", "is", null);
   if (filters?.status) query = query.eq("status", filters.status);
+  if (filters?.campaignId) query = query.eq("campaignId", filters.campaignId);
   if (filters?.search) {
     const s = filters.search.replace(/[,()]/g, "");
     query = query.or(

@@ -83,14 +83,17 @@ export function MergeForm({ leads }: { leads: DuplicateLead[] }) {
 
   const losers = leads.filter((l) => l.id !== survivorId);
 
-  // Only fields where the records actually disagree need a decision. The rest
-  // are shown collapsed, because a table of forty identical rows hides the four
-  // that matter.
+  // Only fields where two records hold DIFFERENT values need a decision. Where
+  // one is blank there is nothing to weigh - the filled one is taken - and
+  // showing it as a choice would bury the handful that matter in a list of
+   // forty. Those are collapsed below, described as settled rather than agreed:
+  // a blank is not agreement, and one of these values may be coming from the
+  // record that is about to be retired.
   const contested = MERGEABLE_FIELDS.filter((field) => {
     const values = new Set(leads.map((l) => valueOf(l, field.key)).filter(Boolean));
     return values.size > 1;
   });
-  const agreed = MERGEABLE_FIELDS.filter((f) => !contested.includes(f));
+  const settled = MERGEABLE_FIELDS.filter((f) => !contested.includes(f));
 
   function submit() {
     const count = losers.length;
@@ -178,13 +181,15 @@ export function MergeForm({ leads }: { leads: DuplicateLead[] }) {
         <CardHeader>
           <CardTitle>
             {contested.length === 0
-              ? "The records agree on everything"
-              : `${contested.length} field${contested.length === 1 ? "" : "s"} disagree`}
+              ? "Nothing to choose between"
+              : contested.length === 1
+                ? "1 field disagrees"
+                : `${contested.length} fields disagree`}
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
             {contested.length === 0
-              ? "Nothing to choose between. Merging will simply bring everything together."
-              : "Pick the value to keep for each. Fields the records agree on are further down."}
+              ? "No two records hold different values for the same field. Merging simply brings everything together."
+              : "Pick the value to keep for each. The rest are settled already and are listed further down."}
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -223,13 +228,16 @@ export function MergeForm({ leads }: { leads: DuplicateLead[] }) {
             </div>
           ))}
 
-          {agreed.length > 0 && (
+          {settled.length > 0 && (
             <details className="rounded-md border p-3">
               <summary className="cursor-pointer text-sm font-medium">
-                {agreed.length} field{agreed.length === 1 ? "" : "s"} they agree on
+                {settled.length} field{settled.length === 1 ? "" : "s"} with nothing to choose
+                <span className="ml-1 font-normal text-muted-foreground">
+                  (only one record has a value, or they match)
+                </span>
               </summary>
               <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-                {agreed.map((field) => {
+                {settled.map((field) => {
                   const value =
                     leads.map((l) => valueOf(l, field.key)).find(Boolean) ?? "";
                   return (
