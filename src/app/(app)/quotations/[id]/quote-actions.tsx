@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { sendQuotation, decideQuotation, reviseQuotation } from "@/server/quotations";
@@ -32,14 +32,36 @@ export function QuoteActions({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // The note from the last action, carried across the reload below.
+  const noticeKey = `quote-notice:${quoteId}`;
+  useEffect(() => {
+    try {
+      const carried = sessionStorage.getItem(noticeKey);
+      if (carried) {
+        sessionStorage.removeItem(noticeKey);
+        setNotice(carried);
+      }
+    } catch {
+      // Storage can be unavailable, as in a private window; the page stands without the note.
+    }
+  }, [noticeKey]);
+
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>, success?: string) => {
     setError(null);
     setNotice(null);
     startTransition(async () => {
       const result = await fn();
       if (result.ok) {
-        if (success) setNotice(success);
-        router.refresh();
+        // A full reload rather than router.refresh(). In the production build
+        // the refreshed page can arrive and never be shown - the React 19.2
+        // fault described in opportunities/[id]/product-services.tsx - which
+        // left "Mark as sent" saying Sent while still offering to send it.
+        try {
+          if (success) sessionStorage.setItem(noticeKey, success);
+        } catch {
+          // Without storage the note is lost; the reloaded page still says where the quote is.
+        }
+        window.location.reload();
       } else setError(result.error ?? "Something went wrong.");
     });
   };
@@ -78,14 +100,29 @@ export function QuoteActions({
         {status === "SENT" && (
           <>
             <p className="text-sm text-muted-foreground">
-              With the customer. Accepting sets the deal amount to the quote total and moves it to
-              Verbal Confirmation - and it is what lets the deal be marked Closed Won.
+              With the customer. Accepting puts this quote&apos;s products and services on the deal
+              in place of what is there, so the deal&apos;s value - and any partner commission -
+              becomes the quote&apos;s. It moves the deal to Verbal Confirmation, and is what lets
+              it be marked Closed Won.
             </p>
             <div className="flex gap-2">
               <Button
                 className="flex-1"
                 disabled={pending}
-                onClick={() => run(() => decideQuotation(quoteId, "ACCEPTED"), "Accepted.")}
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      "Record that the customer accepted this quote?\n\n" +
+                        "The deal's products and services will be replaced by this quote's, and its value will become the quote total.",
+                    )
+                  ) {
+                    return;
+                  }
+                  run(
+                    () => decideQuotation(quoteId, "ACCEPTED"),
+                    "Accepted. The deal now carries this quote's products and services.",
+                  );
+                }}
               >
                 Accepted
               </Button>
@@ -103,7 +140,8 @@ export function QuoteActions({
 
         {status === "ACCEPTED" && (
           <p className="text-sm text-emerald-600 dark:text-emerald-400">
-            Accepted - this is the binding version and the deal can now be won.
+            Accepted - this is the binding version. The deal carries its products and services,
+            and can now be won.
           </p>
         )}
 

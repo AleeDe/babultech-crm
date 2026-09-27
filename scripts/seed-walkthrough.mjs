@@ -195,31 +195,64 @@ try {
   }
 
   // -------------------------------------------------------------------------
-  step("03", "Product and its price book");
+  step("03", "Products and services, in a price book");
   // -------------------------------------------------------------------------
 
+  // A platform sold as a licensed deployment, and installation sold in hours -
+  // the service flagged Add in Task, whose hours become the project's work.
   made.product = randomUUID();
+  made.service = randomUUID();
   await ok(
-    db.from("product").insert({
-      id: made.product, productCode: `WT-PRD-${tag}`, name: `WT Warehouse Platform ${tag}`,
-      productType: "PRODUCT", category: "Platform", commissionPercent: 10, commissionable: true,
-      description: "Warehouse management platform, sold as a licensed deployment.",
-      active: true, updatedAt: now(),
-    }),
-    "Create a product",
+    db.from("product").insert([
+      {
+        id: made.product, productCode: "auto", name: `WT Warehouse Platform ${tag}`,
+        // Spelled out: a multi-row insert fills a column one row omits with null,
+        // not with its default.
+        productType: "PRODUCT", addInTask: false,
+        description: "Warehouse management platform, sold as a licensed deployment.",
+        active: true, updatedAt: now(),
+      },
+      {
+        id: made.service, productCode: "auto", name: `WT Installation ${tag}`,
+        productType: "SERVICE", addInTask: true,
+        description: "On-site installation, sold by the hour.",
+        active: true, updatedAt: now(),
+      },
+    ]),
+    "Create a product and a service",
   );
+  const codes = await ok(
+    db.from("product").select("id, productCode").in("id", [made.product, made.service]),
+    "Read the issued codes",
+  );
+  assert.ok(codes.every((c) => /^[PS]-\d+$/.test(c.productCode)), "Codes are issued by the system, P- or S-");
 
   made.priceBook = randomUUID();
+  made.platformEntry = randomUUID();
+  made.installEntry = randomUUID();
   await ok(
     db.from("price_book").insert({
-      id: made.priceBook, productId: made.product, name: `WT Standard ${tag}`,
-      currencyCode: "PKR", licenseCost: 1200000, maintenanceCost: 240000,
-      cloudCost: 180000, aiCost: 120000, active: true, validFrom: today(),
-      updatedAt: now(),
+      id: made.priceBook, name: `WT Standard ${tag}`, currencyCode: "PKR",
+      active: true, validFrom: today(), updatedAt: now(),
     }),
     "Create a price book",
   );
-  pass("Product created with a price book (License 1,200,000 · Maintenance 240,000 · Cloud 180,000 · AI 120,000)");
+  await ok(
+    db.from("price_book_entry").insert([
+      {
+        id: made.platformEntry, priceBookId: made.priceBook, productId: made.product,
+        quantity: 1, rate: 0, licenseCost: 1200000, maintenanceCost: 240000,
+        cloudCost: 180000, aiCost: 120000, active: true, updatedAt: now(),
+      },
+      {
+        id: made.installEntry, priceBookId: made.priceBook, productId: made.service,
+        quantity: 40, rate: 3500, licenseCost: 0, maintenanceCost: 0, cloudCost: 0, aiCost: 0,
+        active: true, updatedAt: now(),
+      },
+    ]),
+    "Price both in the book",
+  );
+  pass("Platform (License 1,200,000 · Maintenance 240,000 · Cloud 180,000 · AI 120,000) and Installation (40 h at 3,500) in one book");
 
   // -------------------------------------------------------------------------
   step("04", "Deal, priced from the book");
@@ -232,60 +265,111 @@ try {
         id: made.opportunity, opportunityNumber: `WT-OPP-${tag}`,
         name: `WT Meridian - warehouse rollout ${tag}`, accountId: made.account,
         primaryContactId: made.contact, ownerUserId: meId, campaignId: made.campaign,
-        stage: "SOLUTION_PROPOSED", amount: 1740000, currencyCode: "PKR",
+        stage: "SOLUTION_PROPOSED", amount: 0, currencyCode: "PKR",
         expectedCloseDate: inDays(30), opportunityType: "NEW", leadSource: "Campaign",
-        productId: made.product, priceBookId: made.priceBook,
-        licenseCost: 1200000, maintenanceCost: 240000, cloudCost: 180000, aiCost: 120000,
-        discountPercent: 10, nextStep: "Security review with their IT team",
-        updatedAt: now(),
+        nextStep: "Security review with their IT team", updatedAt: now(),
       }),
       "Create the deal",
     );
-  } else {
-    await ok(
-      db.from("opportunity").update({
-        productId: made.product, priceBookId: made.priceBook,
-        licenseCost: 1200000, maintenanceCost: 240000, cloudCost: 180000, aiCost: 120000,
-        discountPercent: 10, stage: "SOLUTION_PROPOSED", updatedAt: now(),
-      }).eq("id", made.opportunity),
-      "Price the converted deal",
-    );
   }
 
+  // As the Add Product & Service screen saves them: all the lines at once.
+  await ok(
+    db.rpc("save_opportunity_lines", {
+      p_opportunity: made.opportunity,
+      p_price_book: made.priceBook,
+      p_lines: [
+        {
+          productId: made.product, priceBookEntryId: made.platformEntry, quantity: 1, unitPrice: 0,
+          licenseCost: 1200000, maintenanceCost: 240000, cloudCost: 180000, aiCost: 120000,
+          discountPercent: 10, taxRateId: null,
+        },
+        {
+          productId: made.service, priceBookEntryId: made.installEntry, quantity: 40, unitPrice: 3500,
+          licenseCost: 0, maintenanceCost: 0, cloudCost: 0, aiCost: 0, discountPercent: 0, taxRateId: null,
+        },
+      ],
+    }),
+    "Add the product and the service to the deal",
+  );
+
   let deal = await ok(
-    db.from("opportunity").select("totalAmount, implementationCost, trainingCost").eq("id", made.opportunity).single(),
-    "Read the deal total",
+    db.from("opportunity").select("amount, netAmount, pricedByLines, priceBookId").eq("id", made.opportunity).single(),
+    "Read the deal",
   );
-
-  // (1,200,000 + 240,000 + 180,000 + 120,000) x 0.9 = 1,566,000
-  assert.equal(money(deal.totalAmount), 1566000, "The generated total must apply the 10% discount");
-  pass(`Total Amount computed by the database: ${money(deal.totalAmount).toLocaleString()} (1,740,000 less 10%)`);
+  // (1,200,000 + 240,000 + 180,000 + 120,000) less 10% = 1,566,000; 40 x 3,500 = 140,000
+  assert.equal(money(deal.amount), 1706000, "The deal's amount must be the sum of its lines");
+  assert.equal(deal.pricedByLines, true, "And from now on it is only its lines");
+  pass(`Deal priced by its lines: ${money(deal.amount).toLocaleString()} (1,566,000 platform after 10% + 140,000 installation)`);
 
   // -------------------------------------------------------------------------
-  step("05", "Quotation");
+  step("05", "Quotation, copied from the deal and accepted");
   // -------------------------------------------------------------------------
 
-  made.quotation = randomUUID();
-  await ok(
-    db.from("quotation").insert({
-      id: made.quotation, quoteNumber: `WT-QUO-${tag}`, opportunityId: made.opportunity,
-      accountId: made.account, contactId: made.contact, status: "DRAFT", versionNumber: 1,
-      quoteDate: today(), expiryDate: inDays(21), currencyCode: "PKR",
-      subtotal: 1740000, discountAmount: 174000, taxAmount: 0, totalAmount: 1566000,
-      approvalStatus: "NOT_REQUIRED", updatedAt: now(),
+  // As the quote form sends it: the deal's lines with every value kept, and
+  // one changed - the customer wants 48 hours of installation, not 40.
+  const quote = await ok(
+    db.rpc("create_with_lines", {
+      p_table: "quotation",
+      p_payload: {
+        opportunityId: made.opportunity, accountId: made.account, contactId: made.contact,
+        versionNumber: 1, status: "DRAFT", quoteDate: today(), expiryDate: inDays(21),
+        currencyCode: "PKR", priceBookId: made.priceBook,
+        paymentTerms: "50% on order, 50% on go-live.",
+      },
+      p_line_table: "quote_line",
+      p_lines: [
+        {
+          productId: made.product, priceBookEntryId: made.platformEntry,
+          description: `WT Warehouse Platform ${tag} - licence and first year`,
+          quantity: 1, unitPrice: 0, licenseCost: 1200000, maintenanceCost: 240000,
+          cloudCost: 180000, aiCost: 120000, discountPercent: 10, taxRateId: null,
+        },
+        {
+          productId: made.service, priceBookEntryId: made.installEntry,
+          description: "On-site installation", quantity: 48, unitPrice: 3500,
+          licenseCost: 0, maintenanceCost: 0, cloudCost: 0, aiCost: 0, discountPercent: 0, taxRateId: null,
+        },
+      ],
+      p_parent_field: "quotationId",
+      p_number_field: "quoteNumber",
+      p_sequence: "Quotation",
     }),
-    "Create a quotation",
+    "Create a quotation from the deal",
   );
+  made.quotation = quote.id;
+
+  const quoted = await ok(
+    db.from("quotation").select("subtotal, discountAmount, taxAmount, totalAmount").eq("id", made.quotation).single(),
+    "Read the quotation's totals",
+  );
+  // Before discount 1,740,000 + 168,000; discount 174,000; no tax.
+  assert.equal(money(quoted.subtotal), 1908000, "The subtotal is the lines before discount");
+  assert.equal(money(quoted.discountAmount), 174000, "The discount is worked out from the lines");
+  assert.equal(money(quoted.totalAmount), 1734000, "And the total is the lines' totals");
+  pass("Quotation carries the four costs from the deal, with the hours changed to 48: 1,734,000");
+
   await ok(
-    db.from("quote_line").insert({
-      id: randomUUID(), quotationId: made.quotation, productId: made.product,
-      description: `WT Warehouse Platform ${tag} - licence and first year`,
-      quantity: 1, unitPrice: 1740000, discountPercent: 10, lineTotal: 1566000,
-      sortOrder: 1, updatedAt: now(),
-    }),
-    "Add a quote line",
+    db.from("quotation").update({ status: "SENT", sentAt: now(), updatedAt: now() }).eq("id", made.quotation),
+    "Mark the quotation as sent",
   );
-  pass("Quotation created with one line");
+  await ok(db.rpc("accept_quotation", { p_id: made.quotation }), "Record the customer's acceptance");
+
+  deal = await ok(
+    db.from("opportunity").select("amount, stage").eq("id", made.opportunity).single(),
+    "Re-read the deal",
+  );
+  const dealLines = await ok(
+    db.from("opportunity_product").select("productId, quantity, licenseCost").eq("opportunityId", made.opportunity),
+    "Read the deal's lines",
+  );
+  assert.equal(money(deal.amount), 1734000, "Accepting the quote makes its total the deal's");
+  assert.equal(deal.stage, "VERBAL_CONFIRMATION", "And moves the deal on");
+  assert.equal(
+    money(dealLines.find((l) => l.productId === made.service)?.quantity), 48,
+    "The deal now sells what the customer accepted - 48 hours",
+  );
+  pass("Accepting it put the quote's lines on the deal: 1,734,000, Verbal Confirmation");
 
   // -------------------------------------------------------------------------
   step("06", "Winning the deal, and the project that follows");
@@ -310,11 +394,11 @@ try {
   made.project = projectRow.id;
 
   const project = await ok(
-    db.from("project").select("projectNumber, name, contractValue, opportunityId, projectManagerId, status").eq("id", made.project).single(),
+    db.from("project").select("projectNumber, name, contractValue, opportunityId, approvedHours").eq("id", made.project).single(),
     "Read the project",
   );
   assert.equal(project.opportunityId, made.opportunity, "The project must point back at the deal");
-  assert.equal(money(project.contractValue), 1566000, "The project must carry the deal's total across");
+  assert.equal(money(project.contractValue), 1734000, "The project must carry the deal's total across");
   pass(`Project ${project.projectNumber} created automatically, carrying the contract value`);
 
   const members = await ok(
@@ -325,57 +409,35 @@ try {
   pass("The deal owner was added to the project as its manager");
 
   // -------------------------------------------------------------------------
-  step("07", "Project tasks, and the costs that flow back to the deal");
+  step("07", "The project's work is what was sold");
   // -------------------------------------------------------------------------
 
-  made.taskImpl = randomUUID();
-  made.taskTrain = randomUUID();
+  const soldTasks = await ok(
+    db.from("project_task").select("id, name, soldHours, soldRate, estimatedHours, opportunityProductId").eq("projectId", made.project),
+    "Read the project's tasks",
+  );
+  const install = soldTasks.find((t) => t.opportunityProductId);
+  assert.equal(soldTasks.length, 1, "Only the service sold in hours becomes a task - the platform does not");
+  assert.equal(money(install.soldHours), 48, "With the hours the customer bought");
+  assert.equal(money(install.soldRate), 3500, "At the rate they agreed");
+  assert.equal(money(project.approvedHours), 48, "And the project's budget is those hours");
+  made.taskImpl = install.id;
+  pass("Installation became a 48-hour task at 3,500; the platform, a product, did not");
+
+  // Work the project manager adds is planning, not a sale: the deal is unmoved.
   await ok(
-    db.from("project_task").insert([
-      {
-        id: made.taskImpl, projectId: made.project, name: `WT Data migration ${tag}`,
-        taskType: "Configuration", taskCategory: "IMPLEMENTATION",
-        estimatedHours: 120, rate: 4000, discountAmount: 20000,
-        status: "IN_PROGRESS", priority: "HIGH", assignedUserId: meId, billable: true, updatedAt: now(),
-      },
-      {
-        id: made.taskTrain, projectId: made.project, name: `WT Floor staff training ${tag}`,
-        taskType: "Training", taskCategory: "TRAINING",
-        estimatedHours: 40, rate: 3500, discountAmount: 0,
-        status: "NOT_STARTED", priority: "MEDIUM", assignedUserId: meId, billable: true, updatedAt: now(),
-      },
-    ]),
-    "Create project tasks",
+    db.from("project_task").insert({
+      id: randomUUID(), projectId: made.project, name: `WT Data migration ${tag}`,
+      estimatedHours: 24, status: "NOT_STARTED", priority: "HIGH",
+      assignedUserId: meId, billable: false, updatedAt: now(),
+    }),
+    "Plan an extra task",
   );
-
-  const tasks = await ok(
-    db.from("project_task").select("id, lineTotal, taskCategory").eq("projectId", made.project),
-    "Read the task line totals",
-  );
-  const impl = tasks.find((t) => t.id === made.taskImpl);
-  const train = tasks.find((t) => t.id === made.taskTrain);
-  // 120 x 4,000 - 20,000 = 460,000 ; 40 x 3,500 = 140,000
-  assert.equal(money(impl.lineTotal), 460000, "Implementation line total must be hours x rate less discount");
-  assert.equal(money(train.lineTotal), 140000, "Training line total must be hours x rate");
-  pass("Task line totals computed by the database (460,000 implementation · 140,000 training)");
-
-  const rolled = await ok(
-    db.from("project").select("implementationTotal, trainingTotal").eq("id", made.project).single(),
-    "Read the project totals",
-  );
-  assert.equal(money(rolled.implementationTotal), 460000, "Project implementation total must roll up from tasks");
-  assert.equal(money(rolled.trainingTotal), 140000, "Project training total must roll up from tasks");
-  pass("Task costs rolled up to the project by trigger");
-
-  deal = await ok(
-    db.from("opportunity").select("implementationCost, trainingCost, totalAmount").eq("id", made.opportunity).single(),
-    "Re-read the deal",
-  );
-  assert.equal(money(deal.implementationCost), 460000, "The deal must pick up the project's implementation total");
-  assert.equal(money(deal.trainingCost), 140000, "The deal must pick up the project's training total");
-  // (1,740,000 + 600,000) x 0.9 = 2,106,000
-  assert.equal(money(deal.totalAmount), 2106000, "The deal total must recompute with the project costs in it");
-  pass(`The deal's total moved to ${money(deal.totalAmount).toLocaleString()} because work was added to its project`);
+  deal = await ok(db.from("opportunity").select("amount").eq("id", made.opportunity).single(), "Re-read the deal");
+  assert.equal(money(deal.amount), 1734000, "Planning work must not change what was sold");
+  const resync = await ok(db.rpc("sync_project_from_opportunity", { p_project: made.project }), "Sync from the deal");
+  assert.equal((typeof resync === "string" ? JSON.parse(resync) : resync).added, 0, "Nothing is added twice");
+  pass("A task the manager plans leaves the deal alone, and syncing from the deal adds nothing twice");
 
   // -------------------------------------------------------------------------
   step("08", "Time, and its approval");

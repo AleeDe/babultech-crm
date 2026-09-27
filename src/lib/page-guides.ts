@@ -88,9 +88,9 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
 
   "/quotations": {
     purpose: "Versioned, priced offers sent to a customer against one deal.",
-    needs: ["An opportunity to quote against", "Products, so lines are not retyped"],
+    needs: ["A deal to quote against - its products and services become the quote's lines, every value editable"],
     feeds: [
-      "An accepted quote moves the deal to Verbal Confirmation and sets its value",
+      "Accepting a quote puts its lines on the deal in place of what was there, so the deal's value - and any partner commission - becomes the quote's, and moves the deal to Verbal Confirmation",
       "Contracts are usually built from an accepted quote",
     ],
     watchOut:

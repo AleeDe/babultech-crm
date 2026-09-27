@@ -1,46 +1,18 @@
 "use client";
 
-import type { CommercialPlan } from "@/lib/product-plans";
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createQuotation, updateQuotation } from "@/server/quotations";
+import { Copy } from "lucide-react";
+import { createQuotation, updateQuotation, type QuoteFormContext } from "@/server/quotations";
 import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
 } from "@/components/ui";
 import { RecordLookup } from "@/components/record-lookup";
 import {
-  LineEditor, newLine, documentTotals,
-  type LineRow, type ProductOption, type TaxRateOption,
-} from "@/components/line-editor";
-import { formatMoney } from "@/lib/utils";
-
-export interface QuoteFormOptions {
-  opportunities: {
-    id: string;
-    opportunityNumber: string;
-    name: string;
-    accountId: string;
-    currencyCode: string;
-    // Nullable because PostgREST returns an embedded to-one relation as an
-    // array that may be empty, and the flattening in getQuotationFormOptions
-    // turns that into null. The render already reads it with `?.`, so this
-    // makes the type say what the code was doing.
-    account: { name: string } | null;
-    lines: {
-      productId: string;
-      quantity: string;
-      unitPrice: string;
-      discountPercent: string | null;
-      taxRateId: string | null;
-      product: { name: string } | null;
-    }[];
-  }[];
-  products: ProductOption[];
-  taxRates: TaxRateOption[];
-  currencies: { code: string; name: string }[];
-  contacts: { id: string; firstName: string; lastName: string; accountId: string | null }[];
-}
+  PricedLinesEditor, emptyRow, num, rowFromLine, type PricedRow, type SavedLine,
+} from "@/components/priced-lines";
 
 export interface QuoteDefaults {
   id: string;
@@ -50,90 +22,93 @@ export interface QuoteDefaults {
   quoteDate: string;
   expiryDate: string;
   currencyCode: string;
+  priceBookId: string | null;
   paymentTerms: string | null;
   notes: string | null;
   termsAndConditions: string | null;
-  lines: {
-    productId: string | null;
-    productPlan?: CommercialPlan | null;
-    description: string;
-    quantity: string;
-    unitPrice: string;
-    discountPercent: string | null;
-    taxRateId: string | null;
-  }[];
+  lines: SavedLine[];
 }
 
 const dateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
 const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
 
-let importSeq = 0;
-
+/**
+ * A quote for one deal, priced as the deal is.
+ *
+ * A new quote starts as a copy of everything the deal sells - each product and
+ * service with its quantity, price, the four costs, discount and tax, and the
+ * deal's price book, contact and currency - and every value can be changed
+ * before it goes out. Accepting it later puts these lines back on the deal.
+ */
 export function QuoteForm({
-  options,
+  context,
   defaults,
-  lockedOpportunityId,
 }: {
-  options: QuoteFormOptions;
+  context: QuoteFormContext;
   defaults?: QuoteDefaults;
-  lockedOpportunityId?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
-  const [opportunityId, setOpportunityId] = useState(
-    defaults?.opportunityId ?? lockedOpportunityId ?? "",
-  );
-  const [currency, setCurrency] = useState(defaults?.currencyCode ?? "PKR");
-  const [lines, setLines] = useState<LineRow[]>(
-    defaults?.lines.length
-      ? defaults.lines.map((l) => {
-          importSeq += 1;
-          return {
-            key: `d${importSeq}`,
-            productId: l.productId ?? "",
-            productPlan: l.productPlan ?? null,
-            description: l.description,
-            quantity: l.quantity,
-            unitPrice: l.unitPrice,
-            discountPercent: l.discountPercent ?? "",
-            taxRateId: l.taxRateId ?? "",
-          };
-        })
-      : [newLine()],
-  );
+  const { opportunity, pricing } = context;
+
+  const dealRows = (): PricedRow[] => (pricing?.lines ?? []).map((l) => rowFromLine(l, false));
+  const [rows, setRows] = useState<PricedRow[]>(() => {
+    if (defaults) return defaults.lines.map((l) => rowFromLine(l, false));
+    const fromDeal = dealRows();
+    return fromDeal.length ? fromDeal : [emptyRow()];
+  });
+  const [bookId, setBookId] = useState(defaults?.priceBookId ?? pricing?.priceBookId ?? "");
+  const [contactId, setContactId] = useState(defaults?.contactId ?? opportunity?.primaryContactId ?? "");
+  const [currency, setCurrency] = useState(defaults?.currencyCode ?? opportunity?.currencyCode ?? "PKR");
 
   const editing = Boolean(defaults);
-  const opportunity = options.opportunities.find((o) => o.id === opportunityId);
-  const totals = useMemo(() => documentTotals(lines, options.taxRates), [lines, options.taxRates]);
 
-  // The quote's contact belongs to the deal's customer, so changing the deal
-  // drops a contact who now works somewhere else.
-  const [contactId, setContactId] = useState(defaults?.contactId ?? "");
-
-  /** Pulls the deal's product lines in, so a quote does not get retyped. */
-  function importFromOpportunity() {
-    if (!opportunity?.lines.length) return;
-    setLines(
-      opportunity.lines.map((l) => {
-        importSeq += 1;
-        return {
-          key: `i${importSeq}`,
-          productId: l.productId,
-          // A line with no product still needs a description — the schema
-          // requires one — so a deleted or missing product falls back to a
-          // placeholder the person can type over rather than an empty cell
-          // that silently fails validation on save.
-          description: l.product?.name ?? "Item",
-          quantity: String(Number(l.quantity)),
-          unitPrice: String(Number(l.unitPrice)),
-          discountPercent: l.discountPercent ? String(Number(l.discountPercent)) : "",
-          taxRateId: l.taxRateId ?? "",
-        };
-      }),
+  // Without a deal there is nothing to price: the book, the products and the
+  // lines to start from all come from it. So the deal is chosen first, and the
+  // page reloads around it.
+  if (!opportunity || !pricing) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Which deal is this quote for?</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Field
+            label="Opportunity"
+            required
+            help="The quote starts with everything the deal sells, and accepting it puts the quote's lines back on the deal."
+          >
+            <RecordLookup
+              entity="opportunity"
+              name="opportunityId"
+              value=""
+              onChange={(id) => {
+                if (id) router.replace(`/quotations/new?opportunityId=${id}`);
+              }}
+              required
+              emptyLabel="Select a deal…"
+            />
+          </Field>
+        </CardContent>
+      </Card>
     );
+  }
+
+  // One book per quote, as per deal: fixed once a line is priced from it.
+  const bookLocked = rows.some((r) => r.priceBookEntryId);
+
+  function copyFromDeal() {
+    if (
+      rows.some((r) => r.productId) &&
+      !window.confirm("Replace the lines on this quote with the deal's products and services as they are now?")
+    ) {
+      return;
+    }
+    setRows(dealRows());
+    setBookId(pricing?.priceBookId ?? "");
   }
 
   // A submit HANDLER rather than <form action={...}>. React resets a form after
@@ -152,29 +127,38 @@ export function QuoteForm({
       return v === null || v === "" ? null : String(v);
     };
 
-    const usable = lines.filter((l) => l.description.trim() && Number(l.quantity) > 0);
+    const usable = rows.filter((r) => r.productId);
+    if (!bookId) {
+      setError("Choose the price book this quote is priced from.");
+      return;
+    }
     if (usable.length === 0) {
-      setError("A quote needs at least one line with a description and a quantity.");
+      setError("A quote needs at least one product or service.");
       return;
     }
 
     const input = {
-      opportunityId,
+      opportunityId: opportunity!.id,
       contactId: contactId || null,
       quoteDate: get("quoteDate"),
       expiryDate: get("expiryDate"),
       currencyCode: currency,
+      priceBookId: bookId,
       paymentTerms: get("paymentTerms"),
       notes: get("notes"),
       termsAndConditions: get("termsAndConditions"),
-      lines: usable.map((l) => ({
-        productId: l.productId || null,
-        productPlan: l.productPlan ?? null,
-        description: l.description,
-        quantity: l.quantity,
-        unitPrice: l.unitPrice || "0",
-        discountPercent: l.discountPercent || null,
-        taxRateId: l.taxRateId || null,
+      lines: usable.map((r) => ({
+        productId: r.productId,
+        priceBookEntryId: r.priceBookEntryId,
+        description: r.description.trim() || null,
+        quantity: num(r.quantity),
+        unitPrice: num(r.unitPrice),
+        licenseCost: num(r.licenseCost),
+        maintenanceCost: num(r.maintenanceCost),
+        cloudCost: num(r.cloudCost),
+        aiCost: num(r.aiCost),
+        discountPercent: num(r.discountPercent),
+        taxRateId: r.taxRateId || null,
       })),
     } as never;
 
@@ -203,30 +187,32 @@ export function QuoteForm({
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="lg:col-span-2">
-            <Field label="Opportunity" required error={fieldErrors.opportunityId?.[0]}
-            help="The deal this quote is for. It carries over the customer and contact.">
-              <RecordLookup entity="opportunity" name="opportunityId" value={opportunityId} onChange={(id) => {
-                  setOpportunityId(id ?? "");
-                  setContactId("");
-                  const opp = options.opportunities.find((o) => o.id === (id ?? ""));
-                  if (opp) setCurrency(opp.currencyCode);
-                }} required disabled={editing || Boolean(lockedOpportunityId)} emptyLabel="Select a deal…" />
+            <Field label="Opportunity" help="The deal this quote is for. Accepting the quote puts its lines on this deal.">
+              <p className="py-2 text-sm">
+                <Link href={`/opportunities/${opportunity.id}`} className="font-medium text-primary hover:underline">
+                  {opportunity.opportunityNumber} - {opportunity.name}
+                </Link>
+              </p>
             </Field>
           </div>
-          <Field label="Contact" hint={opportunityId ? undefined : "Pick a deal first."}
-            help="Who receives the quotation when you send it.">
-            <RecordLookup entity="contact" name="contactId" value={contactId} onChange={(id) => setContactId(id ?? "")} filters={{ accountId: opportunity?.accountId ?? null }} disabled={!opportunityId} emptyLabel="None" />
+          <Field label="Contact" help="Who receives the quotation when you send it. Starts as the deal's main contact.">
+            <RecordLookup
+              entity="contact"
+              name="contactId"
+              value={contactId}
+              onChange={(id) => setContactId(id ?? "")}
+              filters={{ accountId: opportunity.accountId }}
+              emptyLabel="None"
+            />
           </Field>
-          <Field label="Currency" required
-            help="The currency you are quoting in.">
+          <Field label="Currency" required help="The currency you are quoting in. Starts as the deal's.">
             <Select name="currencyCode" required value={currency} onChange={(e) => setCurrency(e.target.value)}>
-              {options.currencies.map((c) => (
+              {context.currencies.map((c) => (
                 <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Quote date" required
-            help="The date on the quotation.">
+          <Field label="Quote date" required help="The date on the quotation.">
             <Input
               name="quoteDate"
               type="date"
@@ -244,8 +230,7 @@ export function QuoteForm({
             />
           </Field>
           <div className="lg:col-span-2">
-            <Field label="Payment terms"
-            help="The terms the customer is being offered, shown on the document.">
+            <Field label="Payment terms" help="The terms the customer is being offered, shown on the document.">
               <Input
                 name="paymentTerms"
                 defaultValue={defaults?.paymentTerms ?? ""}
@@ -257,26 +242,38 @@ export function QuoteForm({
       </Card>
 
       <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
           <div>
-            <CardTitle>Lines</CardTitle>
+            <CardTitle>Products and services</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Discount comes off before tax. The server recalculates all of this on save.
+              {editing
+                ? "Every value can be changed while the quote is a draft."
+                : pricing.lines.length
+                  ? "Copied from the deal - every value can be changed for this quote."
+                  : "The deal has nothing on it yet, so start from the price book."}
             </p>
           </div>
-          {opportunity && opportunity.lines.length > 0 && (
-            <Button type="button" variant="outline" size="sm" onClick={importFromOpportunity}>
-              Pull {opportunity.lines.length} line(s) from the deal
+          {pricing.lines.length > 0 && (
+            <Button type="button" variant="outline" size="sm" onClick={copyFromDeal} disabled={pending}>
+              <Copy className="h-4 w-4" /> {editing ? "Copy the deal's lines again" : "Start again from the deal"}
             </Button>
           )}
         </CardHeader>
         <CardContent>
-          <LineEditor
-            lines={lines}
-            onChange={setLines}
-            products={options.products}
-            taxRates={options.taxRates}
+          <PricedLinesEditor
+            rows={rows}
+            onRowsChange={setRows}
+            bookId={bookId}
+            onBookChange={setBookId}
+            bookLocked={bookLocked}
+            bookLockedNote="Fixed while lines on this quote are priced from it. Remove them to choose a different book."
+            bookHelp="One price book per quote. Starts as the deal's; accepting the quote makes it the deal's book."
+            catalogue={pricing}
             currency={currency}
+            disabled={pending}
+            withDescription
+            totalLabel="Quote total"
+            hoursNote="will become project tasks if the deal is won on this quote."
           />
         </CardContent>
       </Card>
@@ -297,18 +294,13 @@ export function QuoteForm({
         </CardContent>
       </Card>
 
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
-          Quote total <span className="font-semibold text-foreground">{formatMoney(totals.total, currency)}</span>
-        </p>
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" onClick={() => router.back()} disabled={pending}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={pending}>
-            {pending ? "Saving…" : editing ? "Save quote" : "Create quote"}
-          </Button>
-        </div>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={() => router.back()} disabled={pending}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={pending}>
+          {pending ? "Saving…" : editing ? "Save quote" : "Create quote"}
+        </Button>
       </div>
     </form>
   );

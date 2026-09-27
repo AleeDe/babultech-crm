@@ -78,8 +78,8 @@ const FLOW: Step[] = [
     href: "/quotations",
     needs: PERMISSIONS.OPPORTUNITY_READ,
     what: "The priced proposal you send the customer.",
-    how: "Open the opportunity and raise a quote from there, so it inherits the account and contact.",
-    then: "Quote lines pull their price from the product catalogue. Revising a quote creates a new version rather than overwriting the old one.",
+    how: "Open the opportunity and press New quote. The quote starts with everything the deal sells - each product and service with its price, the four costs, discount and tax - and its contact and currency.",
+    then: "Change any value before it goes out. Revising a sent quote creates a new version rather than overwriting it. Accepting one puts its lines on the deal, so the deal's value becomes what the customer accepted.",
   },
   {
     icon: FileSignature,

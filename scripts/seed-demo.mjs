@@ -515,7 +515,6 @@ for (const number of Object.keys(opp)) {
       productId: product[code].id,
       quantity,
       unitPrice,
-      lineTotal: quantity * unitPrice,
       sortOrder: i,
     }));
   await replaceChildren("opportunity_product", "opportunityId", opp[number].id, rows);
@@ -695,7 +694,6 @@ for (const number of Object.keys(quote)) {
       unitPrice,
       discountPercent,
       taxRateId: gst.id,
-      lineTotal: quantity * unitPrice,
       sortOrder: i,
     }));
   await replaceChildren("quote_line", "quotationId", quote[number].id, rows);

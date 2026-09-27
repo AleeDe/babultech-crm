@@ -12,7 +12,7 @@ const base = process.argv[2] || "http://localhost:3100";
 if (!["localhost", "127.0.0.1"].includes(new URL(base).hostname)) throw new Error("This pilot only targets the local application.");
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const run = randomUUID().slice(0, 8);
-const ids = { salesRole: randomUUID(), pmRole: randomUUID(), sales: null, pm: null, account: randomUUID(), opportunity: randomUUID(), quotation: randomUUID(), project: randomUUID() };
+const ids = { salesRole: randomUUID(), pmRole: randomUUID(), sales: null, pm: null, account: randomUUID(), opportunity: randomUUID(), quotation: randomUUID(), project: randomUUID(), product: randomUUID() };
 const output = "artifacts/browser-qa";
 await mkdir(output, { recursive: true });
 const report = { run, passed: [], failed: null, browserErrors: [], cleanup: [] };
@@ -51,7 +51,12 @@ try {
   await check(db.from("app_user").insert({ id: ids[role], fullName: `QA ${role}`, email: emails[role], roleId: ids[`${role}Role`], status: "ACTIVE", updatedAt: now() }), "Create temporary profile");
  }
  await check(db.from("account").insert({ id: ids.account, accountNumber: `QA-A-${run}`, name: `QA Delivery Account ${run}`, ownerUserId: ids.sales, updatedAt: now() }), "Create temporary account");
- await check(db.from("opportunity").insert({ id: ids.opportunity, opportunityNumber: `QA-O-${run}`, name: `QA Delivery Deal ${run}`, accountId: ids.account, ownerUserId: ids.sales, stage: "CLOSED_WON", amount: 250000, currencyCode: "PKR", expectedCloseDate: day(0), actualCloseDate: day(0), updatedAt: now() }), "Create temporary won opportunity");
+ // A won deal must sell something (guard_won_deal_has_product), so the deal is
+ // priced by a line first and won after.
+ await check(db.from("product").insert({ id: ids.product, productCode: "auto", name: `QA Delivery Item ${run}`, productType: "PRODUCT", addInTask: false, active: true, updatedAt: now() }), "Create a temporary product");
+ await check(db.from("opportunity").insert({ id: ids.opportunity, opportunityNumber: `QA-O-${run}`, name: `QA Delivery Deal ${run}`, accountId: ids.account, ownerUserId: ids.sales, stage: "NEGOTIATION", amount: 0, currencyCode: "PKR", expectedCloseDate: day(0), updatedAt: now() }), "Create temporary opportunity");
+ await check(db.from("opportunity_product").insert({ opportunityId: ids.opportunity, productId: ids.product, quantity: 1, unitPrice: 250000, sortOrder: 1 }), "Price the deal");
+ await check(db.from("opportunity").update({ stage: "CLOSED_WON", actualCloseDate: day(0), updatedAt: now() }).eq("id", ids.opportunity), "Win the deal");
  await check(db.from("quotation").insert({ id: ids.quotation, quoteNumber: `QA-Q-${run}`, opportunityId: ids.opportunity, accountId: ids.account, versionNumber: 1, status: "ACCEPTED", quoteDate: day(-3), expiryDate: day(30), currencyCode: "PKR", subtotal: 250000, totalAmount: 250000, updatedAt: now() }), "Create temporary accepted quotation");
  await check(db.from("project").insert({ id: ids.project, projectNumber: `QA-P-${run}`, name: `QA Delivery Project ${run}`, accountId: ids.account, opportunityId: ids.opportunity, projectManagerId: ids.pm, projectType: "CUSTOMER", billingType: "FIXED", status: "PLANNING", currencyCode: "PKR", updatedAt: now() }), "Create temporary planning project");
 
@@ -188,6 +193,7 @@ try {
  await clean("Project", db.from("project").delete().eq("id", ids.project));
  await clean("Quotation", db.from("quotation").delete().eq("id", ids.quotation));
  await clean("Opportunity", db.from("opportunity").delete().eq("id", ids.opportunity));
+ await clean("Product", db.from("product").delete().eq("id", ids.product));
  await clean("Account", db.from("account").delete().eq("id", ids.account));
  await clean("Audit history", db.from("audit_history").delete().in("entityId", [ids.project, ids.opportunity, ids.quotation, ids.account]));
  for (const role of ["pm", "sales"]) if (ids[role]) {

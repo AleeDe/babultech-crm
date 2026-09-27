@@ -18,6 +18,10 @@ import {
 import { formatMoney, formatDate, formatPercent, formatNumber, humanize } from "@/lib/utils";
 import { QuoteActions } from "./quote-actions";
 
+/** A line's four costs together, as the deal's lines show them. */
+const costsOf = (l: Record<string, unknown>) =>
+  Number(l.licenseCost ?? 0) + Number(l.maintenanceCost ?? 0) + Number(l.cloudCost ?? 0) + Number(l.aiCost ?? 0);
+
 export default async function QuotationDetailPage({
   params,
 }: {
@@ -173,9 +177,10 @@ export default async function QuotationDetailPage({
                     <TR>
                       <TH>Description</TH>
                       <TH className="text-right">Qty</TH>
-                      <TH className="text-right">Unit price</TH>
-                      <TH className="text-right">Discount</TH>
-                      <TH>Tax</TH>
+                      <TH className="text-right" priority="secondary">Unit price</TH>
+                      <TH className="text-right" priority="tertiary">Costs</TH>
+                      <TH className="text-right" priority="secondary">Discount</TH>
+                      <TH className="text-right" priority="tertiary">Tax</TH>
                       <TH className="text-right">Total</TH>
                     </TR>
                   </THead>
@@ -193,9 +198,18 @@ export default async function QuotationDetailPage({
                           {l.product && <p className="text-xs text-muted-foreground">{l.description}</p>}
                         </TD>
                         <TD className="text-right tabular">{formatNumber(l.quantity, 2)}</TD>
-                        <TD className="text-right tabular">{formatMoney(l.unitPrice, quote.currencyCode)}</TD>
-                        <TD className="text-right tabular">{formatPercent(l.discountPercent)}</TD>
-                        <TD className="text-sm text-muted-foreground">{l.taxRate?.name ?? "—"}</TD>
+                        <TD className="text-right tabular" priority="secondary">{formatMoney(l.unitPrice, quote.currencyCode)}</TD>
+                        <TD className="text-right tabular" priority="tertiary">
+                          {/* Licence, maintenance, cloud and AI, as on the deal's lines. */}
+                          {costsOf(l) > 0 ? formatMoney(costsOf(l), quote.currencyCode) : "—"}
+                        </TD>
+                        <TD className="text-right tabular" priority="secondary">
+                          {Number(l.discountPercent) > 0 ? formatPercent(l.discountPercent) : "—"}
+                        </TD>
+                        <TD className="text-right text-sm text-muted-foreground" priority="tertiary">
+                          {/* The rate the line was priced at, which a later change to the rate does not move. */}
+                          {Number(l.taxPercent) > 0 ? `${l.taxRate?.name ?? "Tax"} ${formatPercent(l.taxPercent)}` : "—"}
+                        </TD>
                         <TD className="text-right font-medium tabular">{formatMoney(l.lineTotal, quote.currencyCode)}</TD>
                       </TR>
                     ))}

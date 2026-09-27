@@ -187,8 +187,17 @@ export default async function OpportunityDetailPage({
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
               <CardTitle>Quotations</CardTitle>
+              {/* A new quote starts as a copy of what this deal sells. Not offered
+                  once a quote is accepted - only one can be - or on a closed deal. */}
+              {!acceptedQuote &&
+                !["CLOSED_WON", "CLOSED_LOST"].includes(opp.stage) &&
+                can(_me, PERMISSIONS.OPPORTUNITY_WRITE) && (
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={`/quotations/new?opportunityId=${opp.id}`}>New quote</Link>
+                  </Button>
+                )}
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               {opp.quotations.length === 0 ? (

@@ -75,7 +75,12 @@ console.log(all ? "Removing every walkthrough run\n" : `Removing walkthrough run
 // --- gather the anchors first, before anything is deleted -------------------
 const accounts = await idsOf("account", "name", like);
 const partners = await idsOf("partner", "displayName", like);
-const projects = await idsOf("project", "name", like);
+// A won deal's project is named after the deal, "Project-<deal name>", so it
+// is found by that as well as by the walkthrough's own prefix.
+const projects = [...new Set([
+  ...(await idsOf("project", "name", like)),
+  ...(await idsOf("project", "name", `Project-${like}`)),
+])];
 const opportunities = await idsOf("opportunity", "name", like);
 const invoices = await idsOf("invoice", "invoiceNumber", numberLike);
 const payments = await idsOf("payment", "paymentNumber", numberLike);

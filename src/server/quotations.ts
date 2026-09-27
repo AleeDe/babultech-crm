@@ -1,12 +1,10 @@
 "use server";
 
-import { commercialPlanSchema } from "@/lib/product-plans";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import Decimal from "decimal.js";
-import { toDecimal, one } from "@/lib/decimal";
+import { one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
-import { listCatalogueProducts } from "./price-books";
+import { getOpportunityPricing, type OpportunityPricing } from "./opportunity-lines";
 import { updateRecord } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
@@ -21,20 +19,36 @@ import type { ActionResult } from "./partners";
  * what makes `quotation_one_accepted_per_opportunity` — the partial unique
  * index in prisma/sql — safe to rely on.
  *
- * Totals are always recomputed here from the lines. Nothing writes a total
- * directly, so the header can never disagree with the body.
+ * A quote is priced exactly as its deal is: the same price book, the same four
+ * costs, discount and tax on every line, the same arithmetic. Its lines start
+ * as a copy of the deal's, every value editable, and accepting it puts them
+ * back on the deal (20260928000003_quotes_priced_like_deals.sql). Totals -
+ * each line's and the header's - are worked out by the database from the
+ * lines, so nothing here computes or writes one.
  */
 
 const EDITABLE = ["DRAFT", "UNDER_REVIEW", "APPROVED"] as const;
 
+const amount = z.preprocess(
+  (v) => (v === "" || v == null ? 0 : v),
+  z.coerce.number().finite().min(0, "Amounts cannot be negative."),
+);
+
 const lineSchema = z.object({
-  productId: z.string().uuid().optional().nullable(),
-  productPlan: commercialPlanSchema.optional().nullable(),
-  description: z.string().min(1, "Every line needs a description."),
-  quantity: z.coerce.number().positive(),
-  unitPrice: z.coerce.number().min(0),
-  discountPercent: z.coerce.number().min(0).max(100).optional().nullable(),
-  taxRateId: z.string().uuid().optional().nullable(),
+  productId: z.string().uuid("Choose a product or service on every line."),
+  priceBookEntryId: z.string().uuid().optional().nullable(),
+  description: z.string().max(4000).optional().nullable(),
+  quantity: amount,
+  unitPrice: amount,
+  licenseCost: amount,
+  maintenanceCost: amount,
+  cloudCost: amount,
+  aiCost: amount,
+  discountPercent: z.preprocess(
+    (v) => (v === "" || v == null ? 0 : v),
+    z.coerce.number().min(0).max(100, "A discount cannot be more than 100%."),
+  ),
+  taxRateId: z.string().uuid().optional().nullable().or(z.literal("")),
 });
 
 const quotationSchema = z.object({
@@ -43,80 +57,36 @@ const quotationSchema = z.object({
   quoteDate: z.coerce.date(),
   expiryDate: z.coerce.date(),
   currencyCode: z.string().length(3).default("PKR"),
+  priceBookId: z.string().uuid().optional().nullable().or(z.literal("")),
   paymentTerms: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
   termsAndConditions: z.string().optional().nullable(),
   lines: z.array(lineSchema).min(1, "A quote needs at least one line."),
 });
 
-interface Totals {
-  subtotal: Decimal;
-  discountAmount: Decimal;
-  taxAmount: Decimal;
-  totalAmount: Decimal;
-  lines: {
-    lineTotal: Decimal;
-    productId: string | null;
-    productPlan: z.infer<typeof commercialPlanSchema> | null;
-    description: string;
-    quantity: number;
-    unitPrice: number;
-    discountPercent: number | null;
-    taxRateId: string | null;
-  }[];
-}
-
 /**
- * Money maths for a document. Discount comes off the line before tax, because
- * you do not charge sales tax on a discount you did not collect.
+ * The lines as they are stored. A line with no description of its own reads
+ * as its product's name, because the description is what the customer sees.
  */
-async function computeTotals(
-  lines: z.infer<typeof lineSchema>[],
-): Promise<Totals> {
-  const taxRateIds = [...new Set(lines.map((l) => l.taxRateId).filter(Boolean))] as string[];
-  const taxRates = taxRateIds.length
-    ? (await (await supabaseServer()).from("tax_rate").select("id, ratePercent").in("id", taxRateIds)).data ?? []
-    : [];
-  const rateOf = (id: string | null | undefined) =>
-    toDecimal(taxRates.find((t) => t.id === id)?.ratePercent ?? 0);
+async function storedLines(lines: z.infer<typeof lineSchema>[]) {
+  const db = await supabaseServer();
+  const ids = [...new Set(lines.map((l) => l.productId))];
+  const { data: products } = await db.from("product").select("id, name").in("id", ids);
+  const nameOf = new Map((products ?? []).map((p) => [p.id as string, p.name as string]));
 
-  let subtotal = toDecimal(0);
-  let discountAmount = toDecimal(0);
-  let taxAmount = toDecimal(0);
-
-  const computed = lines.map((line) => {
-    const gross = toDecimal(line.quantity).times(line.unitPrice);
-    const discount = gross.times(line.discountPercent ?? 0).dividedBy(100);
-    const net = gross.minus(discount).toDecimalPlaces(2);
-    const tax = net.times(rateOf(line.taxRateId)).dividedBy(100).toDecimalPlaces(2);
-
-    subtotal = subtotal.plus(gross);
-    discountAmount = discountAmount.plus(discount);
-    taxAmount = taxAmount.plus(tax);
-
-    return {
-      lineTotal: net,
-      productId: line.productId ?? null,
-      productPlan: line.productPlan ?? null,
-      description: line.description,
-      quantity: line.quantity,
-      unitPrice: line.unitPrice,
-      discountPercent: line.discountPercent ?? null,
-      taxRateId: line.taxRateId ?? null,
-    };
-  });
-
-  subtotal = subtotal.toDecimalPlaces(2);
-  discountAmount = discountAmount.toDecimalPlaces(2);
-  taxAmount = taxAmount.toDecimalPlaces(2);
-
-  return {
-    subtotal,
-    discountAmount,
-    taxAmount,
-    totalAmount: subtotal.minus(discountAmount).plus(taxAmount).toDecimalPlaces(2),
-    lines: computed,
-  };
+  return lines.map((l) => ({
+    productId: l.productId,
+    priceBookEntryId: l.priceBookEntryId ?? null,
+    description: l.description?.trim() || nameOf.get(l.productId) || "Item",
+    quantity: l.quantity,
+    unitPrice: l.unitPrice,
+    licenseCost: l.licenseCost,
+    maintenanceCost: l.maintenanceCost,
+    cloudCost: l.cloudCost,
+    aiCost: l.aiCost,
+    discountPercent: l.discountPercent,
+    taxRateId: l.taxRateId || null,
+  }));
 }
 
 export async function createQuotation(
@@ -127,7 +97,11 @@ export async function createQuotation(
 
   const parsed = quotationSchema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, error: "Please correct the highlighted fields.", fieldErrors: parsed.error.flatten().fieldErrors };
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
   }
   const data = parsed.data;
 
@@ -158,8 +132,6 @@ export async function createQuotation(
       .limit(1)
       .maybeSingle();
 
-    const totals = await computeTotals(data.lines);
-
     // Quote + lines atomically: a quote with a total but no lines is not a quote.
     const { data: quote, error } = await db.rpc("create_with_lines", {
       p_table: "quotation",
@@ -172,16 +144,13 @@ export async function createQuotation(
         quoteDate: data.quoteDate.toISOString().slice(0, 10),
         expiryDate: data.expiryDate.toISOString().slice(0, 10),
         currencyCode: data.currencyCode,
-        subtotal: totals.subtotal.toFixed(2),
-        discountAmount: totals.discountAmount.toFixed(2),
-        taxAmount: totals.taxAmount.toFixed(2),
-        totalAmount: totals.totalAmount.toFixed(2),
+        priceBookId: data.priceBookId || null,
         paymentTerms: data.paymentTerms ?? null,
         notes: data.notes ?? null,
         termsAndConditions: data.termsAndConditions ?? null,
       },
       p_line_table: "quote_line",
-      p_lines: totals.lines.map((l) => ({ ...l, lineTotal: l.lineTotal.toFixed(2) })),
+      p_lines: await storedLines(data.lines),
       p_parent_field: "quotationId",
       p_number_field: "quoteNumber",
       p_sequence: SEQUENCES.QUOTATION,
@@ -207,9 +176,21 @@ export async function updateQuotation(
 
   const parsed = quotationSchema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, error: "Please correct the highlighted fields.", fieldErrors: parsed.error.flatten().fieldErrors };
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Please correct the highlighted fields.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
   }
   const data = parsed.data;
+
+  if (data.expiryDate < data.quoteDate) {
+    return {
+      ok: false,
+      error: "A quote cannot expire before it is issued.",
+      fieldErrors: { expiryDate: ["Must be on or after the quote date."] },
+    };
+  }
 
   try {
     const db = await supabaseServer();
@@ -231,8 +212,6 @@ export async function updateQuotation(
       };
     }
 
-    const totals = await computeTotals(data.lines);
-
     // Replaces the lines and updates the header in one transaction: a delete
     // that lands without the re-insert would leave a quote with no body.
     const { error } = await db.rpc("update_with_lines", {
@@ -243,16 +222,13 @@ export async function updateQuotation(
         quoteDate: data.quoteDate.toISOString().slice(0, 10),
         expiryDate: data.expiryDate.toISOString().slice(0, 10),
         currencyCode: data.currencyCode,
-        subtotal: totals.subtotal.toFixed(2),
-        discountAmount: totals.discountAmount.toFixed(2),
-        taxAmount: totals.taxAmount.toFixed(2),
-        totalAmount: totals.totalAmount.toFixed(2),
+        priceBookId: data.priceBookId || null,
         paymentTerms: data.paymentTerms ?? null,
         notes: data.notes ?? null,
         termsAndConditions: data.termsAndConditions ?? null,
       },
       p_line_table: "quote_line",
-      p_lines: totals.lines.map((l) => ({ ...l, lineTotal: l.lineTotal.toFixed(2) })),
+      p_lines: await storedLines(data.lines),
       p_parent_field: "quotationId",
       p_entity_type: "Quotation",
       p_actor_id: user.id,
@@ -364,6 +340,11 @@ export async function sendQuotation(id: string): Promise<ActionResult> {
 /**
  * Customer acceptance. This is the gate `changeStage` checks before a deal can
  * be marked Closed Won, so it is deliberately a separate, audited action.
+ *
+ * Accepting is accept_quotation(), in the database, because it is several
+ * writes that must land together: the quote marked accepted, the deal's lines
+ * replaced by the quote's, the deal moved on. The deal's amount follows from
+ * its new lines, and partner commission from the amount.
  */
 export async function decideQuotation(
   id: string,
@@ -378,7 +359,7 @@ export async function decideQuotation(
 
     const { data: before } = await db
       .from("quotation")
-      .select("status, opportunityId, quoteNumber, totalAmount")
+      .select("status, opportunityId, quoteNumber")
       .eq("id", id)
       .maybeSingle();
 
@@ -392,43 +373,15 @@ export async function decideQuotation(
     }
 
     if (decision === "ACCEPTED") {
-      // Backstopped by quotation_one_accepted_per_opportunity (a partial unique
-      // index), so a race still fails at the database rather than double-accepting.
-      const { data: alreadyAccepted } = await db
-        .from("quotation")
-        .select("quoteNumber")
-        .eq("opportunityId", before.opportunityId)
-        .eq("status", "ACCEPTED")
-        .is("deletedAt", null)
-        .limit(1)
-        .maybeSingle();
-
-      if (alreadyAccepted) {
-        return {
-          ok: false,
-          error: alreadyAccepted.quoteNumber + " is already the accepted quote on this deal. Only one quote per opportunity can be accepted.",
-        };
-      }
-    }
-
-    await updateRecord(
-      "quotation",
-      id,
-      {
-        status: decision,
-        acceptedAt: decision === "ACCEPTED" ? new Date().toISOString() : null,
-      },
-      "Quotation",
-      user.id,
-    );
-
-    // An accepted quote is the customer's commitment — reflect it on the deal.
-    if (decision === "ACCEPTED") {
+      const { error } = await db.rpc("accept_quotation", { p_id: id });
+      if (error) return { ok: false, error: error.message };
+      revalidatePath(`/opportunities/${before.opportunityId}`);
+    } else {
       await updateRecord(
-        "opportunity",
-        before.opportunityId,
-        { stage: "VERBAL_CONFIRMATION", probabilityPercent: 90, amount: before.totalAmount },
-        "Opportunity",
+        "quotation",
+        id,
+        { status: "REJECTED", acceptedAt: null },
+        "Quotation",
         user.id,
       );
     }
@@ -481,57 +434,48 @@ export async function getQuotation(id: string) {
   };
 }
 
-export async function getQuotationFormOptions(opportunityId?: string) {
-  await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
+/** Everything the quote form needs about the deal it is for. */
+export interface QuoteFormContext {
+  opportunity: {
+    id: string;
+    opportunityNumber: string;
+    name: string;
+    accountId: string;
+    primaryContactId: string | null;
+    currencyCode: string;
+    stage: string;
+  } | null;
+  /** The deal's own lines and book, and the catalogue: books, their prices, products and taxes. */
+  pricing: OpportunityPricing | null;
+  currencies: { code: string; name: string }[];
+}
 
+/**
+ * The deal a quote is for, with what it sells and what it could be priced
+ * from. Without a deal there is nothing to price yet - the form asks for one
+ * first.
+ */
+export async function getQuoteFormContext(opportunityId?: string | null): Promise<QuoteFormContext> {
+  await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
   const db = await supabaseServer();
 
-  const [opportunities, contacts, products, taxRates, currencies] = await Promise.all([
-    db
-      .from("opportunity")
-      // account and lines are embedded because the form uses both: the account
-      // name labels each option, and the deal's own product lines are what the
-      // "pull lines from the deal" shortcut copies into the quote.
-      .select(
-        `id, opportunityNumber, name, accountId, currencyCode, amount,
-         account ( name ),
-         lines:opportunity_product (
-           productId, quantity, unitPrice, discountPercent, taxRateId,
-           product ( name )
-         )`,
-      )
-      .is("deletedAt", null)
-      .not("stage", "in", '("CLOSED_WON","CLOSED_LOST")')
-      .order("createdAt", { ascending: false }),
-    // Every live contact, narrowed to the chosen deal's account in the form.
-    // Filtering here instead would mean refetching each time the opportunity
-    // changes, and the list is small enough that one read covers the page.
-    db
-      .from("contact")
-      .select("id, firstName, lastName, accountId")
-      .is("deletedAt", null)
-      .eq("active", true)
-      .order("firstName"),
-    listCatalogueProducts(),
-    db.from("tax_rate").select("id, name, ratePercent").eq("active", true).order("name"),
+  const [{ data: currencies }, opportunity, pricing] = await Promise.all([
     db.from("currency").select("code, name").eq("active", true).order("code"),
+    opportunityId
+      ? db
+          .from("opportunity")
+          .select("id, opportunityNumber, name, accountId, primaryContactId, currencyCode, stage")
+          .eq("id", opportunityId)
+          .is("deletedAt", null)
+          .maybeSingle()
+          .then((r) => r.data)
+      : Promise.resolve(null),
+    opportunityId ? getOpportunityPricing(opportunityId) : Promise.resolve(null),
   ]);
 
   return {
-    // PostgREST returns an embedded to-one relation as an array, so account and
-    // product are flattened here rather than in the form — the shape the
-    // component declares is the shape it should receive.
-    opportunities: (opportunities.data ?? []).map((o) => ({
-      ...o,
-      account: one(o.account as { name: string } | { name: string }[] | null),
-      lines: (o.lines ?? []).map((l) => ({
-        ...l,
-        product: one(l.product as { name: string } | { name: string }[] | null),
-      })),
-    })),
-    contacts: contacts.data ?? [],
-    products: products,
-    taxRates: taxRates.data ?? [],
-    currencies: currencies.data ?? [],
+    opportunity: (opportunity as QuoteFormContext["opportunity"]) ?? null,
+    pricing,
+    currencies: (currencies ?? []) as QuoteFormContext["currencies"],
   };
 }

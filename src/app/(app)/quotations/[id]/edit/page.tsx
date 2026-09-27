@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getQuotation, getQuotationFormOptions } from "@/server/quotations";
+import { getQuotation, getQuoteFormContext } from "@/server/quotations";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { PageHeader, Alert, Button , Forbidden} from "@/components/ui";
 import { serialize, humanize } from "@/lib/utils";
-import { QuoteForm, type QuoteDefaults, type QuoteFormOptions } from "../../quote-form";
+import { QuoteForm, type QuoteDefaults } from "../../quote-form";
 
 const EDITABLE = ["DRAFT", "UNDER_REVIEW", "APPROVED"];
 
@@ -16,7 +16,7 @@ export default async function EditQuotationPage({
   const { id } = await params;
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.OPPORTUNITY_WRITE)) return <Forbidden what="quotations" />;
-  const [quote, options] = await Promise.all([getQuotation(id), getQuotationFormOptions()]);
+  const quote = await getQuotation(id);
   if (!quote) notFound();
 
   // A quote the customer has seen is a document, not a draft.
@@ -49,14 +49,20 @@ export default async function EditQuotationPage({
     quoteDate: quote.quoteDate,
     expiryDate: quote.expiryDate,
     currencyCode: quote.currencyCode,
+    priceBookId: quote.priceBookId,
     paymentTerms: quote.paymentTerms,
     notes: quote.notes,
     termsAndConditions: quote.termsAndConditions,
     lines: quote.lines.map((l: Record<string, any>) => ({
       productId: l.productId,
+      priceBookEntryId: l.priceBookEntryId,
       description: l.description,
       quantity: l.quantity,
       unitPrice: l.unitPrice,
+      licenseCost: l.licenseCost,
+      maintenanceCost: l.maintenanceCost,
+      cloudCost: l.cloudCost,
+      aiCost: l.aiCost,
       discountPercent: l.discountPercent,
       taxRateId: l.taxRateId,
     })),
@@ -70,7 +76,7 @@ export default async function EditQuotationPage({
         title={`Edit ${quote.quoteNumber}`}
         description={`Version ${quote.versionNumber} · ${humanize(quote.status)}`}
       />
-      <QuoteForm options={serialize(options)} defaults={defaults} />
+      <QuoteForm context={serialize(await getQuoteFormContext(quote.opportunityId))} defaults={defaults} />
     </div>
   );
 }
