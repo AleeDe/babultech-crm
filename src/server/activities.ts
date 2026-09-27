@@ -73,6 +73,15 @@ const SELECT = `
   owner:app_user!activity_ownerUserId_fkey ( id, fullName )
 `;
 
+/** Reading a record's activities takes that record's own read permission. */
+const ACTIVITY_READ: Record<ActivityEntity, (typeof PERMISSIONS)[keyof typeof PERMISSIONS]> = {
+  Lead: PERMISSIONS.LEAD_READ,
+  Contact: PERMISSIONS.ACCOUNT_READ,
+  Account: PERMISSIONS.ACCOUNT_READ,
+  Partner: PERMISSIONS.PARTNER_READ,
+  Opportunity: PERMISSIONS.OPPORTUNITY_READ,
+};
+
 /**
  * Everything done against one record, newest first.
  *
@@ -83,7 +92,7 @@ export async function listActivitiesFor(
   entityType: ActivityEntity,
   entityId: string,
 ): Promise<ActivityRow[]> {
-  await requirePermission(PERMISSIONS.LEAD_READ);
+  await requirePermission(ACTIVITY_READ[entityType]);
   const db = await supabaseServer();
 
   const { data, error } = await db

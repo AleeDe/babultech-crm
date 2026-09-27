@@ -1,7 +1,7 @@
 "use server";
 
 import { supabaseServer } from "@/lib/supabase";
-import { applySearch, applyScope } from "@/lib/db";
+import { applySearch, applyScope, applyScopeWithPartners } from "@/lib/db";
 import { PERMISSIONS, requirePermission, requireUser, scopedContext } from "@/lib/authz";
 import {
   LOOKUP_PAGE_SIZE,
@@ -45,6 +45,11 @@ interface EntityConfig {
   order: string;
   /** The owner column to scope by, where the entity is owned. */
   ownerField?: string;
+  /**
+   * The column crediting a record to a partner. Every partner's records are
+   * every salesperson's, whoever owns them (20260928000008).
+   */
+  partnerField?: string;
   /** Rows normally hidden: retired products, closed cases, ended contracts. */
   activeFilter?: (query: any) => any;
   /** Soft-deleted rows are never offered. */
@@ -60,6 +65,7 @@ const ENTITIES: Record<LookupEntity, EntityConfig> = {
     display: (r) => ({ label: r.name, sublabel: [r.accountNumber, r.accountType?.toLowerCase()].filter(Boolean).join(" · ") }),
     order: "name",
     ownerField: "ownerUserId",
+    partnerField: "sourcePartnerId",
     softDeleted: true,
   },
   contact: {
@@ -116,6 +122,7 @@ const ENTITIES: Record<LookupEntity, EntityConfig> = {
     }),
     order: "lastName",
     ownerField: "ownerUserId",
+    partnerField: "referredByPartnerId",
     softDeleted: true,
   },
   opportunity: {
@@ -129,6 +136,7 @@ const ENTITIES: Record<LookupEntity, EntityConfig> = {
     }),
     order: "name",
     ownerField: "ownerUserId",
+    partnerField: "sourcePartnerId",
     softDeleted: true,
   },
   quotation: {
@@ -244,7 +252,9 @@ export async function searchLookup(
 
   if (config.ownerField) {
     const { where } = await scopedContext(config.ownerField);
-    query = applyScope(query, where);
+    query = config.partnerField
+      ? applyScopeWithPartners(query, where, config.partnerField)
+      : applyScope(query, where);
   }
 
   const { data, error } = await query.order(config.order).limit(LOOKUP_PAGE_SIZE);

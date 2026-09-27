@@ -6,7 +6,7 @@ import { picklistCode } from "@/lib/picklists";
 import Decimal from "decimal.js";
 import { toDecimal, one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
-import { createRecord, updateRecord, applyScope, LIST_LIMIT } from "@/lib/db";
+import { createRecord, updateRecord, applyScopeWithPartners, LIST_LIMIT } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission, scopedContext } from "@/lib/authz";
 import { auditChanges } from "@/lib/audit";
@@ -313,7 +313,8 @@ export async function listOpportunities(filters?: {
     .is("deletedAt", null)
     .order("expectedCloseDate", { ascending: true });
 
-  query = applyScope(query, where);
+  // Our own by scope, and every partner's.
+  query = applyScopeWithPartners(query, where, "sourcePartnerId");
 
   if (filters?.stage) query = query.eq("stage", filters.stage);
   if (filters?.ownerUserId) query = query.eq("ownerUserId", filters.ownerUserId);
@@ -421,7 +422,7 @@ export async function getPipelineByStage() {
   // PostgREST has no groupBy, so the scoped rows are fetched and aggregated
   // here. Pipeline-sized, not report-sized — a larger version would want a view.
   let q = db.from("opportunity").select("stage, amount").is("deletedAt", null);
-  q = applyScope(q, where);
+  q = applyScopeWithPartners(q, where, "sourcePartnerId");
 
   const { data: raw, error } = await q;
   if (error) throw new Error(`Could not load pipeline: ${error.message}`);

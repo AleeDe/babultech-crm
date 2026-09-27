@@ -6,16 +6,17 @@ import { getLeadQuality } from "@/server/lead-quality";
 describe("research queue access and scan completeness", () => {
   beforeEach(() => { vi.clearAllMocks(); mocks.permission.mockResolvedValue({ id: "me" }); mocks.scope.mockResolvedValue({ ownerUserId: "me" }); });
   function database() {
-    const query = { select: vi.fn().mockReturnThis(), is: vi.fn().mockReturnThis(), not: vi.fn().mockReturnThis(), order: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), in: vi.fn().mockReturnThis(), range: vi.fn().mockResolvedValue({ data: [], count: 0, error: null }) };
+    const query = { select: vi.fn().mockReturnThis(), is: vi.fn().mockReturnThis(), not: vi.fn().mockReturnThis(), order: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), in: vi.fn().mockReturnThis(), or: vi.fn().mockReturnThis(), range: vi.fn().mockResolvedValue({ data: [], count: 0, error: null }) };
     mocks.server.mockResolvedValue({ from: vi.fn().mockReturnValue(query) }); return query;
   }
   it("enforces lead permission before fetching data", async () => {
     mocks.permission.mockRejectedValueOnce(new Error("Forbidden"));
     await expect(getLeadQuality()).rejects.toThrow("Forbidden"); expect(mocks.server).not.toHaveBeenCalled();
   });
-  it("applies owner scope and excludes closed/deleted records", async () => {
+  it("applies owner scope, widened to every partner's leads, and excludes closed/deleted records", async () => {
     const query = database(); await getLeadQuality();
-    expect(query.eq).toHaveBeenCalledWith("ownerUserId", "me");
+    // Every partner's lead is every salesperson's (20260928000008).
+    expect(query.or).toHaveBeenCalledWith("ownerUserId.eq.me,referredByPartnerId.not.is.null");
     expect(query.is).toHaveBeenCalledWith("deletedAt", null);
     expect(query.is).toHaveBeenCalledWith("convertedAt", null);
     expect(query.not).toHaveBeenCalledWith("status", "in", "(CONVERTED,DISQUALIFIED)");

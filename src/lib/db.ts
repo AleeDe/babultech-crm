@@ -130,3 +130,27 @@ export function applyScope<Q extends { eq: (c: string, v: unknown) => Q; in: (c:
   }
   return query;
 }
+
+/**
+ * applyScope, widened to every partner's records: a lead, account or deal
+ * credited to a partner is every salesperson's to see and work, whoever owns
+ * it (20260928000008). partnerColumn names the column that credits the
+ * partner. Row-level security applies the same rule; this keeps the list from
+ * narrowing below it.
+ */
+export function applyScopeWithPartners<
+  Q extends { eq: (c: string, v: unknown) => Q; in: (c: string, v: readonly unknown[]) => Q; or: (filters: string) => Q },
+>(query: Q, where: Record<string, unknown>, partnerColumn: string): Q {
+  const entries = Object.entries(where);
+  if (entries.length === 0) return query;
+  // One owner clause is what scopeFilter gives; anything else stays as narrow as it was.
+  if (entries.length > 1) return applyScope(query, where);
+
+  const [column, clause] = entries[0];
+  const partners = `${partnerColumn}.not.is.null`;
+  if (clause && typeof clause === "object" && "in" in clause) {
+    const ids = (clause as { in: unknown[] }).in.map(String);
+    return query.or(ids.length ? `${column}.in.(${ids.join(",")}),${partners}` : partners);
+  }
+  return query.or(`${column}.eq.${String(clause)},${partners}`);
+}

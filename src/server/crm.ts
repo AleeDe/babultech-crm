@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { picklistCode } from "@/lib/picklists";
 import { supabaseServer } from "@/lib/supabase";
-import { createRecord, updateRecord, applyScope, applySearch, LIST_LIMIT } from "@/lib/db";
+import { createRecord, updateRecord, applyScopeWithPartners, applySearch, LIST_LIMIT } from "@/lib/db";
 import { one, toDecimal } from "@/lib/decimal";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission, requireUser, scopedContext, can } from "@/lib/authz";
@@ -124,7 +124,8 @@ export async function listAccounts(filters?: {
     .is("deletedAt", null)
     .order("name", { ascending: true });
 
-  query = applyScope(query, where);
+  // Our own by scope, and every partner's.
+  query = applyScopeWithPartners(query, where, "sourcePartnerId");
 
   if (filters?.accountType) query = query.eq("accountType", filters.accountType);
   if (filters?.partnerId) query = query.eq("sourcePartnerId", filters.partnerId);
@@ -847,7 +848,8 @@ export async function listLeads(filters?: {
     .is("deletedAt", null)
     .order("createdAt", { ascending: false });
 
-  query = applyScope(query, where);
+  // Our own by scope, and every partner's.
+  query = applyScopeWithPartners(query, where, "referredByPartnerId");
 
   // Deals partners have registered through the portal, awaiting a decision.
   if (filters?.source === "partner") query = query.not("referredByPartnerId", "is", null);

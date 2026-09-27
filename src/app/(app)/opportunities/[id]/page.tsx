@@ -19,6 +19,8 @@ import { DealPartnerPanel, StageControl } from "./partner-panel";
 import { getCommissionForOpportunity } from "@/server/partner-commissions";
 import { OpportunityProductServices } from "@/components/deal-product-services";
 import { getOpportunityPricing } from "@/server/opportunity-lines";
+import { ActivitiesPanel } from "@/components/activities-panel";
+import { listActivitiesFor } from "@/server/activities";
 
 export default async function OpportunityDetailPage({
   params,
@@ -33,7 +35,7 @@ export default async function OpportunityDetailPage({
   // One wave: none of these needs a result from another, and each extra wave
   // costs a full round trip against a database ~400ms away.
   const canSeeCommission = can(_me, PERMISSIONS.COMMISSION_READ);
-  const [notes, documents, opp, availablePartners, audit, pricing, commission] = await Promise.all([
+  const [notes, documents, opp, availablePartners, audit, pricing, commission, activities] = await Promise.all([
     listNotes("Opportunity", id),
     listDocuments("Opportunity", id),
     getOpportunity(id),
@@ -50,6 +52,8 @@ export default async function OpportunityDetailPage({
     getAuditTrail("Opportunity", id, 15),
     getOpportunityPricing(id),
     canSeeCommission ? getCommissionForOpportunity(id) : Promise.resolve(null),
+    // Including the calls and meetings a partner logs on their deal in the portal.
+    listActivitiesFor("Opportunity", id),
   ]);
   if (!opp) notFound();
   const acceptedQuote = opp.quotations.find((q: Record<string, any>) => q.status === "ACCEPTED");
@@ -124,6 +128,13 @@ export default async function OpportunityDetailPage({
               canWrite={can(_me, PERMISSIONS.OPPORTUNITY_WRITE)}
             />
           )}
+
+          <ActivitiesPanel
+            entityType="Opportunity"
+            entityId={opp.id}
+            activities={activities}
+            canWrite={can(_me, PERMISSIONS.LEAD_WRITE)}
+          />
 
               </div>
             ),
