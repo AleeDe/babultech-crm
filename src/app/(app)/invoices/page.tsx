@@ -11,7 +11,7 @@ import {
   EmptyState, StatTile, Alert, Button, Forbidden
 } from "@/components/ui";
 import { BillingRun } from "./billing-run";
-import { formatMoney, formatDate, humanize, daysBetween } from "@/lib/utils";
+import { formatMoney, formatDate, humanize, daysBetween, formatMoneyTotal } from "@/lib/utils";
 
 /** Receivables: what has been billed, what is overdue, and what to bill next. */
 export default async function InvoicesPage({
@@ -91,11 +91,11 @@ export default async function InvoicesPage({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Outstanding" value={formatMoney(outstanding)} sublabel={`${live.length} open invoices`} />
-        <StatTile label="Overdue" value={formatMoney(overdueTotal)} sublabel={`${overdue.length} invoices`} tone={overdue.length ? "danger" : "success"} />
+        <StatTile label="Outstanding" value={formatMoneyTotal(outstanding)} sublabel={`${live.length} open invoices`} />
+        <StatTile label="Overdue" value={formatMoneyTotal(overdueTotal)} sublabel={`${overdue.length} invoices`} tone={overdue.length ? "danger" : "success"} />
         <StatTile
           label="Collected"
-          value={formatMoney(invoices.reduce((s, i) => s + Number(i.paidAmount), 0))}
+          value={formatMoneyTotal(invoices.reduce((s, i) => s + Number(i.paidAmount), 0))}
           tone="success"
         />
         <StatTile label="Total invoices" value={String(invoices.length)} />

@@ -12,7 +12,7 @@ import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   StatTile, Button, Alert, Forbidden
 } from "@/components/ui";
-import { formatMoney, formatDate, formatPercent, formatNumber, humanize, serialize } from "@/lib/utils";
+import { formatMoney, formatDate, formatPercent, formatNumber, humanize, serialize, formatMoneyTotal } from "@/lib/utils";
 import { TaskBoard, TeamPanel, PlanPanel, RaidPanel } from "./project-panels";
 
 import { ChangeRequestsPanel } from "./change-requests-panel";
@@ -121,12 +121,12 @@ export default async function ProjectWorkspacePage({
         />
         {canViewRates && <><StatTile
           label="Billable value"
-          value={formatMoney(burn.billableValue, project.currencyCode)}
+          value={formatMoneyTotal(burn.billableValue, project.currencyCode)}
           sublabel={`Cost ${formatMoney(burn.cost, project.currencyCode)}`}
         />
         <StatTile
           label="Margin to date"
-          value={formatMoney(margin, project.currencyCode)}
+          value={formatMoneyTotal(margin, project.currencyCode)}
           sublabel="Approved time only"
           tone={margin >= 0 ? "success" : "danger"}
         /></>}
@@ -343,7 +343,7 @@ export default async function ProjectWorkspacePage({
                       </Row>
                     )}
                     <Row label={project.projectType === "INTERNAL" ? "Budget" : "Contract value"}>
-                      {formatMoney(project.contractValue, project.currencyCode)}
+                      {formatMoneyTotal(project.contractValue, project.currencyCode)}
                     </Row>
                     <Row label="Schedule">
                       {formatDate(project.startDate)} → {formatDate(project.plannedEndDate)}

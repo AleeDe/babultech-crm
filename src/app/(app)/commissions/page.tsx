@@ -7,7 +7,7 @@ import {
   PageHeader, Card, StatTile, Button, Select, Input, Alert, Forbidden, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, EmptyState,
 } from "@/components/ui";
-import { formatMoney, formatPercent, formatDate, humanize } from "@/lib/utils";
+import { formatMoney, formatPercent, formatDate, humanize, formatMoneyTotal } from "@/lib/utils";
 
 /**
  * Partner commission: one record per deal with a partner.
@@ -50,7 +50,8 @@ export default async function CommissionsPage({
   ]);
 
   const view = VIEWS.find((v) => v.value === (params.view ?? "")) ?? VIEWS[0];
-  const money = (v: unknown) => formatMoney(v as never, totals.currency);
+  // The tiles total the list, so they keep USD.
+  const money = (v: unknown) => formatMoneyTotal(v as never, totals.currency);
 
   return (
     <>

@@ -10,7 +10,7 @@ import {
 import { RecordLookup } from "@/components/record-lookup";
 import { PicklistOptions } from "@/components/picklist";
 import { PicklistSelect } from "@/components/picklist-select";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, formatMoneyTotal } from "@/lib/utils";
 
 const STAGES = [
   "DISCOVERY", "QUALIFICATION", "REQUIREMENTS", "SOLUTION_PROPOSED",
@@ -214,7 +214,7 @@ export function OpportunityForm({
             help="What the deal is worth. Commission and the pipeline both read this figure."
           >
             {priced ? (
-              <Input value={formatMoney(amount, currencyCode)} readOnly disabled />
+              <Input value={formatMoneyTotal(amount, currencyCode)} readOnly disabled />
             ) : (
               <Input
                 type="number"

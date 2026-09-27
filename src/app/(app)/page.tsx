@@ -31,7 +31,7 @@ import {
   Card, CardHeader, CardTitle, CardContent, PageHeader,
   Badge, statusTone, Table, THead, TBody, TR, TH, TD, EmptyState,
 } from "@/components/ui";
-import { formatCompactMoney, formatMoney, formatDate, humanize } from "@/lib/utils";
+import { formatCompactMoney, formatMoney, formatDate, humanize, formatCompactMoneyTotal } from "@/lib/utils";
 
 /**
  * The dashboard refreshes itself over a realtime socket, so a cached render
@@ -597,11 +597,11 @@ export default async function DashboardPage({
             title="Sales"
             icon={Target}
             href="/opportunities"
-            headline={{ label: "in open pipeline", value: formatCompactMoney(summary.sales.openValue) }}
+            headline={{ label: "in open pipeline", value: formatCompactMoneyTotal(summary.sales.openValue) }}
             rows={[
               { label: "Open deals", value: String(summary.sales.openDeals), href: "/opportunities" },
-              { label: "Won this month", value: `${summary.sales.wonThisMonth} · ${formatCompactMoney(summary.sales.wonValueThisMonth)}`, href: "/opportunities?stage=CLOSED_WON" },
-              { label: "Quotes awaiting reply", value: `${summary.sales.quotesAwaitingReply} · ${formatCompactMoney(summary.sales.quoteValueOut)}`, href: "/quotations?status=SENT" },
+              { label: "Won this month", value: `${summary.sales.wonThisMonth} · ${formatCompactMoneyTotal(summary.sales.wonValueThisMonth)}`, href: "/opportunities?stage=CLOSED_WON" },
+              { label: "Quotes awaiting reply", value: `${summary.sales.quotesAwaitingReply} · ${formatCompactMoneyTotal(summary.sales.quoteValueOut)}`, href: "/quotations?status=SENT" },
               { label: "New leads", value: String(summary.sales.newLeads), href: "/leads?status=NEW" },
               { label: "Follow-ups due", value: String(summary.sales.leadsToFollowUp), href: "/leads", alert: summary.sales.leadsToFollowUp > 0 },
             ]}
@@ -613,15 +613,15 @@ export default async function DashboardPage({
             title="Finance"
             icon={Receipt}
             href="/invoices"
-            headline={{ label: "outstanding", value: formatCompactMoney(summary.finance.outstanding) }}
+            headline={{ label: "outstanding", value: formatCompactMoneyTotal(summary.finance.outstanding) }}
             rows={[
-              { label: "Overdue", value: `${summary.finance.overdueCount} · ${formatCompactMoney(summary.finance.overdue)}`, href: "/invoices", alert: summary.finance.overdueCount > 0 },
-              { label: "Collected this month", value: formatCompactMoney(summary.finance.collectedThisMonth), href: "/payments" },
-              { label: "Unallocated payments", value: formatCompactMoney(summary.finance.unallocatedPayments), href: "/payments", alert: Number(summary.finance.unallocatedPayments) > 0 },
+              { label: "Overdue", value: `${summary.finance.overdueCount} · ${formatCompactMoneyTotal(summary.finance.overdue)}`, href: "/invoices", alert: summary.finance.overdueCount > 0 },
+              { label: "Collected this month", value: formatCompactMoneyTotal(summary.finance.collectedThisMonth), href: "/payments" },
+              { label: "Unallocated payments", value: formatCompactMoneyTotal(summary.finance.unallocatedPayments), href: "/payments", alert: Number(summary.finance.unallocatedPayments) > 0 },
               { label: "Draft invoices", value: String(summary.finance.draftInvoices), href: "/invoices" },
               // Payables belong here too: receivables alone say what was earned,
               // not what it cost.
-              { label: "Owed to suppliers", value: formatCompactMoney(payables.billsOutstanding), href: "/vendor-bills" },
+              { label: "Owed to suppliers", value: formatCompactMoneyTotal(payables.billsOutstanding), href: "/vendor-bills" },
               {
                 label: "Expenses to approve",
                 value: String(payables.expensesAwaitingApprovalCount),
@@ -666,7 +666,7 @@ export default async function DashboardPage({
             title="Partners"
             icon={Handshake}
             href="/partners"
-            headline={{ label: "commission owed on won deals", value: formatCompactMoney(summary.partners.commissionPayable) }}
+            headline={{ label: "commission owed on won deals", value: formatCompactMoneyTotal(summary.partners.commissionPayable) }}
             rows={[
               { label: "Active partners", value: String(summary.partners.activePartners), href: "/partners" },
               { label: "Rate requests waiting", value: String(summary.partners.commissionPendingApproval), href: "/commissions?view=requests", alert: summary.partners.commissionPendingApproval > 0 },
@@ -682,7 +682,7 @@ export default async function DashboardPage({
           <CardHeader className="flex flex-row items-center gap-2">
             <CardTitle>Pipeline by stage</CardTitle>
             <span className="ml-auto font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              {formatCompactMoney(openPipelineTotal)} / {liveDeals} deals
+              {formatCompactMoneyTotal(openPipelineTotal)} / {liveDeals} deals
             </span>
           </CardHeader>
           <CardContent>

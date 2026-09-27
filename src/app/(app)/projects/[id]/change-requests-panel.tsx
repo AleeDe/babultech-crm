@@ -2,7 +2,7 @@ import { GitPullRequest } from "lucide-react";
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, statusTone,
 } from "@/components/ui";
-import { formatMoney, formatDate, humanize } from "@/lib/utils";
+import { formatMoney, formatDate, humanize, formatMoneyTotal } from "@/lib/utils";
 
 /**
  * Scope changes asked for after the project started.
@@ -49,7 +49,7 @@ export function ChangeRequestsPanel({
               <dl className="grid gap-3 rounded-lg border bg-muted/30 p-3 text-sm sm:grid-cols-2">
                 <div>
                   <dt className="text-xs text-muted-foreground">Approved cost impact</dt>
-                  <dd className="font-medium tabular">{formatMoney(addedCost)}</dd>
+                  <dd className="font-medium tabular">{formatMoneyTotal(addedCost)}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Approved schedule impact</dt>

@@ -52,7 +52,27 @@ export function formatCompactMoneyPlain(value: Numeric, currency = "PKR"): strin
 }
 
 /**
- * An amount with its reference conversion: "PKR 5,000.00 (≈ USD 17.99)".
+ * An amount as it is shown almost everywhere: "PKR 5,000.00".
+ *
+ * The reference conversion is shown on totals only - formatMoneyTotal. On every
+ * price, cost, line and row it doubled the width of the figure and said nothing
+ * the total did not.
+ */
+export function formatMoney(value: Numeric, currency = "PKR"): string {
+  return formatMoneyPlain(value, currency);
+}
+
+/** Compact, one currency: "PKR 1.2M". */
+export function formatCompactMoney(value: Numeric, currency = "PKR"): string {
+  return formatCompactMoneyPlain(value, currency);
+}
+
+/**
+ * A TOTAL, with its reference conversion: "PKR 5,000.00 (≈ USD 17.99)".
+ *
+ * For a record's total (a deal, a quote, an invoice and what is still owed on
+ * it, a bill, a contract's value), the summary tiles at the top of a list, and
+ * the headline figures on a dashboard. Nowhere else.
  *
  * Every calculation stays in the amount's own currency. The figure in brackets
  * is for reading only, at today's rate, and is marked ≈ so nobody takes it for
@@ -62,12 +82,12 @@ export function formatCompactMoneyPlain(value: Numeric, currency = "PKR"): strin
  * NOT for anything a customer receives. An approximate conversion at an
  * internal rate has no place on an invoice or a quote - use formatMoneyPlain.
  */
-export function formatMoney(value: Numeric, currency = "PKR"): string {
+export function formatMoneyTotal(value: Numeric, currency = "PKR"): string {
   return withCompanion(value, currency, formatMoneyPlain);
 }
 
-/** Compact, with its conversion: "PKR 1.2M (≈ USD 4.4K)". */
-export function formatCompactMoney(value: Numeric, currency = "PKR"): string {
+/** A compact total, with its conversion: "PKR 1.2M (≈ USD 4.4K)". */
+export function formatCompactMoneyTotal(value: Numeric, currency = "PKR"): string {
   return withCompanion(value, currency, formatCompactMoneyPlain);
 }
 

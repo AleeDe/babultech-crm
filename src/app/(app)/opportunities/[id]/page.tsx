@@ -14,7 +14,7 @@ import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   StatTile, Button, Forbidden
 } from "@/components/ui";
-import { formatMoney, formatDate, formatPercent, humanize, serialize } from "@/lib/utils";
+import { formatMoney, formatDate, formatPercent, humanize, serialize, formatMoneyTotal } from "@/lib/utils";
 import { DealPartnerPanel, StageControl } from "./partner-panel";
 import { getCommissionForOpportunity } from "@/server/partner-commissions";
 import { OpportunityProductServices } from "@/components/deal-product-services";
@@ -72,7 +72,7 @@ export default async function OpportunityDetailPage({
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Deal value" value={formatMoney(opp.amount, opp.currencyCode)} />
+        <StatTile label="Deal value" value={formatMoneyTotal(opp.amount, opp.currencyCode)} />
         <StatTile
           label="Weighted"
           value={formatMoney(

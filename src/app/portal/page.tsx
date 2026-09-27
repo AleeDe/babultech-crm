@@ -10,7 +10,7 @@ import {
 } from "@/components/ui";
 import { RankedList, AttentionList } from "@/components/dashboard-kit";
 import { Sparkline, Delta } from "@/components/sparkline";
-import { formatMoneyPlain as formatMoney, formatDate, formatPercent, humanize, daysBetween } from "@/lib/utils";
+import { formatMoneyPlain as formatMoney, formatDate, formatPercent, humanize, daysBetween, formatMoneyTotal } from "@/lib/utils";
 
 export default async function PortalHomePage() {
   const [summary, partner, recent, unread, stats] = await Promise.all([
@@ -68,20 +68,20 @@ export default async function PortalHomePage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           label="Paid to you"
-          value={formatMoney(summary.paidTotal, summary.currency)}
+          value={formatMoneyTotal(summary.paidTotal, summary.currency)}
           sublabel="Net of withholding tax"
           tone="success"
         />
         <StatTile
           label="Owed to you"
-          value={formatMoney(summary.owedTotal, summary.currency)}
+          value={formatMoneyTotal(summary.owedTotal, summary.currency)}
           sublabel={summary.owedCount > 0 ? `On ${summary.owedCount} won deal(s), not yet paid` : "Nothing owed right now"}
           tone={summary.owedCount > 0 ? "warning" : "neutral"}
           href="/portal/commissions?status=IN_PROGRESS"
         />
         <StatTile
           label="In your pipeline"
-          value={formatMoney(summary.pipelineTotal, summary.currency)}
+          value={formatMoneyTotal(summary.pipelineTotal, summary.currency)}
           sublabel="Your commission on open deals, if they are won"
           tone="info"
         />
@@ -110,7 +110,7 @@ export default async function PortalHomePage() {
             </div>
             <div className="text-right">
               <p className="font-mono text-lg font-semibold tabular-nums">
-                {formatMoney(stats.thisMonth, stats.currency)}
+                {formatMoneyTotal(stats.thisMonth, stats.currency)}
               </p>
               <p className="text-xs text-muted-foreground">this month</p>
               <Delta value={stats.monthDelta} />
@@ -148,7 +148,7 @@ export default async function PortalHomePage() {
             </div>
             <div className="border-t pt-3">
               <p className="font-mono text-lg font-semibold tabular-nums">
-                {formatMoney(stats.openValue, stats.currency)}
+                {formatMoneyTotal(stats.openValue, stats.currency)}
               </p>
               <p className="text-muted-foreground">
                 still open across {stats.openCount} deal(s)

@@ -7,7 +7,7 @@ import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, StatTile, Alert, Button, Forbidden
 } from "@/components/ui";
-import { formatMoney, formatDate, humanize, daysBetween } from "@/lib/utils";
+import { formatMoney, formatDate, humanize, daysBetween, formatMoneyTotal } from "@/lib/utils";
 
 export default async function ContractsPage() {
   const _me = await requireUser();
@@ -59,7 +59,7 @@ export default async function ContractsPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Active contracts" value={String(active.length)} />
-        <StatTile label="Contracted value" value={formatMoney(activeValue)} tone="success" />
+        <StatTile label="Contracted value" value={formatMoneyTotal(activeValue)} tone="success" />
         <StatTile label="Renewing in 90 days" value={String(renewalWindow.length)} tone={renewalWindow.length ? "warning" : "neutral"} />
         <StatTile label="Total on file" value={String(contracts.length)} />
       </div>

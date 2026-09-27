@@ -8,7 +8,7 @@ import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, StatTile, Button, Forbidden,
 } from "@/components/ui";
-import { formatMoney, formatDate, humanize, daysBetween } from "@/lib/utils";
+import { formatMoney, formatDate, humanize, daysBetween, formatMoneyTotal } from "@/lib/utils";
 
 /** Payables: what is owed to suppliers, and what is already late. */
 export default async function VendorBillsPage({
@@ -46,18 +46,18 @@ export default async function VendorBillsPage({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           label="Owed to suppliers"
-          value={formatMoney(summary.billsOutstanding)}
+          value={formatMoneyTotal(summary.billsOutstanding)}
           sublabel={`${summary.billsOutstandingCount} open bill(s)`}
         />
         <StatTile
           label="Overdue"
-          value={formatMoney(summary.billsOverdue)}
+          value={formatMoneyTotal(summary.billsOverdue)}
           sublabel={`${summary.billsOverdueCount} past due`}
           tone={summary.billsOverdueCount > 0 ? "danger" : "success"}
         />
         <StatTile
           label="Expenses to settle"
-          value={formatMoney(summary.expensesToPay)}
+          value={formatMoneyTotal(summary.expensesToPay)}
           sublabel={`${summary.expensesToPayCount} approved`}
           href="/expenses?approvalStatus=APPROVED&paymentStatus=UNPAID"
           tone={summary.expensesToPayCount > 0 ? "info" : "neutral"}

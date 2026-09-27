@@ -10,7 +10,7 @@ import {
   PageHeader, Button, Card, Table, THead, TBody, TR, TH, TD,
   Badge, statusTone, EmptyState, StatTile, Input, Select, Forbidden
 } from "@/components/ui";
-import { formatMoney, formatPercent, humanize, formatDate } from "@/lib/utils";
+import { formatMoney, formatPercent, humanize, formatDate, formatMoneyTotal } from "@/lib/utils";
 
 export default async function PartnersPage({
   searchParams,
@@ -79,10 +79,10 @@ export default async function PartnersPage({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Partner companies" value={String(companies)} sublabel="Active, backed by an account" />
         <StatTile label="Individual partners" value={String(individuals)} sublabel="Active, contact-only" />
-        <StatTile label="Partner-sourced pipeline" value={formatMoney(openSourced)} sublabel="Open deals credited to partners" tone="info" />
+        <StatTile label="Partner-sourced pipeline" value={formatMoneyTotal(openSourced)} sublabel="Open deals credited to partners" tone="info" />
         <StatTile
           label="Commission owed"
-          value={formatMoney(payableAgg._sum.netPayableAmount ?? 0)}
+          value={formatMoneyTotal(payableAgg._sum.netPayableAmount ?? 0)}
           sublabel="On won deals, not yet paid"
           tone="warning"
           href="/commissions?view=owed"

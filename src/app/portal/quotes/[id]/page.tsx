@@ -9,7 +9,7 @@ import {
   Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Alert, Button,
 } from "@/components/ui";
 import { SendEmailPanel } from "@/components/send-email-panel";
-import { formatMoney, formatDate, formatPercent, formatNumber, humanize } from "@/lib/utils";
+import { formatMoney, formatDate, formatPercent, formatNumber, humanize, formatMoneyTotal } from "@/lib/utils";
 import { PartnerQuoteActions } from "./quote-actions";
 
 /** A line's four costs together, as the deal's lines show them. */
@@ -74,7 +74,7 @@ export default async function PortalQuotePage({ params }: { params: Promise<{ id
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Total" value={formatMoney(quote.totalAmount, quote.currencyCode)} />
+        <StatTile label="Total" value={formatMoneyTotal(quote.totalAmount, quote.currencyCode)} />
         <StatTile
           label="Subtotal"
           value={formatMoney(quote.subtotal, quote.currencyCode)}

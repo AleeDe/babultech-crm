@@ -15,7 +15,7 @@ import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Alert, Button, Forbidden
 } from "@/components/ui";
-import { formatMoney, formatDate, formatPercent, formatNumber, humanize } from "@/lib/utils";
+import { formatMoney, formatDate, formatPercent, formatNumber, humanize, formatMoneyTotal } from "@/lib/utils";
 import { QuoteActions } from "./quote-actions";
 
 /** A line's four costs together, as the deal's lines show them. */
@@ -163,7 +163,7 @@ export default async function QuotationDetailPage({
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Total" value={formatMoney(quote.totalAmount, quote.currencyCode)} />
+        <StatTile label="Total" value={formatMoneyTotal(quote.totalAmount, quote.currencyCode)} />
         <StatTile label="Subtotal" value={formatMoney(quote.subtotal, quote.currencyCode)} sublabel={`Discount ${formatMoney(quote.discountAmount, quote.currencyCode)}`} />
         <StatTile label="Tax" value={formatMoney(quote.taxAmount, quote.currencyCode)} />
         <StatTile

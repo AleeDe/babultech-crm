@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Select, Textarea } from "@/components/ui";
-import { formatMoney, humanize } from "@/lib/utils";
+import { formatMoney, humanize, formatMoneyTotal } from "@/lib/utils";
 import { updatePartnerDeal, type PartnerDeal } from "@/server/partner-deals";
 
 const TYPES = ["NEW", "RENEWAL", "UPSELL", "CROSS_SELL"];
@@ -87,7 +87,7 @@ export function PartnerDealForm({
           </Field>
           {deal.pricedByLines ? (
             <Field label="Value" help="The total of the deal's products and services. Change those to change this.">
-              <p className="py-2 text-sm font-medium">{formatMoney(deal.amount, deal.currencyCode)}</p>
+              <p className="py-2 text-sm font-medium">{formatMoneyTotal(deal.amount, deal.currencyCode)}</p>
             </Field>
           ) : (
             <Field label="Estimated value" error={fieldErrors.amount?.[0]}

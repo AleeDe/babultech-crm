@@ -5,7 +5,7 @@ import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, StatTile, Input, Select, Button, Forbidden
 } from "@/components/ui";
-import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
+import { formatMoney, formatDate, formatPercent, humanize, formatMoneyTotal } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { ExportButton } from "@/components/export-button";
 
@@ -53,7 +53,7 @@ export default async function ProjectsPage({
         <StatTile
           label="Contracted value"
           help="Total contract value of active customer projects. Internal work is excluded - its budget is our own cost, not revenue."
-          value={formatMoney(
+          value={formatMoneyTotal(
             active
               .filter((p) => p.projectType !== "INTERNAL")
               .reduce((s, p) => s + Number(p.contractValue ?? 0), 0),

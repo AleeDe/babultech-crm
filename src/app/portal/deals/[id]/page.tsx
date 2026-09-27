@@ -8,7 +8,7 @@ import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, Button, DetailRow, StatTile, statusTone,
 } from "@/components/ui";
 import { OpportunityProductServices } from "@/components/deal-product-services";
-import { formatDate, formatMoney, formatPercent, humanize, serialize } from "@/lib/utils";
+import { formatDate, formatMoney, formatPercent, humanize, serialize, formatMoneyTotal } from "@/lib/utils";
 import { PartnerActivityPanel } from "../../activity-panel";
 import { PartnerStageControl } from "./stage-control";
 
@@ -66,7 +66,7 @@ export default async function PortalDealPage({ params }: { params: Promise<{ id:
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           label="Deal value"
-          value={formatMoney(deal.amount, deal.currencyCode)}
+          value={formatMoneyTotal(deal.amount, deal.currencyCode)}
           sublabel={deal.pricedByLines ? "The total of its products and services" : "An estimate until products are added"}
         />
         <StatTile

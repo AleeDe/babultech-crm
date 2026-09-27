@@ -175,7 +175,7 @@ export function PricedTotals({
         Tax <Money value={total - net} currency={currency} />
       </p>
       <p className="text-base font-semibold">
-        {label} <Money value={total} currency={currency} />
+        {label} <Money value={total} currency={currency} total />
       </p>
       {hours !== undefined && hours > 0 && (
         <p className="text-xs text-muted-foreground">{hours} hour(s) {hoursNote}</p>

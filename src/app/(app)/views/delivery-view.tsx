@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Kpi, AttentionList } from "@/components/dashboard-kit";
-import { formatCompactMoney, formatDate, formatNumber, cn } from "@/lib/utils";
+import { formatCompactMoney, formatDate, formatNumber, cn, formatCompactMoneyTotal } from "@/lib/utils";
 import type { getDeliveryAnalytics } from "@/server/dashboard";
 
 type Analytics = NonNullable<Awaited<ReturnType<typeof getDeliveryAnalytics>>>;
@@ -500,7 +500,7 @@ export function DeliveryView({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi
           label="Margin to date"
-          value={ratesVisible ? formatCompactMoney(totals.margin) : "Restricted"}
+          value={ratesVisible ? formatCompactMoneyTotal(totals.margin) : "Restricted"}
           sublabel={
             !ratesVisible ? "Financial access required" : totals.marginPercent === null
               ? "Nothing billable approved yet"
@@ -517,7 +517,7 @@ export function DeliveryView({
         />
         <Kpi
           label="Unbilled value"
-          value={ratesVisible ? formatCompactMoney(totals.unbilledValue) : "Restricted"}
+          value={ratesVisible ? formatCompactMoneyTotal(totals.unbilledValue) : "Restricted"}
           sublabel={`${formatNumber(totals.unapprovedHours, 1)} hours not yet approved`}
           // Down is good: unbilled work is revenue you have earned and not asked
           // for, so a rising figure means money is stuck, not money is coming.

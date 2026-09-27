@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Kpi, AttentionList } from "@/components/dashboard-kit";
-import { formatCompactMoney, formatNumber, humanize, cn } from "@/lib/utils";
+import { formatCompactMoney, formatNumber, humanize, cn, formatCompactMoneyTotal } from "@/lib/utils";
 
 interface PartnerRow {
   id: string;
@@ -91,21 +91,21 @@ export function PartnersView({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi
           label="Revenue sourced"
-          value={formatCompactMoney(totals.revenueSourced)}
+          value={formatCompactMoneyTotal(totals.revenueSourced)}
           sublabel={`${formatCompactMoney(totals.pipelineSourced)} more in pipeline`}
           module="partners"
           emphasis
         />
         <Kpi
           label="Commission payable"
-          value={formatCompactMoney(totals.payable)}
+          value={formatCompactMoneyTotal(totals.payable)}
           sublabel="Approved and owed"
           module="partners"
           href="/commissions"
         />
         <Kpi
           label="Awaiting approval"
-          value={formatCompactMoney(totals.pending)}
+          value={formatCompactMoneyTotal(totals.pending)}
           sublabel="Blocked until someone signs off"
           goodDirection="down"
           module="partners"

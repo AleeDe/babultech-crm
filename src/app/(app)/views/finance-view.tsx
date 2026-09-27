@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Kpi, AttentionList } from "@/components/dashboard-kit";
-import { formatCompactMoney, formatDate, formatNumber, cn } from "@/lib/utils";
+import { formatCompactMoney, formatDate, formatNumber, cn, formatCompactMoneyTotal } from "@/lib/utils";
 import type { ModuleSummary } from "@/server/dashboard";
 import type { Pulse } from "@/server/pulse";
 
@@ -96,7 +96,7 @@ export function FinanceView({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi
           label="Outstanding"
-          value={formatCompactMoney(analytics.totalOutstanding)}
+          value={formatCompactMoneyTotal(analytics.totalOutstanding)}
           sublabel="Invoiced and not yet paid"
           module="finance"
           href="/invoices"
@@ -104,7 +104,7 @@ export function FinanceView({
         />
         <Kpi
           label="Overdue"
-          value={formatCompactMoney(analytics.totalOverdue)}
+          value={formatCompactMoneyTotal(analytics.totalOverdue)}
           sublabel={
             analytics.totalOutstanding > 0
               ? `${formatNumber((analytics.totalOverdue / analytics.totalOutstanding) * 100, 0)}% of the book`
@@ -116,7 +116,7 @@ export function FinanceView({
         />
         <Kpi
           label="Collected this month"
-          value={formatCompactMoney(summary.finance.collectedThisMonth)}
+          value={formatCompactMoneyTotal(summary.finance.collectedThisMonth)}
           sublabel="Money actually received"
           delta={pulse.deltas.collected}
           series={pulse.collected.values}

@@ -6,7 +6,7 @@ import {
   FolderKanban, CalendarCheck,
 } from "lucide-react";
 import { Sparkline, Delta, CountUp } from "@/components/sparkline";
-import { cn, formatCompactMoney } from "@/lib/utils";
+import { cn, formatCompactMoneyTotal } from "@/lib/utils";
 
 /**
  * Icons and formatters are chosen here rather than passed in.
@@ -23,7 +23,8 @@ const ICONS = {
 export type PulseIcon = keyof typeof ICONS;
 
 const FORMATS = {
-  money: (n: number) => formatCompactMoney(n),
+  // The pulse tiles are the dashboard's headline totals, so they keep USD.
+  money: (n: number) => formatCompactMoneyTotal(n),
   count: (n: number) => String(Math.round(n)),
 } as const;
 export type PulseFormat = keyof typeof FORMATS;

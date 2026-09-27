@@ -74,7 +74,7 @@ export function CompanySettingForm({
           <Field
             label="Corporate currency"
             required
-            help="Shown beside amounts, converted at today's rate, for reference only. Nothing is calculated in it."
+            help="Shown beside totals - a record's total, the summary tiles on lists and the dashboard's headline figures - converted at today's rate, for reference only. Nothing is calculated in it."
           >
             <Select name="corporateCurrency" defaultValue={setting.corporateCurrency}>
               {currencies.map((c) => (

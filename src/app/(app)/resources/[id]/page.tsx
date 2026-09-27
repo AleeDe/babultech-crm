@@ -6,7 +6,7 @@ import {
   Table, THead, TBody, TR, TH, TD, Badge, statusTone, StatTile, Select,
   Button, Forbidden, EmptyState, DetailRow,
 } from "@/components/ui";
-import { formatDate, formatNumber, formatMoney, humanize } from "@/lib/utils";
+import { formatDate, formatNumber, formatMoney, humanize, formatMoneyTotal } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { FilterForm } from "@/components/filter-form";
 
@@ -451,9 +451,9 @@ export default async function ResourceDetailPage({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <DetailRow label="Revenue">{formatMoney(margin.revenue)}</DetailRow>
-              <DetailRow label="Cost">{formatMoney(margin.cost)}</DetailRow>
-              <DetailRow label="Margin">{formatMoney(margin.profit)}</DetailRow>
+              <DetailRow label="Revenue">{formatMoneyTotal(margin.revenue)}</DetailRow>
+              <DetailRow label="Cost">{formatMoneyTotal(margin.cost)}</DetailRow>
+              <DetailRow label="Margin">{formatMoneyTotal(margin.profit)}</DetailRow>
               <DetailRow label="Margin %">
                 {`${formatNumber(margin.marginPercent, 1)}%`}
               </DetailRow>

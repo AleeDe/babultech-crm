@@ -8,7 +8,7 @@ import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge,
   StatTile, EmptyState, Forbidden,
 } from "@/components/ui";
-import { formatMoney, formatDate } from "@/lib/utils";
+import { formatMoney, formatDate, formatMoneyTotal } from "@/lib/utils";
 
 const KIND: Record<ApprovalKind, { label: string; icon: LucideIcon; href: string }> = {
   quotation: { label: "Quotation", icon: FileText, href: "/quotations" },
@@ -66,7 +66,7 @@ export default async function ApprovalsPage() {
             />
             <StatTile
               label="Value at stake"
-              value={formatMoney(totalValue)}
+              value={formatMoneyTotal(totalValue)}
               sublabel="Where the item has an amount"
             />
             <StatTile

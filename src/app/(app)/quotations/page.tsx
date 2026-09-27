@@ -10,7 +10,7 @@ import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, StatTile, Button, Forbidden
 } from "@/components/ui";
-import { formatMoney, formatDate, humanize } from "@/lib/utils";
+import { formatMoney, formatDate, humanize, formatMoneyTotal } from "@/lib/utils";
 
 export default async function QuotationsPage({
   searchParams,
@@ -79,7 +79,7 @@ export default async function QuotationsPage({
         <StatTile label="Expiring in 7 days" value={String(expiringSoon.length)} tone={expiringSoon.length ? "danger" : "neutral"} />
         <StatTile
           label="Accepted value"
-          value={formatMoney(accepted.reduce((s, q) => s + Number(q.totalAmount), 0))}
+          value={formatMoneyTotal(accepted.reduce((s, q) => s + Number(q.totalAmount), 0))}
           tone="success"
         />
       </div>

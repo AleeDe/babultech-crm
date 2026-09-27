@@ -7,7 +7,7 @@ import {
   PageHeader, Button, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Forbidden
 } from "@/components/ui";
-import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
+import { formatMoney, formatDate, formatPercent, humanize, formatMoneyTotal } from "@/lib/utils";
 import { getCampaignEmailStats } from "@/server/activities";
 import { Megaphone, Plus } from "lucide-react";
 
@@ -101,7 +101,7 @@ export default async function CampaignDetailPage({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           label="Spend"
-          value={formatMoney(campaign.actualCost)}
+          value={formatMoneyTotal(campaign.actualCost)}
           sublabel={campaign.budgetAmount ? `of ${formatMoney(campaign.budgetAmount)} budget` : "No budget set"}
           tone={campaign.budgetAmount && spend > Number(campaign.budgetAmount) ? "danger" : "neutral"}
         />
@@ -110,7 +110,7 @@ export default async function CampaignDetailPage({
           value={String(campaign.leads.length)}
           sublabel={`${converted} converted${costPerLead ? ` · ${formatMoney(costPerLead)}/lead` : ""}`}
         />
-        <StatTile label="Open pipeline" value={formatMoney(pipeline)} sublabel={`${campaign.opportunities.length} deal(s)`} tone="info" />
+        <StatTile label="Open pipeline" value={formatMoneyTotal(pipeline)} sublabel={`${campaign.opportunities.length} deal(s)`} tone="info" />
         <StatTile
           label="ROI"
           value={roi === null ? "—" : formatPercent(roi, 0)}

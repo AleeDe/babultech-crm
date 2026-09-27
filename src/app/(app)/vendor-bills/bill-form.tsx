@@ -8,7 +8,7 @@ import {
 } from "@/components/ui";
 import { RecordLookup } from "@/components/record-lookup";
 import { createVendorBill } from "@/server/payables";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, formatMoneyTotal } from "@/lib/utils";
 
 interface Option {
   id: string;
@@ -264,7 +264,7 @@ export function BillForm({ options }: { options: BillFormOptions }) {
             </div>
             <div className="flex justify-between border-t pt-1 font-medium">
               <dt>Total</dt>
-              <dd className="tabular">{formatMoney(totals.subtotal + totals.tax)}</dd>
+              <dd className="tabular">{formatMoneyTotal(totals.subtotal + totals.tax)}</dd>
             </div>
           </dl>
         </CardContent>

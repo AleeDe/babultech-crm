@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button, Field, Input, Select } from "@/components/ui";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, formatMoneyTotal } from "@/lib/utils";
 import { planDescription, type CommercialPlan } from "@/lib/product-plans";
 
 /**
@@ -242,7 +242,7 @@ export function LineEditor({
         <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span className="tabular">{formatMoney(totals.subtotal, currency)}</span></div>
         <div className="flex justify-between"><span className="text-muted-foreground">Discount</span><span className="tabular">−{formatMoney(totals.discount, currency)}</span></div>
         <div className="flex justify-between"><span className="text-muted-foreground">Tax</span><span className="tabular">{formatMoney(totals.tax, currency)}</span></div>
-        <div className="flex justify-between border-t pt-1 font-semibold"><span>Total</span><span className="tabular">{formatMoney(totals.total, currency)}</span></div>
+        <div className="flex justify-between border-t pt-1 font-semibold"><span>Total</span><span className="tabular">{formatMoneyTotal(totals.total, currency)}</span></div>
       </div>
     </div>
   );

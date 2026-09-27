@@ -15,7 +15,7 @@ import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Alert, Button, Forbidden
 } from "@/components/ui";
-import { formatMoney, formatDate, formatPercent, formatNumber, humanize, daysBetween } from "@/lib/utils";
+import { formatMoney, formatDate, formatPercent, formatNumber, humanize, daysBetween, formatMoneyTotal } from "@/lib/utils";
 import { InvoiceActions } from "./invoice-actions";
 
 export default async function InvoiceDetailPage({
@@ -135,7 +135,7 @@ export default async function InvoiceDetailPage({
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Total" value={formatMoney(invoice.totalAmount, invoice.currencyCode)} />
+        <StatTile label="Total" value={formatMoneyTotal(invoice.totalAmount, invoice.currencyCode)} />
         <StatTile
           label="Paid"
           value={formatMoney(invoice.paidAmount, invoice.currencyCode)}
@@ -144,7 +144,7 @@ export default async function InvoiceDetailPage({
         />
         <StatTile
           label="Outstanding"
-          value={formatMoney(invoice.outstandingAmount, invoice.currencyCode)}
+          value={formatMoneyTotal(invoice.outstandingAmount, invoice.currencyCode)}
           tone={outstanding > 0 ? (overdue ? "danger" : "warning") : "success"}
         />
         <StatTile
@@ -217,7 +217,7 @@ export default async function InvoiceDetailPage({
                 <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span className="tabular">{formatMoney(invoice.subtotal, invoice.currencyCode)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Discount</span><span className="tabular">−{formatMoney(invoice.discountAmount, invoice.currencyCode)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Tax</span><span className="tabular">{formatMoney(invoice.taxAmount, invoice.currencyCode)}</span></div>
-                <div className="flex justify-between border-t pt-1 font-semibold"><span>Total</span><span className="tabular">{formatMoney(invoice.totalAmount, invoice.currencyCode)}</span></div>
+                <div className="flex justify-between border-t pt-1 font-semibold"><span>Total</span><span className="tabular">{formatMoneyTotal(invoice.totalAmount, invoice.currencyCode)}</span></div>
               </div>
             </CardContent>
           </Card>

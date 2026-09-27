@@ -6,7 +6,7 @@ import {
   PageHeader, Button, Card, CardHeader, CardTitle, CardContent, Table, THead, TBody,
   TR, TH, TD, Badge, statusTone, EmptyState, StatTile, Alert, Forbidden
 } from "@/components/ui";
-import { formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
+import { formatMoney, formatDate, formatPercent, humanize, formatMoneyTotal } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { ExportButton } from "@/components/export-button";
 
@@ -58,10 +58,10 @@ export default async function CampaignsPage({
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Total budget" value={formatMoney(totalBudget)} sublabel={`${campaigns.length} campaigns`} />
-        <StatTile label="Actual spend" value={formatMoney(totalSpend)} tone={totalSpend > totalBudget ? "danger" : "neutral"} />
+        <StatTile label="Total budget" value={formatMoneyTotal(totalBudget)} sublabel={`${campaigns.length} campaigns`} />
+        <StatTile label="Actual spend" value={formatMoneyTotal(totalSpend)} tone={totalSpend > totalBudget ? "danger" : "neutral"} />
         <StatTile label="Leads generated" value={String(totalLeads)} tone="info" />
-        <StatTile label="Won revenue" value={formatMoney(wonValue)} tone="success" />
+        <StatTile label="Won revenue" value={formatMoneyTotal(wonValue)} tone="success" />
       </div>
 
       <div className="mt-6">

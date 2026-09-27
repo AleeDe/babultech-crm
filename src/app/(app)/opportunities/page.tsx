@@ -6,7 +6,7 @@ import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, StatTile, Input, Select, Button, Forbidden
 } from "@/components/ui";
-import { formatMoney, formatCompactMoney, formatDate, humanize } from "@/lib/utils";
+import { formatMoney, formatCompactMoney, formatDate, humanize, formatCompactMoneyTotal } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { ExportButton } from "@/components/export-button";
 import { listPartnerOptions } from "@/server/partners";
@@ -55,11 +55,11 @@ export default async function OpportunitiesPage({
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Open pipeline" value={formatCompactMoney(openTotal)} sublabel={`${open.reduce((s, p) => s + p.count, 0)} deals`} />
-        <StatTile label="Weighted forecast" value={formatCompactMoney(weighted)} sublabel="Amount x probability" tone="info" />
+        <StatTile label="Open pipeline" value={formatCompactMoneyTotal(openTotal)} sublabel={`${open.reduce((s, p) => s + p.count, 0)} deals`} />
+        <StatTile label="Weighted forecast" value={formatCompactMoneyTotal(weighted)} sublabel="Amount x probability" tone="info" />
         <StatTile
           label="Won"
-          value={formatCompactMoney(pipeline.find((p) => p.stage === "CLOSED_WON")?.total ?? 0)}
+          value={formatCompactMoneyTotal(pipeline.find((p) => p.stage === "CLOSED_WON")?.total ?? 0)}
           tone="success"
         />
         <StatTile label="Partner-sourced" value={String(partnerSourced)} sublabel={`of ${deals.length} deals shown`} />

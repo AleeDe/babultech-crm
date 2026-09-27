@@ -3,7 +3,7 @@ import {
   Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, statusTone,
   StatTile, Table, THead, TBody, TR, TH, TD, EmptyState, DetailRow,
 } from "@/components/ui";
-import { formatDate, formatNumber, formatMoney, humanize } from "@/lib/utils";
+import { formatDate, formatNumber, formatMoney, humanize, formatMoneyTotal } from "@/lib/utils";
 import type { getUserWorkload } from "@/server/users";
 
 type Workload = Awaited<ReturnType<typeof getUserWorkload>>;
@@ -591,9 +591,9 @@ export function ContributionPanel({ money, quality }: Pick<Workload, "money" | "
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
-          <DetailRow label="Revenue">{formatMoney(money.revenue)}</DetailRow>
-          <DetailRow label="Cost">{formatMoney(money.cost)}</DetailRow>
-          <DetailRow label="Margin">{formatMoney(money.profit)}</DetailRow>
+          <DetailRow label="Revenue">{formatMoneyTotal(money.revenue)}</DetailRow>
+          <DetailRow label="Cost">{formatMoneyTotal(money.cost)}</DetailRow>
+          <DetailRow label="Margin">{formatMoneyTotal(money.profit)}</DetailRow>
           <DetailRow label="Margin %">{formatNumber(money.marginPercent, 1)}%</DetailRow>
         </CardContent>
       </Card>

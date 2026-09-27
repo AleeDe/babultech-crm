@@ -6,7 +6,7 @@ import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, StatTile, Button, Forbidden
 } from "@/components/ui";
-import { formatMoney, formatDate, humanize } from "@/lib/utils";
+import { formatMoney, formatDate, humanize, formatMoneyTotal } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { ExportButton } from "@/components/export-button";
 
@@ -46,10 +46,10 @@ export default async function PaymentsPage({
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Cleared receipts" value={formatMoney(received)} sublabel={`${cleared.length} payment(s)`} />
+        <StatTile label="Cleared receipts" value={formatMoneyTotal(received)} sublabel={`${cleared.length} payment(s)`} />
         <StatTile
           label="Unapplied cash"
-          value={formatMoney(unapplied)}
+          value={formatMoneyTotal(unapplied)}
           tone={unapplied > 0 ? "warning" : "success"}
           href="/payments?filter=unapplied"
         />

@@ -18,7 +18,7 @@ import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, EmptyState, Button, Alert, Forbidden
 } from "@/components/ui";
-import { formatMoney, formatDate, formatPercent, humanize, serialize } from "@/lib/utils";
+import { formatMoney, formatDate, formatPercent, humanize, serialize, formatMoneyTotal } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 export default async function PartnerDetailPage({
@@ -69,14 +69,14 @@ export default async function PartnerDetailPage({
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Open pipeline" value={formatMoney(summary.openPipeline)} sublabel={`${summary.dealsOpen} live deals`} tone="info" />
-        <StatTile label="Won value" value={formatMoney(summary.wonValue)} sublabel={`${summary.dealsWon} won · ${summary.dealsLost} lost`} tone="success" />
+        <StatTile label="Open pipeline" value={formatMoneyTotal(summary.openPipeline)} sublabel={`${summary.dealsOpen} live deals`} tone="info" />
+        <StatTile label="Won value" value={formatMoneyTotal(summary.wonValue)} sublabel={`${summary.dealsWon} won · ${summary.dealsLost} lost`} tone="success" />
         <StatTile
           label="Win rate"
           value={summary.winRate === null ? "—" : `${summary.winRate.toFixed(0)}%`}
           sublabel="Closed deals only"
         />
-        <StatTile label="Commission owed" value={formatMoney(summary.commissionPayable)} sublabel={`${formatMoney(summary.commissionPaid)} paid to date`} tone="warning" />
+        <StatTile label="Commission owed" value={formatMoneyTotal(summary.commissionPayable)} sublabel={`${formatMoney(summary.commissionPaid)} paid to date`} tone="warning" />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">

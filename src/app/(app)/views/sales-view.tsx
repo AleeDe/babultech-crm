@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Kpi, AttentionList } from "@/components/dashboard-kit";
-import { formatCompactMoney, formatNumber, humanize, cn } from "@/lib/utils";
+import { formatCompactMoney, formatNumber, humanize, cn, formatCompactMoneyTotal } from "@/lib/utils";
 import { toDecimal } from "@/lib/decimal";
 import type { ModuleSummary } from "@/server/dashboard";
 import type { Pulse } from "@/server/pulse";
@@ -90,7 +90,7 @@ export function SalesView({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi
           label="Open pipeline"
-          value={formatCompactMoney(openTotal)}
+          value={formatCompactMoneyTotal(openTotal)}
           sublabel={`${liveDeals} live deal${liveDeals === 1 ? "" : "s"}`}
           delta={pulse.deltas.dealsCreated}
           series={pulse.dealsCreated.values}

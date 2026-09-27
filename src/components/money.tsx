@@ -4,16 +4,18 @@ import { convert, companionCurrency } from "@/lib/currency-context";
 type Numeric = number | string | null | undefined;
 
 /**
- * An amount, with its reference conversion set quieter beneath or beside it.
+ * An amount, in its own currency - and, when it is a total, with its reference
+ * conversion set quieter beneath or beside it.
  *
- * For places where the two currencies deserve different weight - a table cell,
- * a total. Everywhere else formatMoney gives the same thing as one string.
+ * The conversion is for totals only (see formatMoneyTotal): a price or a line
+ * shows one currency.
  */
 export function Money({
   value,
   currency = "PKR",
   compact = false,
   stacked = false,
+  total = false,
   className,
 }: {
   value: Numeric;
@@ -21,10 +23,12 @@ export function Money({
   compact?: boolean;
   /** Put the conversion on its own line, for narrow columns. */
   stacked?: boolean;
+  /** A total: show the reference conversion beside it. */
+  total?: boolean;
   className?: string;
 }) {
   const format = compact ? formatCompactMoneyPlain : formatMoneyPlain;
-  const other = companionCurrency(currency);
+  const other = total ? companionCurrency(currency) : null;
   const converted = other ? convert(Number(value ?? 0), currency, other) : null;
 
   return (

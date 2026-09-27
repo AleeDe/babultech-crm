@@ -13,7 +13,7 @@ import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Alert, Button, Forbidden
 } from "@/components/ui";
-import { formatMoney, formatDate, formatPercent, humanize, daysBetween } from "@/lib/utils";
+import { formatMoney, formatDate, formatPercent, humanize, daysBetween, formatMoneyTotal } from "@/lib/utils";
 
 export default async function ContractDetailPage({
   params,
@@ -115,7 +115,7 @@ export default async function ContractDetailPage({
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Contract value" value={formatMoney(contract.contractValue, contract.currencyCode)} />
+        <StatTile label="Contract value" value={formatMoneyTotal(contract.contractValue, contract.currencyCode)} />
         <StatTile
           label="Invoiced"
           value={formatMoney(invoiced, contract.currencyCode)}
@@ -124,7 +124,7 @@ export default async function ContractDetailPage({
         />
         <StatTile
           label="Outstanding"
-          value={formatMoney(outstanding, contract.currencyCode)}
+          value={formatMoneyTotal(outstanding, contract.currencyCode)}
           tone={outstanding > 0 ? "warning" : "success"}
         />
         <StatTile

@@ -12,7 +12,7 @@ import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Forbidden,
 } from "@/components/ui";
-import { formatMoney, formatDate, formatNumber, humanize } from "@/lib/utils";
+import { formatMoney, formatDate, formatNumber, humanize, formatMoneyTotal } from "@/lib/utils";
 import { BillActions } from "./bill-actions";
 
 export default async function VendorBillDetailPage({
@@ -48,7 +48,7 @@ export default async function VendorBillDetailPage({
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Total" value={formatMoney(bill.totalAmount, bill.currencyCode)} />
+        <StatTile label="Total" value={formatMoneyTotal(bill.totalAmount, bill.currencyCode)} />
         <StatTile
           label="Paid"
           value={formatMoney(bill.paidAmount, bill.currencyCode)}
@@ -56,7 +56,7 @@ export default async function VendorBillDetailPage({
         />
         <StatTile
           label="Outstanding"
-          value={formatMoney(outstanding, bill.currencyCode)}
+          value={formatMoneyTotal(outstanding, bill.currencyCode)}
           tone={outstanding > 0 ? "warning" : "success"}
         />
         <StatTile label="Due" value={formatDate(bill.dueDate)} sublabel={`Issued ${formatDate(bill.billDate)}`} />
@@ -125,7 +125,7 @@ export default async function VendorBillDetailPage({
             </div>
             <div className="flex justify-between font-medium">
               <dt>Total</dt>
-              <dd className="tabular">{formatMoney(bill.totalAmount, bill.currencyCode)}</dd>
+              <dd className="tabular">{formatMoneyTotal(bill.totalAmount, bill.currencyCode)}</dd>
             </div>
           </dl>
         </CardContent>

@@ -13,7 +13,7 @@ import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, Button, Alert, Forbidden
 } from "@/components/ui";
-import { formatMoney, formatDate, humanize } from "@/lib/utils";
+import { formatMoney, formatDate, humanize, formatMoneyTotal } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
 export default async function AccountDetailPage({
@@ -92,8 +92,8 @@ export default async function AccountDetailPage({
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Open pipeline" value={formatMoney(openPipeline)} sublabel={`${account.opportunities.length} deals`} />
-        <StatTile label="Outstanding" value={formatMoney(outstanding)} sublabel={`${account.invoices.length} open invoices`} tone={outstanding > 0 ? "warning" : "neutral"} />
+        <StatTile label="Open pipeline" value={formatMoneyTotal(openPipeline)} sublabel={`${account.opportunities.length} deals`} />
+        <StatTile label="Outstanding" value={formatMoneyTotal(outstanding)} sublabel={`${account.invoices.length} open invoices`} tone={outstanding > 0 ? "warning" : "neutral"} />
         <StatTile label="Open cases" value={String(account.cases.filter((c: Record<string, any>) => !["CLOSED", "CANCELLED"].includes(c.status as string)).length)} href="/cases" />
         <StatTile label="Projects" value={String(account.projects.length)} />
       </div>

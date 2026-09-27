@@ -3,7 +3,7 @@ import { getPortalCommissions } from "@/server/portal";
 import {
   PageHeader, Card, CardContent, Badge, statusTone, EmptyState, StatTile, Select, Button,
 } from "@/components/ui";
-import { formatMoneyPlain as formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
+import { formatMoneyPlain as formatMoney, formatDate, formatPercent, humanize, formatMoneyTotal } from "@/lib/utils";
 import { PortalCommissionActions } from "./commission-actions";
 
 const STATUSES = ["IN_PROGRESS", "PAID", "REJECTED"];
@@ -31,19 +31,19 @@ export default async function PortalCommissionsPage({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatTile
           label="Owed to you"
-          value={formatMoney(sum(inProgress.filter(won)), currency)}
+          value={formatMoneyTotal(sum(inProgress.filter(won)), currency)}
           sublabel="On won deals, not yet paid"
           tone="warning"
         />
         <StatTile
           label="In your pipeline"
-          value={formatMoney(sum(inProgress.filter((r) => !won(r))), currency)}
+          value={formatMoneyTotal(sum(inProgress.filter((r) => !won(r))), currency)}
           sublabel="On open deals, if they are won"
           tone="info"
         />
         <StatTile
           label="Paid to you"
-          value={formatMoney(sum(records.filter((r) => r.status === "PAID")), currency)}
+          value={formatMoneyTotal(sum(records.filter((r) => r.status === "PAID")), currency)}
           sublabel="Net of withholding tax"
           tone="success"
         />

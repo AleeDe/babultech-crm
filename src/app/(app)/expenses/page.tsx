@@ -8,7 +8,7 @@ import { Pagination } from "@/components/pagination";
 import {
   PageHeader, Card, EmptyState, StatTile, Button, Forbidden,
 } from "@/components/ui";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, formatMoneyTotal } from "@/lib/utils";
 import { ExpenseBulkTable } from "./expense-bulk-table";
 
 export default async function ExpensesPage({
@@ -75,7 +75,7 @@ export default async function ExpensesPage({
         <StatTile
           icon={<Clock className="h-4 w-4" />}
           label="Awaiting approval"
-          value={formatMoney(summary.awaitingApproval)}
+          value={formatMoneyTotal(summary.awaitingApproval)}
           sublabel={`${summary.awaitingApprovalCount} claim${summary.awaitingApprovalCount === 1 ? "" : "s"}`}
           tone={summary.awaitingApprovalCount > 0 ? "warning" : "neutral"}
           href="/expenses?approvalStatus=SUBMITTED"
@@ -83,7 +83,7 @@ export default async function ExpensesPage({
         <StatTile
           icon={<Wallet className="h-4 w-4" />}
           label="Approved, unpaid"
-          value={formatMoney(summary.toPay)}
+          value={formatMoneyTotal(summary.toPay)}
           sublabel={`${summary.toPayCount} to settle`}
           tone={summary.toPayCount > 0 ? "info" : "success"}
           href="/expenses?approvalStatus=APPROVED&paymentStatus=UNPAID"
@@ -91,13 +91,13 @@ export default async function ExpensesPage({
         <StatTile
           icon={<Receipt className="h-4 w-4" />}
           label="Billable to customers"
-          value={formatMoney(totals.billableTotal)}
+          value={formatMoneyTotal(totals.billableTotal)}
           sublabel={`${totals.billableCount} on projects`}
         />
         <StatTile
           icon={<Coins className="h-4 w-4" />}
           label={filtered ? "Total (filtered)" : "Total recorded"}
-          value={formatMoney(totals.total)}
+          value={formatMoneyTotal(totals.total)}
           sublabel={`${totals.count} expense${totals.count === 1 ? "" : "s"}`}
         />
       </div>

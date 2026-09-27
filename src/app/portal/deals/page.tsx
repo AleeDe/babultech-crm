@@ -6,7 +6,7 @@ import {
   EmptyState, StatTile, Button,
 } from "@/components/ui";
 import { ListFilters, optionsFrom } from "@/components/list-filters";
-import { formatMoneyPlain as formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
+import { formatMoneyPlain as formatMoney, formatDate, formatPercent, humanize, formatMoneyTotal } from "@/lib/utils";
 
 /** Every stage a deal can be in. */
 const STAGES = [
@@ -70,10 +70,10 @@ export default async function PortalDealsPage({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Open deals" value={String(open.length)} sublabel={formatMoney(valueOf(open), currency)} tone="info" />
         <StatTile label="Won" value={String(won.length)} sublabel={formatMoney(valueOf(won), currency)} tone="success" />
-        <StatTile label="Your commission, open deals" value={formatMoney(commissionOf(open), currency)} sublabel="If they are won" />
+        <StatTile label="Your commission, open deals" value={formatMoneyTotal(commissionOf(open), currency)} sublabel="If they are won" />
         <StatTile
           label="Your commission, won deals"
-          value={formatMoney(commissionOf(won), currency)}
+          value={formatMoneyTotal(commissionOf(won), currency)}
           sublabel="Paid or owed"
           href="/portal/commissions"
         />

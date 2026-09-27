@@ -5,7 +5,7 @@ import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, Input, Select, Button, StatTile, Forbidden
 } from "@/components/ui";
-import { formatMoney, humanize, serialize } from "@/lib/utils";
+import { formatMoney, humanize, serialize, formatMoneyTotal } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { ExportButton } from "@/components/export-button";
 import { LeadsTable } from "./leads-table";
@@ -71,7 +71,7 @@ export default async function LeadsPage({
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Open leads" value={String(open.length)} />
-        <StatTile label="Estimated value" value={formatMoney(pipelineValue)} tone="info" />
+        <StatTile label="Estimated value" value={formatMoneyTotal(pipelineValue)} tone="info" />
         <StatTile
           label="Partner registrations"
           value={String(partnerReferred)}
