@@ -3,6 +3,16 @@
 A record of what exists, what it enforces, what has been tested, and what has
 not been built yet. Written to be read by someone who was not in the room.
 
+> **Out of date in places.** This is the first handover. Since then the stack
+> moved to Supabase (Postgres, Auth and row-level security) and email sending
+> was added. On 28 September 2026 the partner and sales model was redesigned:
+> the commission engine, deal registration windows and payouts were replaced
+> by one commission record per deal; quotes are priced like their deals;
+> partners work their own leads, customers, deals, quotes and items in the
+> portal; and every salesperson sees every partner's records. The sections on
+> sales, quotations, partners, users and the portal below describe the current
+> model. For access rules see [roles-and-access](roles-and-access.md).
+
 Stack: Next.js 15 (App Router) · TypeScript · PostgreSQL 16 + Prisma 6 · Tailwind · Auth.js
 
 | | |
@@ -70,8 +80,19 @@ deal, carrying any partner referral through to the new opportunity.
 Enforced:
 - A **converted lead is read-only** — the edit page shows where it went instead of a form.
 - **Disqualifying requires a reason.**
-- A deal's **amount locks once commission has accrued** against it; clawback is the correct path.
-- Opportunity line totals: discount comes off the line **before** tax.
+- **No second record for the same person.** A new lead is refused when its
+  email, phone or WhatsApp number is already on a lead or a contact; a new
+  contact when it matches a contact. Numbers match on their last nine digits.
+  Imports skip matches and list them; a partner is told a match exists without
+  seeing it.
+- A deal is priced by its **products and services**: each line has a price book
+  entry, a quantity and unit price, four costs (licence, maintenance, cloud, AI),
+  a discount and a tax rate, and the deal's amount is the lines' total, tax
+  included. Discount comes off the line **before** tax.
+- **Closed Won** needs an amount, at least one line and an accepted quote, and
+  starts the delivery project; **Closed Lost** needs a reason.
+- **Every partner's records are every salesperson's**, whoever owns them - see
+  [roles-and-access](roles-and-access.md).
 
 ### Quotations
 
@@ -80,8 +101,18 @@ A versioned document, not a form. Once sent it cannot be edited — it is
 customer was actually shown. Only **one version per opportunity can be
 accepted**, enforced by a partial unique index and re-checked in the action.
 
-Accepting a quote syncs the deal amount and moves it to Verbal Confirmation. It
-is also the gate `changeStage` requires before a deal can be marked Closed Won.
+A quote is **priced exactly like its deal** - the same price book, the four
+costs, discount and tax on every line, and the same generated totals. A new
+quote starts as a copy of the deal's lines, every value editable.
+**Accepting a quote copies its lines onto the deal** (`accept_quotation`), so
+the deal's amount - and the partner's commission - becomes what the customer
+accepted, and moves the deal to Verbal Confirmation. It is also the gate
+Closed Won requires.
+
+A quote a **partner** prepares is approved by somebody with `quotation:approve`
+before it can be sent: it waits in Approvals under the partner's name, and is
+approved, or sent back with a reason, from our quote page. A partner quote that
+changes after approval needs approving again.
 
 ### Contracts
 
@@ -152,15 +183,20 @@ Partners are companies (backed by an Account of type Partner) **or individuals**
 A CHECK constraint plus a trigger enforce that it is one or the other, never
 both.
 
-One deal can carry several partners with different roles and revenue shares,
-capped at 100% by a trigger.
+A deal has **at most one partner**, `opportunity.sourcePartnerId`, carried from
+the partner's lead or customer, or set by hand.
 
-The commission ledger accrues, tiers progressively, batches into payouts,
-deducts withholding tax and claws back with a **negative reversing record** —
-nothing is ever deleted.
+**One Partner Commission record per partner deal**, created with the deal:
+the partner's % (copied from the partner), the deal's final amount after
+discounts with tax included, the commission, withholding tax at the partner's
+rate, and what the partner receives. It is **In progress** until it is marked
+**Paid** or **Rejected**; a lost deal rejects it and reopening the deal
+restores it. The payment date is set when the deal is won, 90 days on, and a
+paid or rejected record is locked. A partner can ask for a different % with a
+reason, which somebody with `commission:approve` approves or declines.
 
-**Plans are snapshotted at deal registration**, so editing a plan next year
-cannot rewrite what was earned on last year's deals.
+The earlier engine - plans, tiers, registration windows, payouts, adjustments
+and clawbacks - was removed on 28 September 2026.
 
 ### Users and roles
 
@@ -170,14 +206,11 @@ applies to, and both are read server-side on every page and action.
 
 | Role | Scope |
 |---|---|
-| Administrator | ALL |
-| Finance | ALL |
-| Sales Manager | TEAM |
-| Delivery Manager | TEAM |
-| Support Agent | TEAM |
-| Sales Executive | OWN |
-| Resource | OWN |
+| Super Admin | ALL |
+| Manager | TEAM |
+| Consultant | OWN |
 | Partner | OWN (external) |
+| Customer | OWN (external) |
 
 Two lockouts are prevented because neither has a way back through the UI:
 **you cannot deactivate your own account**, and **the last active administrator
@@ -185,9 +218,23 @@ cannot be demoted or deactivated**.
 
 ### Partner portal
 
-External partners sign in at the same `/login` and land on `/portal`: their
-registered deals, the customers behind them, referrals, commission ledger,
-payouts, and deal registration.
+External partners sign in at the same `/login` and land on `/portal`, where
+they work their own business as our sales team works theirs:
+
+- **Leads** - create, import, edit, email one or many (from BabulTech's address,
+  with the partner as reply-to), log calls and meetings, set follow-ups, convert.
+- **Accounts and contacts** - add and edit.
+- **Opportunities** - edit, move through the stages, close Won (on an accepted
+  quote) or Lost (with a reason). Owner and campaign stay ours.
+- **Products and services on a deal** - the same card as our deal page, priced
+  from our price books.
+- **Quotations** - prepared with the same form our team uses, approved by us,
+  then emailed or marked sent; the partner records the customer's answer and
+  revises.
+- **Products & Services** - BabulTech's read-only, and their own company's,
+  which they add and edit.
+- **Commission** - their record on each deal; they can ask for a different %
+  and mark it paid once received.
 
 **Isolation is enforced from both ends, independently** — the internal layout
 redirects anyone with a `partnerId` to the portal; the portal layout redirects
@@ -195,35 +242,19 @@ anyone without one back to the app. Neither depends on the other, so a mistake
 in one does not open the other. The portal has its **own shell**, not the
 internal nav with items hidden.
 
-Every portal query starts from the partner id **on the session**. No portal
-function accepts a partner id as an argument, so there is no parameter to
-tamper with. Bank details, internal cost, margin and employee data are excluded
-**at the Prisma select** — they never reach the browser.
+Every portal read goes through the partner's own session, so row-level
+security returns only their records; every portal write is a `partner_*`
+database function that checks the record is theirs first. No portal function
+accepts a partner id as an argument, so there is no parameter to tamper with.
 
-#### Deal registration
+#### Clashes
 
-Creates a **Lead, not an Opportunity**. Converting the lead is what attaches the
-partner and starts commission, reusing the existing conversion path.
-
-| Situation | Behaviour |
-|---|---|
-| New customer | Accepted |
-| Same partner registering again | Refused, pointing at their existing lead |
-| **Another partner already holds them** | Accepted but flagged `CONTESTED` |
-| Already a customer with an open deal | Accepted but flagged `EXISTING CUSTOMER` |
-| Partnership inactive or agreement expired | Refused |
-
-A contested registration is **never resolved automatically**. Refusing it
-outright would hide the conflict, so it is recorded and put in front of a human.
-That is what stops the same deal being credited twice.
-
-Protection windows scale with tier — Registered 60, Silver 90, Gold 120,
-Platinum 180 days — with a per-partner override for negotiated exceptions. The
-window runs from **registration**, not conversion, and is **stamped on the
-record**, so changing policy never shortens a claim someone already has.
-
-> These tier numbers are a **proposal, not BabulTech's policy**. They decide real
-> money and live in `src/lib/partner-policy.ts`.
+A partner's new lead or contact that matches somebody already on file - by
+email, phone or WhatsApp - is refused like anyone's, and the partner is told a
+match exists without being shown it. A customer the partner adds, or renames,
+to a company that is already somebody else's is saved but flagged
+`registrationContested` for a person to decide. Nothing is resolved
+automatically.
 
 ---
 
@@ -291,7 +322,10 @@ directly over HTTP — bypassing the UI, the way an attacker or a bug would.
 | Portal scoping | Two partner logins see disjoint commission and deal sets; the shared 70/30 deal correctly appears for both; zero bank-detail or cost-rate leakage |
 | Refusals | Overpayment, draft-invoice payment, second accepted quote, non-member task assignment, self-approval of time, last-admin demotion, self-deactivation, weak password, orphan partner user, duplicate email — all refused with nothing written |
 
-All test data was removed afterwards and the seed left intact.
+All test data was removed afterwards and the seed left intact. The
+Commission and Tier windows rows describe the engine replaced on
+28 September 2026; its replacement is covered by `scripts/test-lead-to-commission.mjs`
+and the partner suites (`scripts/test-partner-*.mjs`).
 
 ---
 
@@ -300,7 +334,9 @@ All test data was removed afterwards and the seed left intact.
 1. **Change the demo passwords.** `prisma/seed.ts` contains `BabulTech@2026` in
    plain text for four accounts. Fine for a private repo and a demo database;
    not fine anywhere real.
-2. **Decide the tier protection windows** (§3). They decide real money.
+2. **Confirm which quotes need approval.** Today every quote a partner prepares
+   does, and none of our team's. Widening that is a rule in
+   `20260928000006`, not a setting.
 3. **Set cost and billing rates on every user** — without them, margin and
    utilisation read zero.
 4. **Seed case categories** — the dropdown is currently empty and cases save as

@@ -2,6 +2,45 @@
 
 How access is decided in this system, and the rules to follow when changing it.
 
+## 28 September 2026: partners' records, and partners as sellers
+
+Two rules were added, both enforced in the database by
+`20260928000004` to `20260928000008`.
+
+**A partner's records are every salesperson's.** Visibility normally follows a
+record's owner and the reader's data scope. A record credited to a partner is
+the exception: anyone whose role may read that kind of record reads it, and
+anyone who may write it works on it, whoever owns it and whatever their scope.
+A record is a partner's when it is credited to one: a lead's
+`referredByPartnerId`, an account's or a deal's `sourcePartnerId`, or a contact
+on such an account (or with its own `sourcePartnerId`). Quotes, activities and
+a deal's products and services follow the record they belong to. Commission,
+invoices and payments are not widened.
+
+Row-level security applies the rule through `app_sees_partner_records()` and
+`app_works_partner_records()`; the app's owner-scoped lists apply the same rule
+through `applyScopeWithPartners()` in `lib/db.ts`, so a list never narrows
+below what the database allows. `save_opportunity_lines` and `accept_quotation`
+check the same way.
+
+**Partners work their own records from the portal.** A partner login reads only
+its own partner's records, and writes only through the `partner_*` SECURITY
+DEFINER functions, each of which checks the record is the partner's first:
+
+- leads: create, import, edit, email, log activities, convert;
+- accounts and contacts: create and edit;
+- deals: details, stages, and closing - won only on an accepted quote;
+- a deal's products and services, and quotations;
+- their company's own Products & Services. They see BabulTech's read-only and
+  never another partner's. Price books are read-only.
+
+Owner and campaign stay ours. A partner approves nothing: a quote a partner
+prepares is approved by somebody with `quotation:approve` before it can be sent
+- the `quotation_partner_quote_approved` constraint enforces that whatever path
+is taken - and once the customer accepts a quote, the partner can no longer
+change the deal's lines, so the amount commission is paid on is one we approved
+and the customer accepted.
+
 ## 18 September 2026 application update
 
 Project administration server actions and create/edit screens now require
@@ -64,18 +103,22 @@ Prefer that pattern — a rule in the action is stronger than a rule in a role.
 
 ## Current roles
 
+Since `20260920000006_five_roles.sql`. Only a Super Admin creates roles or
+changes what a role may do.
+
 | Role | Scope | Holds |
 | --- | --- | --- |
-| Administrator | ALL | `*` — everything |
-| Finance | DEPARTMENT | invoices, payments, commission + payout approval |
-| Sales Manager | TEAM | leads, accounts, opportunities, quotations, contracts, partners |
-| Sales Executive | OWN | leads, accounts, opportunities (read partners/commission) |
-| Project Manager | TEAM | projects, cases, time approval, expense claims |
+| Super Admin | ALL | `*` — everything |
+| Manager | TEAM | leads, accounts, deals, contracts, cases, projects, and the approvals that go with them: quotations, commission, time, invoices, payables, expenses |
 | Consultant | OWN | projects, cases, expense claims |
+| Partner | OWN | external — the partner portal only; what a partner reaches comes from their partner link, not from permissions |
+| Customer | OWN | external — the support portal only |
 
-Administrator is the founder role. A single all-powerful role is correct there,
+Super Admin is the founder role. A single all-powerful role is correct there,
 and the separation that matters is enforced per action rather than by withholding
 permissions.
+
+The next section describes the roles this replaced, and is kept as history.
 
 ## What was tightened, and why
 
@@ -130,6 +173,9 @@ In two places, and both matter:
 2. **Row-level security** in `supabase/functions-sql/003_policies_rollout.sql`
    and `20260816000000_policies_remaining.sql` enforces the same thing in the
    database, so a query that forgets the filter still cannot over-read.
+
+A partner's records are the exception to both: every salesperson sees and
+works them whatever their scope (see 28 September 2026 above).
 
 Some tables scope through a related record rather than their own owner.
 `project`, `invoice`, `payment`, `contact`, `support_case` and `contract` are

@@ -42,11 +42,12 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
 
   "/leads": {
     purpose:
-      "Unqualified prospects. Nobody has agreed to anything yet, and no account or deal exists.",
+      "Unqualified prospects - yours, your team's, and every partner's. Nobody has agreed to anything yet, and no account or deal exists.",
     needs: ["Campaigns, if you want to attribute where a lead came from"],
     feeds: [
       "Converting a lead creates an Account, a Contact and an Opportunity - or, when the person is already a contact, uses that contact and their account",
       "A referring partner carries through to commission on the resulting deal",
+      "A partner's leads are every salesperson's to work, whoever owns them - filter by Partner to see one partner's",
     ],
     watchOut:
       "A lead whose email, phone or WhatsApp number is already on a lead or a contact is refused, and you are shown which one. Numbers match on their last nine digits, so +92 300 and 0300 are the same. An import skips those people and lists them.",
@@ -60,7 +61,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
 
   "/accounts": {
     purpose:
-      "Organisations you deal with - customers, prospects, partners and vendors, one record with many roles.",
+      "Organisations you deal with - customers, prospects, partners and vendors, one record with many roles. Every partner's customers are listed, with who brought them.",
     needs: ["Usually created by converting a lead"],
     feeds: ["Opportunities, contracts, projects, invoices and support cases all hang off an account"],
     watchOut:
@@ -76,14 +77,14 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
   },
 
   "/opportunities": {
-    purpose: "Deals you are working - what might close, for how much, and when.",
+    purpose: "Deals you are working - what might close, for how much, and when. Every partner's deals are here too, whoever owns them.",
     needs: ["An account, usually from converting a lead"],
     feeds: [
       "Quotations are raised against a deal",
       "A partner's deal carries their commission record, and winning one can start a project",
     ],
     watchOut:
-      "A deal cannot be marked Closed Won without an accepted quote, an amount and a close date.",
+      "A deal cannot be marked Closed Won without an accepted quote, an amount and a close date. Partners close their own deals from the portal by the same rule.",
   },
 
   "/quotations": {
@@ -94,7 +95,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
       "Contracts are usually built from an accepted quote",
     ],
     watchOut:
-      "Once sent, a quote is locked. Change it by revising, which supersedes it with a new version.",
+      "Once sent, a quote is locked. Change it by revising, which supersedes it with a new version. A quote a partner prepares in the portal cannot be sent until somebody who approves quotations approves it.",
   },
 
   "/contracts": {
@@ -107,21 +108,22 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
 
   "/products": {
     purpose:
-      "Your catalogue - what you sell, at what standard price and cost.",
+      "Everything we and our partners sell - BabulTech's products and services, and partners' own. Prices live in price books.",
     feeds: [
-      "Quotation and invoice lines pull price and tax from here",
-      "Standard cost is what makes margin figures meaningful",
-      "Product: an item or licence you sell, e.g. a POS device or a one-time software licence",
-      "Service: work you deliver, e.g. installation, consulting or training",
-      "Subscription: recurring access or a plan, e.g. monthly BabulPOS access or annual hosting",
+      "Deal and quote lines are picked from here and priced from the deal's price book",
+      "A service marked Add in Task is sold in hours, and those hours become a project task when the deal is won",
+      "Partners see our items read-only in the portal, and keep their own company's items there",
     ],
     watchOut:
-      "Keep one product and add pricing plans: Lifetime (Fixed), Basic (Monthly), Pro (Monthly). Select a plan on quotes and invoices. Monthly + User means price and cost per user, per month. Changing billing does not convert the amount or automatically issue recurring invoices. See Guide for worked examples.",
+      "An item's type is locked once it is priced in a book or sold on a deal: create a new one instead.",
   },
 
   "/partners": {
-    purpose: "Resellers and referrers who bring you business.",
-    feeds: ["Each deal credited to a partner gets a commission record at the partner's rate"],
+    purpose: "Resellers and referrers who bring you business, and work it themselves in the partner portal.",
+    feeds: [
+      "Each deal credited to a partner gets a commission record at the partner's rate",
+      "Partners work their own leads, customers, deals, quotes and items in the portal; every salesperson can see and work them too",
+    ],
     watchOut:
       "Only an Active partner gets commission records. Changing a partner's rate applies to their new deals, not ones already running.",
   },
@@ -184,7 +186,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
 
   "/activities": {
     purpose: "Calls, meetings and tasks - the touches that move a deal along.",
-    feeds: ["Attached to a lead, deal, account or case as its history"],
+    feeds: ["Attached to a lead, deal, account or case as its history - including the calls and meetings partners log in the portal"],
   },
 
   "/invoices": {
@@ -217,7 +219,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
 
   "/approvals": {
     purpose:
-      "Everything waiting on you - quotes, expenses, time, bills and commission, in one queue.",
+      "Everything waiting on you - quotes partners prepared, expenses, time, bills and commission, in one queue.",
     needs: ["An approval permission for the kind of record"],
     feeds: ["Approving here unblocks invoicing and payment elsewhere"],
   },

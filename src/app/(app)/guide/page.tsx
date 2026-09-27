@@ -70,7 +70,7 @@ const FLOW: Step[] = [
     needs: PERMISSIONS.OPPORTUNITY_READ,
     what: "A specific deal, with an amount and an expected close date.",
     how: "Opportunities › New opportunity, or automatically on lead conversion.",
-    then: "Move it through the stages as it progresses. Add products to build up the value.",
+    then: "Move it through the stages as it progresses. Add products to build up the value. A partner's deal is every salesperson's to work, and the partner works it too, from their portal.",
   },
   {
     icon: FileText,
@@ -79,7 +79,7 @@ const FLOW: Step[] = [
     needs: PERMISSIONS.OPPORTUNITY_READ,
     what: "The priced proposal you send the customer.",
     how: "Open the opportunity and press New quote. The quote starts with everything the deal sells - each product and service with its price, the four costs, discount and tax - and its contact and currency.",
-    then: "Change any value before it goes out. Revising a sent quote creates a new version rather than overwriting it. Accepting one puts its lines on the deal, so the deal's value becomes what the customer accepted.",
+    then: "Change any value before it goes out. Revising a sent quote creates a new version rather than overwriting it. Accepting one puts its lines on the deal, so the deal's value becomes what the customer accepted. A quote a partner prepares waits in Approvals until somebody who approves quotations approves it or sends it back with a reason.",
   },
   {
     icon: FileSignature,
@@ -130,7 +130,7 @@ const REFERENCE: Reference[] = [
       PERMISSIONS.TIME_APPROVE,
       PERMISSIONS.COMMISSION_APPROVE,
     ],
-    body: "Everything waiting on a decision from you, gathered from quotations, expenses, timesheets, vendor bills and commission - oldest first. Each one opens where the decision is actually made, because that screen has the context.",
+    body: "Everything waiting on a decision from you, gathered from quotations partners prepared, expenses, timesheets, vendor bills and commission - oldest first. Each one opens where the decision is actually made, because that screen has the context.",
   },
   {
     icon: CheckSquare,
@@ -143,14 +143,14 @@ const REFERENCE: Reference[] = [
     title: "Products",
     href: "/products",
     needs: PERMISSIONS.OPPORTUNITY_READ,
-    body: "The catalogue that deal and quote lines are priced from, through its price books.",
+    body: "The catalogue that deal and quote lines are priced from, through its price books: BabulTech's products and services, and partners' own. Partners see ours read-only in the portal and keep their own company's items there.",
   },
   {
     icon: Handshake,
     title: "Partners",
     href: "/partners",
     needs: PERMISSIONS.PARTNER_READ,
-    body: "Companies and individuals who bring us deals, each with their own commission rate and withholding tax. A deal credited to a partner - through their customer, their referral, or set by hand - gets a commission record at that rate.",
+    body: "Companies and individuals who bring us deals, each with their own commission rate and withholding tax. A deal credited to a partner - through their customer, their referral, or set by hand - gets a commission record at that rate. Partners work their own leads, customers, deals, quotes and items in the portal, and every salesperson can see and work everything a partner brings.",
   },
   {
     icon: Coins,
@@ -184,7 +184,7 @@ const REFERENCE: Reference[] = [
     icon: CalendarCheck,
     title: "Activities",
     href: "/activities",
-    body: "Calls, meetings, tasks and reminders. They attach to whatever record they concern.",
+    body: "Calls, meetings, tasks and reminders. They attach to whatever record they concern, including the calls and meetings partners log on their own records in the portal.",
   },
   {
     icon: Banknote,
