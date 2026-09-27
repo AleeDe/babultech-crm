@@ -3,12 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { Resend } from "resend";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { one } from "@/lib/decimal";
 import { ACTIVITY_ENTITIES, type ActivityEntity } from "@/lib/activity-entities";
 import type { ActionResult } from "./partners";
+import { deliverLeadEmails, type SendResult } from "@/lib/lead-mailer";
 
 /**
  * Activities: what we did, against whatever we did it to.
@@ -198,51 +198,7 @@ export async function deleteActivity(id: string): Promise<ActionResult> {
 // Mass email, from the leads list
 // ---------------------------------------------------------------------------
 
-/**
- * Stops before trailing punctuation, so "see https://example.com." links the
- * address and leaves the full stop as a full stop. Applied after escaping, so
- * it matches &amp; in a query string rather than a raw ampersand.
- */
-const BARE_URL = /\bhttps?:\/\/[^\s<]+[^\s<.,:;!?"')\]]/g;
-
-/** Plain text to simple HTML: paragraphs, and nothing a sender did not type. */
-function textToHtml(text: string): string {
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-
-  const linked = escaped.replace(
-    BARE_URL,
-    (url) => `<a href="${url}" style="color:#0b6bcb">${url}</a>`,
-  );
-
-  const paragraphs = linked
-    .split(/\n{2,}/)
-    .map((p) => `<p style="margin:0 0 16px">${p.replace(/\n/g, "<br>")}</p>`)
-    .join("");
-  return `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a">${paragraphs}</div>`;
-}
-
-/** Substitutes the few placeholders a sender may use. */
-function fill(
-  template: string,
-  person: { firstName: string; lastName: string | null; companyName: string | null },
-): string {
-  return template
-    .replace(/\{\{\s*firstName\s*\}\}/g, person.firstName)
-    .replace(/\{\{\s*lastName\s*\}\}/g, person.lastName ?? "")
-    .replace(/\{\{\s*companyName\s*\}\}/g, person.companyName ?? "there");
-}
-
-export interface SendResult {
-  batchId: string;
-  sent: number;
-  failed: number;
-  skipped: number;
-  skippedReasons: string[];
-}
+export type { SendResult } from "@/lib/lead-mailer";
 
 const massEmailSchema = z.object({
   leadIds: z.array(z.string().uuid()).min(1, "Choose at least one lead to email."),
@@ -253,22 +209,9 @@ const massEmailSchema = z.object({
 });
 
 /**
- * Email a set of leads.
- *
- * Three things a naive loop would not do.
- *
- * It checks the suppression list, which is keyed on the ADDRESS rather than the
- * lead. Duplicate leads are expected here - the same person may exist twice
- * because they came from two campaigns - so consent has to follow the address or
- * unsubscribing one copy would leave the other mailable.
- *
- * Every message carries an unsubscribe link built from its own activity id,
- * plus a List-Unsubscribe header so the mail client offers its own button.
- * Being easy to leave is what stops people reporting mail as spam instead.
- *
- * It sends in batches of 100, the provider's limit, and records the provider's
- * message id against each activity so the webhook can match opens and clicks
- * back to the right person later.
+ * Email a set of leads. The sending itself - suppression, one message per
+ * address, unsubscribe links, batches, provider ids - is lib/lead-mailer,
+ * shared with the partner portal.
  *
  * No campaign is named on the send. A batch may contain leads from several
  * campaigns, and each lead already records the campaign that produced it - so
@@ -291,178 +234,30 @@ export async function sendLeadEmail(
   }
   const d = parsed.data;
 
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return { ok: false, error: "No mail provider is configured, so nothing can be sent." };
-
   const db = await supabaseServer();
-  const admin = supabaseAdmin();
-
   const { data: leads, error: leadError } = await db
     .from("lead")
-    .select("id, firstName, lastName, companyName, email, status")
+    .select("id, firstName, lastName, companyName, email")
     .in("id", d.leadIds)
     .is("deletedAt", null);
-
   if (leadError) return { ok: false, error: leadError.message };
-  if (!leads?.length) return { ok: false, error: "None of those leads could be found." };
 
-  // One lookup for the whole send rather than one per lead.
-  const addresses = leads
-    .map((l) => l.email?.toLowerCase().trim())
-    .filter((e): e is string => Boolean(e));
-
-  const { data: suppressed } = await db
-    .from("email_suppression")
-    .select("email, reason")
-    .in("email", addresses.length ? addresses : ["-"]);
-
-  const suppressionByEmail = new Map(
-    (suppressed ?? []).map((s) => [s.email as string, s.reason as string]),
-  );
-
-  type Lead = (typeof leads)[number];
-  const sendable: Lead[] = [];
-  const skippedReasons: string[] = [];
-  let skipped = 0;
-
-  // The same address twice in one send would mail somebody twice - exactly what
-  // duplicate leads produce, and exactly what they must not cause.
-  const seen = new Set<string>();
-
-  for (const l of leads) {
-    const name = `${l.firstName} ${l.lastName ?? ""}`.trim();
-    const email = l.email?.toLowerCase().trim();
-
-    if (!email) { skipped += 1; skippedReasons.push(`${name}: no email address`); continue; }
-    if (seen.has(email)) {
-      skipped += 1;
-      skippedReasons.push(`${name}: duplicate of another lead in this send`);
-      continue;
-    }
-    const reason = suppressionByEmail.get(email);
-    if (reason) {
-      skipped += 1;
-      skippedReasons.push(`${name}: ${reason.toLowerCase()}`);
-      continue;
-    }
-    seen.add(email);
-    sendable.push(l);
-  }
-
-  if (sendable.length === 0) {
-    return {
-      ok: false,
-      error: `Nobody in this selection can be emailed. ${skippedReasons.slice(0, 3).join("; ")}`,
-    };
-  }
-
-  const batchId = randomUUID();
-  const stamp = new Date().toISOString();
-
-  const { error: batchError } = await db.from("email_batch").insert({
-    id: batchId,
+  const result = await deliverLeadEmails({
+    leads: leads ?? [],
     subject: d.subject,
     bodyText: d.bodyText,
     fromName: nullable(d.fromName),
     replyTo: nullable(d.replyTo),
-    audienceType: "Lead",
     sentById: auth.user.id,
-    sentAt: stamp,
-    skippedCount: skipped,
-    skippedReasons: skippedReasons.slice(0, 50),
-    updatedAt: stamp,
+    db,
+    admin: supabaseAdmin(),
   });
-  if (batchError) return { ok: false, error: batchError.message };
 
-  // The activity rows are created BEFORE sending, because the unsubscribe link
-  // in each message is built from its activity id. Writing them afterwards would
-  // mean either a second pass to insert the links or a link that cannot be
-  // resolved back to a person.
-  const activities = sendable.map((l) => ({
-    id: randomUUID(),
-    lead: l,
-  }));
-
-  const { error: insertError } = await db.from("activity").insert(
-    activities.map(({ id, lead }) => ({
-      id,
-      activityType: "EMAIL",
-      subject: d.subject,
-      ownerUserId: auth.user.id,
-      relatedEntityType: "Lead",
-      relatedEntityId: lead.id,
-      batchId,
-      toAddress: lead.email,
-      status: "COMPLETED",
-      updatedAt: stamp,
-    })),
-  );
-  if (insertError) return { ok: false, error: insertError.message };
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  const from = process.env.EMAIL_FROM ?? "BabulTech <onboarding@resend.dev>";
-  const fromLine = d.fromName
-    ? `${d.fromName} <${from.replace(/^.*</, "").replace(/>$/, "")}>`
-    : from;
-
-  const resend = new Resend(key);
-  let sent = 0;
-  let failed = 0;
-
-  for (let i = 0; i < activities.length; i += 100) {
-    const batch = activities.slice(i, i + 100);
-
-    const payload = batch.map(({ id, lead }) => {
-      const unsubscribe = `${appUrl}/unsubscribe/${id}`;
-      const body = fill(d.bodyText, lead);
-      const footer =
-        `<hr style="border:0;border-top:1px solid #e5e5e5;margin:28px 0 14px">` +
-        `<p style="font-family:system-ui,sans-serif;font-size:12px;color:#777;margin:0">` +
-        `You are receiving this because you are on our mailing list. ` +
-        `<a href="${unsubscribe}" style="color:#777">Unsubscribe</a>.</p>`;
-
-      return {
-        from: fromLine,
-        to: lead.email as string,
-        replyTo: nullable(d.replyTo) ?? undefined,
-        subject: fill(d.subject, lead),
-        html: textToHtml(body) + footer,
-        text: `${body}\n\n---\nUnsubscribe: ${unsubscribe}`,
-        headers: {
-          "List-Unsubscribe": `<${unsubscribe}>`,
-          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        },
-      };
-    });
-
-    const result = await resend.batch.send(payload);
-    const at = new Date().toISOString();
-
-    if (result.error) {
-      failed += batch.length;
-      await admin
-        .from("activity")
-        .update({ failReason: result.error.message.slice(0, 500), updatedAt: at })
-        .in("id", batch.map((b) => b.id));
-    } else {
-      const ids = (result.data?.data ?? []) as { id: string }[];
-      for (let j = 0; j < batch.length; j += 1) {
-        await admin
-          .from("activity")
-          .update({ sentAt: at, providerMessageId: ids[j]?.id ?? null, updatedAt: at })
-          .eq("id", batch[j].id);
-      }
-      sent += batch.length;
-    }
-
-    // A short pause between batches keeps within the provider's rate limit
-    // without needing a queue.
-    if (i + 100 < activities.length) await new Promise((r) => setTimeout(r, 600));
+  if (result.ok) {
+    revalidatePath("/leads");
+    revalidatePath("/activities");
   }
-
-  revalidatePath("/leads");
-  revalidatePath("/activities");
-  return { ok: true, data: { batchId, sent, failed, skipped, skippedReasons: skippedReasons.slice(0, 20) } };
+  return result;
 }
 
 // ---------------------------------------------------------------------------

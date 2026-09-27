@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
-  LayoutDashboard, Target, Coins, Building2,
+  LayoutDashboard, Target, Coins, Building2, UserPlus,
   Menu, X, LogOut, MessageSquare,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
@@ -17,6 +17,7 @@ import { signOutAction } from "@/lib/sign-out-action";
  */
 const NAV = [
   { href: "/portal", label: "Overview", icon: LayoutDashboard, exact: true },
+  { href: "/portal/leads", label: "Leads", icon: UserPlus },
   { href: "/portal/deals", label: "Opportunities", icon: Target },
   { href: "/portal/customers", label: "Accounts", icon: Building2 },
   { href: "/portal/commissions", label: "Commission", icon: Coins },

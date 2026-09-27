@@ -78,19 +78,24 @@ export function duplicateFromError(error: unknown): DuplicateMatch | null {
   }
 }
 
-/** A link to the existing record, when the asker may see which one it is. */
-export function duplicateRef(match: DuplicateMatch): DuplicateRef | undefined {
+/**
+ * A link to the existing record, when the asker may see which one it is.
+ * `where` is which app the link is for: a partner's own records live under
+ * the portal, where a contact is reached through its account.
+ */
+export function duplicateRef(match: DuplicateMatch, where: "app" | "portal" = "app"): DuplicateRef | undefined {
   if (match.hidden || !match.id || !match.entity) return undefined;
   if (match.entity === "lead") {
     return {
-      href: `/leads/${match.id}`,
+      href: where === "portal" ? `/portal/leads/${match.id}` : `/leads/${match.id}`,
       label: match.number ? `${match.number} · ${match.name ?? "the lead"}` : (match.name ?? "the lead"),
     };
   }
-  return {
-    href: `/contacts/${match.id}`,
-    label: match.company ? `${match.name ?? "the contact"} at ${match.company}` : (match.name ?? "the contact"),
-  };
+  const label = match.company ? `${match.name ?? "the contact"} at ${match.company}` : (match.name ?? "the contact");
+  if (where === "portal") {
+    return match.accountId ? { href: `/portal/customers/${match.accountId}`, label } : undefined;
+  }
+  return { href: `/contacts/${match.id}`, label };
 }
 
 /** One line saying who a row collided with, for lists of skipped rows. */
@@ -112,6 +117,7 @@ export function describeDuplicate(match: DuplicateMatch): string {
  */
 export function duplicateFailure(
   error: unknown,
+  where: "app" | "portal" = "app",
 ): { ok: false; error: string; fieldErrors: Record<string, string[]>; duplicate?: DuplicateRef } | null {
   const match = duplicateFromError(error);
   if (!match) return null;
@@ -122,6 +128,6 @@ export function duplicateFailure(
     ok: false,
     error: message,
     fieldErrors: { [match.field]: ["Already on file"] },
-    duplicate: duplicateRef(match),
+    duplicate: duplicateRef(match, where),
   };
 }

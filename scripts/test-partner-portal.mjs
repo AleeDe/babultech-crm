@@ -125,12 +125,14 @@ try {
     ["support_case", "support cases"],
     ["project", "projects"],
     ["product", "the product catalogue"],
-    ["lead", "leads"],
+    // Their own leads they may read (20260928000004); this partner has none, so
+    // any lead that comes back is somebody else's.
+    ["lead", "anybody else's leads"],
   ]) {
     const { data } = await asPartner.from(table).select("id").limit(5);
     assert.equal((data ?? []).length, 0, `A partner must not read ${what}`);
   }
-  pass("Cannot read expenses, invoices, cases, projects, products or leads");
+  pass("Cannot read expenses, invoices, cases, projects, products or anybody else's leads");
 
   const people = await check(asPartner.from("app_user").select("id"), "Read people as the partner");
   assert.deepEqual(people.map((p) => p.id), [ids.login], "A partner must see only their own login");
