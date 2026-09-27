@@ -9,6 +9,17 @@ import {
 import { RecordLookup } from "@/components/record-lookup";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { saveProductService } from "@/server/products-services";
+import type { ActionResult } from "@/server/partners";
+
+export interface ProductServiceInput {
+  id: string | null;
+  name: string;
+  productType: "PRODUCT" | "SERVICE";
+  addInTask: boolean;
+  active: boolean;
+  description: string;
+  ownerAccountId: string;
+}
 
 interface Defaults {
   id: string;
@@ -31,14 +42,29 @@ interface Defaults {
  *
  * Add in Task only appears for a Service. The database refuses it on a Product
  * anyway; hiding it means nobody is offered a choice that cannot be made.
+ *
+ * Shared with the partner portal, where a partner keeps their own company's
+ * items: there it saves through the partner's own action, the owner is always
+ * their company, and there is no owner to choose.
  */
 export function ProductServiceForm({
   defaults,
   typeLocked = false,
+  save = saveProductService,
+  onSaved,
+  showOwner = true,
+  activeHint = "can be added to price books and deals",
 }: {
   defaults?: Defaults;
   /** True once it is priced or sold: the type can no longer change. */
   typeLocked?: boolean;
+  /** How it is saved. Our team's action unless the portal passes its own. */
+  save?: (input: ProductServiceInput) => Promise<ActionResult<{ id: string }>>;
+  /** Where to go once saved. Our item page unless the portal says otherwise. */
+  onSaved?: (id: string) => void;
+  /** Whether the owner can be chosen. A partner's items are always their company's. */
+  showOwner?: boolean;
+  activeHint?: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -51,7 +77,7 @@ export function ProductServiceForm({
     setError(null);
     setFieldErrors({});
     start(async () => {
-      const result = await saveProductService({
+      const result = await save({
         id: defaults?.id ?? null,
         name: String(fd.get("name") ?? ""),
         productType: type,
@@ -62,8 +88,12 @@ export function ProductServiceForm({
       });
 
       if (result.ok) {
-        router.push(`/products/${result.data.id}`);
-        router.refresh();
+        if (onSaved) {
+          onSaved(result.data.id);
+        } else {
+          router.push(`/products/${result.data.id}`);
+          router.refresh();
+        }
       } else {
         setError(result.error);
         setFieldErrors(result.fieldErrors ?? {});
@@ -155,7 +185,7 @@ export function ProductServiceForm({
 
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="active" defaultChecked={defaults?.active ?? true} />
-            Active — can be added to price books and deals
+            Active — {activeHint}
           </label>
         </CardContent>
       </Card>
@@ -165,17 +195,19 @@ export function ProductServiceForm({
           <CardTitle>Details</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Field
-            label="Owner"
-            help="Whose product or service this is. Leave blank for our own; choose a partner's account for one of theirs."
-          >
-            <RecordLookup
-              entity="account"
-              name="ownerAccountId"
-              defaultValue={defaults?.ownerAccountId ?? ""}
-              emptyLabel="BabulTech (us)"
-            />
-          </Field>
+          {showOwner && (
+            <Field
+              label="Owner"
+              help="Whose product or service this is. Leave blank for our own; choose a partner's account for one of theirs."
+            >
+              <RecordLookup
+                entity="account"
+                name="ownerAccountId"
+                defaultValue={defaults?.ownerAccountId ?? ""}
+                emptyLabel="BabulTech (us)"
+              />
+            </Field>
+          )}
           <Field label="Description" help="What it is, what is included, and anything a salesperson should know.">
             <RichTextEditor name="description" defaultValue={defaults?.description ?? ""} rows={8} />
           </Field>

@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { getProductService } from "@/server/products-services";
 import { PageHeader, Forbidden } from "@/components/ui";
-import { ProductServiceForm } from "../../product-service-form";
+import { ProductServiceForm } from "@/components/product-service-form";
 
 export default async function EditProductServicePage({
   params,
