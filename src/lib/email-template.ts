@@ -31,6 +31,57 @@ export interface EmailBranding {
   emailFooter: string;
 }
 
+/** The one email settings row. */
+export const EMAIL_SETTINGS_ID = "00000000-0000-0000-0000-000000000001";
+
+/**
+ * The email settings row, with a fallback for every field. A send must not
+ * fail because the settings row was deleted, so nothing here is required.
+ */
+export function emailSettingsFromRow(data: Record<string, unknown> | null | undefined) {
+  const text = (key: string) => (data?.[key] as string | null | undefined) ?? null;
+  return {
+    companyName: text("companyName") ?? "BabulTech",
+    logoUrl: text("logoUrl"),
+    websiteUrl: text("websiteUrl"),
+    supportEmail: text("supportEmail"),
+    supportPhone: text("supportPhone"),
+    addressLine: text("addressLine"),
+    brandColor: text("brandColor") ?? "#00B8A4",
+    brandColorDark: text("brandColorDark") ?? "#0F172A",
+    textColor: text("textColor") ?? "#1A2233",
+    mutedColor: text("mutedColor") ?? "#64748B",
+    backgroundColor: text("backgroundColor") ?? "#F1F5F9",
+    emailFooter:
+      text("emailFooter") ??
+      "This email and any attachments are confidential and intended solely for the addressee.",
+    quotationSubject: text("quotationSubject") ?? "Quotation {{documentNumber}} from {{companyName}}",
+    quotationBody: text("quotationBody") ?? "Dear {{contactFirstName}},\n\nPlease find our quotation below.",
+    invoiceSubject: text("invoiceSubject") ?? "Invoice {{documentNumber}} from {{companyName}}",
+    invoiceBody: text("invoiceBody") ?? "Dear {{contactFirstName}},\n\nPlease find our invoice below.",
+  };
+}
+
+export type EmailSettings = ReturnType<typeof emailSettingsFromRow>;
+
+/** The branding part of the settings - what every document email is wrapped in. */
+export function brandingFromSettings(s: EmailSettings): EmailBranding {
+  return {
+    companyName: s.companyName,
+    logoUrl: s.logoUrl,
+    websiteUrl: s.websiteUrl,
+    supportEmail: s.supportEmail,
+    supportPhone: s.supportPhone,
+    addressLine: s.addressLine,
+    brandColor: s.brandColor,
+    brandColorDark: s.brandColorDark,
+    textColor: s.textColor,
+    mutedColor: s.mutedColor,
+    backgroundColor: s.backgroundColor,
+    emailFooter: s.emailFooter,
+  };
+}
+
 export interface SummaryRow {
   label: string;
   value: string;

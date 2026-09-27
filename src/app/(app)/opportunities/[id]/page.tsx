@@ -17,7 +17,7 @@ import {
 import { formatMoney, formatDate, formatPercent, humanize, serialize } from "@/lib/utils";
 import { DealPartnerPanel, StageControl } from "./partner-panel";
 import { getCommissionForOpportunity } from "@/server/partner-commissions";
-import { OpportunityProductServices } from "./product-services";
+import { OpportunityProductServices } from "@/components/deal-product-services";
 import { getOpportunityPricing } from "@/server/opportunity-lines";
 
 export default async function OpportunityDetailPage({

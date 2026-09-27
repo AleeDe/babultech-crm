@@ -3,15 +3,30 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { sendQuotation, decideQuotation, reviseQuotation } from "@/server/quotations";
-import { Button, Card, CardContent, CardHeader, CardTitle, Alert } from "@/components/ui";
+import { sendQuotation, decideQuotation, reviseQuotation, decideQuotationApproval } from "@/server/quotations";
+import { Button, Card, CardContent, CardHeader, CardTitle, Alert, Textarea } from "@/components/ui";
+import { formatDate } from "@/lib/utils";
 
 const EDITABLE = ["DRAFT", "UNDER_REVIEW", "APPROVED"];
+
+export interface QuoteApproval {
+  /** The partner who prepared it; null for one of ours, which needs no approval. */
+  preparedBy: string | null;
+  approvalStatus: string;
+  note: string | null;
+  requestedAt: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+}
 
 /**
  * The quote's lifecycle in one panel. Each transition is a distinct server
  * action because each has different consequences — sending moves the deal to
  * Quote Submitted, accepting is what unlocks Closed Won.
+ *
+ * A quote a partner prepared goes out only once one of our approvers has
+ * approved it (20260928000006), so until then this panel is where it is
+ * approved or sent back, not sent.
  */
 export function QuoteActions({
   quoteId,
@@ -19,6 +34,8 @@ export function QuoteActions({
   expiryDate,
   opportunityId,
   opportunityStage,
+  approval,
+  canApprove = false,
 }: {
   quoteId: string;
   status: string;
@@ -26,7 +43,12 @@ export function QuoteActions({
   /** The deal this quote belongs to, so a rejection can point at it. */
   opportunityId: string | null;
   opportunityStage: string | null;
+  approval?: QuoteApproval;
+  /** Whether the reader may approve quotations. */
+  canApprove?: boolean;
 }) {
+  const [sendBackReason, setSendBackReason] = useState("");
+  const [sendingBack, setSendingBack] = useState(false);
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +76,7 @@ export function QuoteActions({
       if (result.ok) {
         // A full reload rather than router.refresh(). In the production build
         // the refreshed page can arrive and never be shown - the React 19.2
-        // fault described in opportunities/[id]/product-services.tsx - which
+        // fault described in components/deal-product-services.tsx - which
         // left "Mark as sent" saying Sent while still offering to send it.
         try {
           if (success) sessionStorage.setItem(noticeKey, success);
@@ -67,6 +89,8 @@ export function QuoteActions({
   };
 
   const expired = new Date(expiryDate) < new Date();
+  const partnerQuote = Boolean(approval?.preparedBy);
+  const awaitingApproval = partnerQuote && approval?.approvalStatus !== "APPROVED";
 
   return (
     <Card>
@@ -77,8 +101,90 @@ export function QuoteActions({
         {error && <Alert tone="danger">{error}</Alert>}
         {notice && <Alert tone="success">{notice}</Alert>}
 
-        {EDITABLE.includes(status) && (
+        {EDITABLE.includes(status) && awaitingApproval && approval && (
+          <div className="space-y-3">
+            {approval.approvalStatus === "PENDING" ? (
+              <p className="text-sm text-muted-foreground">
+                Prepared by <span className="font-medium text-foreground">{approval.preparedBy}</span>, who
+                asked for approval{approval.requestedAt ? ` on ${formatDate(approval.requestedAt)}` : ""}.
+                It cannot go to the customer until it is approved.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Prepared by <span className="font-medium text-foreground">{approval.preparedBy}</span>, who has
+                not asked for approval yet. It cannot go to the customer until it is approved.
+              </p>
+            )}
+            {approval.approvalStatus === "REJECTED" && approval.note && (
+              <Alert tone="warning">
+                Sent back{approval.decidedBy ? ` by ${approval.decidedBy}` : ""}: {approval.note}
+              </Alert>
+            )}
+            {approval.approvalStatus === "PENDING" && canApprove && (
+              <>
+                <Button
+                  className="w-full"
+                  disabled={pending}
+                  onClick={() =>
+                    run(
+                      () => decideQuotationApproval(quoteId, true),
+                      "Approved. The partner can now send it to the customer.",
+                    )
+                  }
+                >
+                  Approve
+                </Button>
+                {sendingBack ? (
+                  <div className="space-y-2">
+                    <Textarea
+                      rows={3}
+                      value={sendBackReason}
+                      onChange={(e) => setSendBackReason(e.target.value)}
+                      placeholder="What should the partner change?"
+                      aria-label="Why it is being sent back"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        disabled={pending || !sendBackReason.trim()}
+                        onClick={() =>
+                          run(
+                            () => decideQuotationApproval(quoteId, false, sendBackReason),
+                            "Sent back to the partner with your reason.",
+                          )
+                        }
+                      >
+                        Send back
+                      </Button>
+                      <Button variant="ghost" disabled={pending} onClick={() => setSendingBack(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button variant="outline" className="w-full" disabled={pending} onClick={() => setSendingBack(true)}>
+                    Send back to the partner
+                  </Button>
+                )}
+              </>
+            )}
+            {approval.approvalStatus === "PENDING" && !canApprove && (
+              <p className="text-xs text-muted-foreground">
+                Somebody who may approve quotations has to approve it.
+              </p>
+            )}
+          </div>
+        )}
+
+        {EDITABLE.includes(status) && !awaitingApproval && (
           <>
+            {partnerQuote && approval?.decidedAt && (
+              <p className="text-sm text-emerald-600 dark:text-emerald-400">
+                Prepared by {approval.preparedBy} and approved
+                {approval.decidedBy ? ` by ${approval.decidedBy}` : ""} on {formatDate(approval.decidedAt)}.
+              </p>
+            )}
             <p className="text-sm text-muted-foreground">
               Still a draft - nothing has gone to the customer. Sending it freezes the numbers.
             </p>

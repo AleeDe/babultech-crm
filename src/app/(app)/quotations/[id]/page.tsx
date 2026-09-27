@@ -8,7 +8,7 @@ import { getAuditTrail } from "@/lib/audit";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { SendEmailPanel } from "@/components/send-email-panel";
 import { sendQuotation, listEmails, isEmailConfigured } from "@/server/email";
-import { supabaseServer } from "@/lib/supabase";
+import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
@@ -55,7 +55,8 @@ export default async function QuotationDetailPage({
          product ( id, name, productCode ),
          taxRate:tax_rate ( id, name, ratePercent )
        ),
-       contracts:contract ( id, contractNumber, name, status )`,
+       contracts:contract ( id, contractNumber, name, status ),
+       approvalDecidedBy:app_user!quotation_approvalDecidedById_fkey ( fullName )`,
     )
     .eq("id", id)
     .maybeSingle();
@@ -85,7 +86,18 @@ export default async function QuotationDetailPage({
       }))
       .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0)),
     contracts: (quoteRow.contracts ?? []) as Row[],
+    approvalDecidedBy: one(quoteRow.approvalDecidedBy as never) as { fullName: string } | null,
   };
+
+  // A quote a partner prepared goes to the customer only once approved. Who
+  // prepared it is read with our key: the quote is one this reader may see, and
+  // an approver needs the name whether or not they may open partner records.
+  const awaitingApproval = Boolean(quote.preparedByPartnerId) && quote.approvalStatus !== "APPROVED";
+  const preparedBy = quote.preparedByPartnerId
+    ? ((await supabaseAdmin().from("partner").select("id, displayName").eq("id", quote.preparedByPartnerId).maybeSingle())
+        .data as { id: string; displayName: string } | null)
+    : null;
+  const preparedByName = preparedBy?.displayName ?? (quote.preparedByPartnerId ? "a partner" : null);
 
   // expiryDate is an ISO string, so parse before comparing — otherwise this is
   // always false and an expired quote never shows as expired.
@@ -242,6 +254,15 @@ export default async function QuotationDetailPage({
             expiryDate={new Date(quote.expiryDate as string).toISOString()}
             opportunityId={quote.opportunity?.id ?? null}
             opportunityStage={quote.opportunity?.stage ?? null}
+            approval={{
+              preparedBy: preparedByName,
+              approvalStatus: String(quote.approvalStatus),
+              note: (quote.approvalNote as string | null) ?? null,
+              requestedAt: (quote.approvalRequestedAt as string | null) ?? null,
+              decidedBy: quote.approvalDecidedBy?.fullName ?? null,
+              decidedAt: (quote.approvalDecidedAt as string | null) ?? null,
+            }}
+            canApprove={can(_me, PERMISSIONS.QUOTATION_APPROVE)}
           />
 
           <Card>
@@ -268,6 +289,18 @@ export default async function QuotationDetailPage({
                 ) : "—"}
               </DetailRow>
               <DetailRow label="Deal owner">{quote.opportunity?.owner?.fullName}</DetailRow>
+              {preparedBy && (
+                <DetailRow label="Prepared by">
+                  {can(_me, PERMISSIONS.PARTNER_READ) ? (
+                    <Link href={`/partners/${preparedBy.id}`} className="text-primary hover:underline">
+                      {preparedBy.displayName}
+                    </Link>
+                  ) : (
+                    preparedBy.displayName
+                  )}
+                  <p className="text-xs text-muted-foreground">Partner - approved by us before it is sent</p>
+                </DetailRow>
+              )}
               <DetailRow label="Quote date">{formatDate(quote.quoteDate)}</DetailRow>
               <DetailRow label="Currency">{quote.currencyCode}</DetailRow>
             </CardContent>
@@ -330,6 +363,11 @@ Do let me know if you would like anything adjusted.`}
           configured={emailConfigured}
           emails={emails}
           send={sendQuotationHere}
+          blockedReason={
+            awaitingApproval
+              ? `Prepared by ${preparedByName}, so it goes to the customer only once it is approved.`
+              : null
+          }
         />
       </div>
 

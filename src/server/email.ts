@@ -11,7 +11,8 @@ import { one } from "@/lib/decimal";
 // conversion at an internal rate has no place on a quote or an invoice.
 import { formatMoneyPlain as formatMoney, formatDate } from "@/lib/utils";
 import {
-  renderDocumentEmail, fillTemplate, type EmailBranding,
+  renderDocumentEmail, fillTemplate, emailSettingsFromRow, brandingFromSettings, EMAIL_SETTINGS_ID,
+  type EmailBranding,
 } from "@/lib/email-template";
 import type { ActionResult } from "./partners";
 
@@ -40,7 +41,7 @@ export async function isEmailConfigured(): Promise<boolean> {
   return Boolean(process.env.RESEND_API_KEY);
 }
 
-const SETTINGS_ID = "00000000-0000-0000-0000-000000000001";
+const SETTINGS_ID = EMAIL_SETTINGS_ID;
 
 /**
  * Branding and templates, with defaults if the row is somehow missing.
@@ -54,44 +55,11 @@ export async function getEmailSettings() {
 
   const { data } = await db.from("email_settings").select("*").eq("id", SETTINGS_ID).maybeSingle();
 
-  return {
-    companyName: data?.companyName ?? "BabulTech",
-    logoUrl: data?.logoUrl ?? null,
-    websiteUrl: data?.websiteUrl ?? null,
-    supportEmail: data?.supportEmail ?? null,
-    supportPhone: data?.supportPhone ?? null,
-    addressLine: data?.addressLine ?? null,
-    brandColor: data?.brandColor ?? "#00B8A4",
-    brandColorDark: data?.brandColorDark ?? "#0F172A",
-    textColor: data?.textColor ?? "#1A2233",
-    mutedColor: data?.mutedColor ?? "#64748B",
-    backgroundColor: data?.backgroundColor ?? "#F1F5F9",
-    emailFooter:
-      data?.emailFooter ??
-      "This email and any attachments are confidential and intended solely for the addressee.",
-    quotationSubject: data?.quotationSubject ?? "Quotation {{documentNumber}} from {{companyName}}",
-    quotationBody: data?.quotationBody ?? "Dear {{contactFirstName}},\n\nPlease find our quotation below.",
-    invoiceSubject: data?.invoiceSubject ?? "Invoice {{documentNumber}} from {{companyName}}",
-    invoiceBody: data?.invoiceBody ?? "Dear {{contactFirstName}},\n\nPlease find our invoice below.",
-  };
+  return emailSettingsFromRow(data);
 }
 
 async function getBranding(): Promise<EmailBranding> {
-  const s = await getEmailSettings();
-  return {
-    companyName: s.companyName,
-    logoUrl: s.logoUrl,
-    websiteUrl: s.websiteUrl,
-    supportEmail: s.supportEmail,
-    supportPhone: s.supportPhone,
-    addressLine: s.addressLine,
-    brandColor: s.brandColor,
-    brandColorDark: s.brandColorDark,
-    textColor: s.textColor,
-    mutedColor: s.mutedColor,
-    backgroundColor: s.backgroundColor,
-    emailFooter: s.emailFooter,
-  };
+  return brandingFromSettings(await getEmailSettings());
 }
 
 /** The subject and body a compose form should open with, placeholders filled. */
@@ -436,6 +404,15 @@ export async function sendQuotation(
     .maybeSingle();
 
   if (!quote) return { ok: false, error: "That quotation is not available to you." };
+
+  // A partner's quote goes to the customer only once it is approved
+  // (20260928000006). Checked before the email, which cannot be taken back.
+  if (quote.preparedByPartnerId && quote.approvalStatus !== "APPROVED") {
+    return {
+      ok: false,
+      error: `${quote.quoteNumber} was prepared by a partner and has not been approved, so it cannot be sent yet.`,
+    };
+  }
 
   const branding = await getBranding();
 

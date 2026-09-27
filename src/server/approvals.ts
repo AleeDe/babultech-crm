@@ -1,6 +1,6 @@
 "use server";
 
-import { supabaseServer } from "@/lib/supabase";
+import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { requireUser, can, canAny, PERMISSIONS } from "@/lib/authz";
 import { toDecimal, one } from "@/lib/decimal";
 
@@ -77,11 +77,11 @@ export async function getPendingApprovals(): Promise<{
       ? db
           .from("quotation")
           .select(
-            "id, quoteNumber, totalAmount, currencyCode, createdAt, account ( name ), opportunity ( name )",
+            "id, quoteNumber, totalAmount, currencyCode, createdAt, approvalRequestedAt, preparedByPartnerId, account ( name ), opportunity ( name )",
           )
           .eq("approvalStatus", "PENDING")
           .is("deletedAt", null)
-          .order("createdAt")
+          .order("approvalRequestedAt")
           .limit(100)
       : none,
 
@@ -135,6 +135,19 @@ export async function getPendingApprovals(): Promise<{
   type Row = Record<string, any>;
   const items: PendingApproval[] = [];
 
+  // Which partner prepared each quote - only a partner's quote waits for
+  // approval (20260928000006). Read with our key: the quotes above are ones the
+  // reader may see, and who asked is part of deciding, even for an approver who
+  // may not open partner records.
+  const preparedIds = [
+    ...new Set(((quotations.data ?? []) as Row[]).map((q) => q.preparedByPartnerId).filter(Boolean)),
+  ] as string[];
+  const partnerNames = new Map<string, string>();
+  if (preparedIds.length) {
+    const { data: named } = await supabaseAdmin().from("partner").select("id, displayName").in("id", preparedIds);
+    for (const p of named ?? []) partnerNames.set(p.id as string, p.displayName as string);
+  }
+
   for (const q of (quotations.data ?? []) as Row[]) {
     const account = one(q.account as never) as Row | null;
     const opportunity = one(q.opportunity as never) as Row | null;
@@ -146,8 +159,8 @@ export async function getPendingApprovals(): Promise<{
       subtitle: account?.name ?? null,
       amount: String(q.totalAmount ?? 0),
       currencyCode: q.currencyCode,
-      requestedBy: null,
-      waitingSince: q.createdAt,
+      requestedBy: q.preparedByPartnerId ? partnerNames.get(q.preparedByPartnerId) ?? "A partner" : null,
+      waitingSince: q.approvalRequestedAt ?? q.createdAt,
       href: `/quotations/${q.id}`,
     });
   }

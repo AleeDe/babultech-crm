@@ -1,13 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
 import { one } from "@/lib/decimal";
 import { supabaseServer } from "@/lib/supabase";
 import { getOpportunityPricing, type OpportunityPricing } from "./opportunity-lines";
 import { updateRecord } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
+import { quoteInputSchema as quotationSchema, type PricedLineInput, type QuoteInput } from "@/lib/priced-input";
 import type { ActionResult } from "./partners";
 
 /**
@@ -29,46 +29,11 @@ import type { ActionResult } from "./partners";
 
 const EDITABLE = ["DRAFT", "UNDER_REVIEW", "APPROVED"] as const;
 
-const amount = z.preprocess(
-  (v) => (v === "" || v == null ? 0 : v),
-  z.coerce.number().finite().min(0, "Amounts cannot be negative."),
-);
-
-const lineSchema = z.object({
-  productId: z.string().uuid("Choose a product or service on every line."),
-  priceBookEntryId: z.string().uuid().optional().nullable(),
-  description: z.string().max(4000).optional().nullable(),
-  quantity: amount,
-  unitPrice: amount,
-  licenseCost: amount,
-  maintenanceCost: amount,
-  cloudCost: amount,
-  aiCost: amount,
-  discountPercent: z.preprocess(
-    (v) => (v === "" || v == null ? 0 : v),
-    z.coerce.number().min(0).max(100, "A discount cannot be more than 100%."),
-  ),
-  taxRateId: z.string().uuid().optional().nullable().or(z.literal("")),
-});
-
-const quotationSchema = z.object({
-  opportunityId: z.string().uuid(),
-  contactId: z.string().uuid().optional().nullable(),
-  quoteDate: z.coerce.date(),
-  expiryDate: z.coerce.date(),
-  currencyCode: z.string().length(3).default("PKR"),
-  priceBookId: z.string().uuid().optional().nullable().or(z.literal("")),
-  paymentTerms: z.string().optional().nullable(),
-  notes: z.string().optional().nullable(),
-  termsAndConditions: z.string().optional().nullable(),
-  lines: z.array(lineSchema).min(1, "A quote needs at least one line."),
-});
-
 /**
  * The lines as they are stored. A line with no description of its own reads
  * as its product's name, because the description is what the customer sees.
  */
-async function storedLines(lines: z.infer<typeof lineSchema>[]) {
+async function storedLines(lines: PricedLineInput[]) {
   const db = await supabaseServer();
   const ids = [...new Set(lines.map((l) => l.productId))];
   const { data: products } = await db.from("product").select("id, name").in("id", ids);
@@ -90,7 +55,7 @@ async function storedLines(lines: z.infer<typeof lineSchema>[]) {
 }
 
 export async function createQuotation(
-  input: z.infer<typeof quotationSchema>,
+  input: QuoteInput,
 ): Promise<ActionResult<{ id: string }>> {
   const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
@@ -168,7 +133,7 @@ export async function createQuotation(
 
 export async function updateQuotation(
   id: string,
-  input: z.infer<typeof quotationSchema>,
+  input: QuoteInput,
 ): Promise<ActionResult<{ id: string }>> {
   const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
@@ -283,11 +248,14 @@ export async function sendQuotation(id: string): Promise<ActionResult> {
 
     const { data: before } = await db
       .from("quotation")
-      .select("status, quoteNumber, expiryDate, opportunityId, lines:quote_line ( id )")
+      .select("status, quoteNumber, expiryDate, opportunityId, preparedByPartnerId, approvalStatus, lines:quote_line ( id )")
       .eq("id", id)
       .maybeSingle();
 
     if (!before) return { ok: false, error: "Quote not found." };
+
+    const unapproved = partnerQuoteUnapproved(before);
+    if (unapproved) return { ok: false, error: unapproved };
 
     if (!(EDITABLE as readonly string[]).includes(before.status)) {
       return { ok: false, error: before.quoteNumber + " has already been sent." };
@@ -335,6 +303,55 @@ export async function sendQuotation(id: string): Promise<ActionResult> {
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Could not send the quote." };
   }
+}
+
+/**
+ * Why a partner's quote cannot go to the customer yet, or null when it can.
+ *
+ * A quote a partner prepared is approved by one of our managers before it is
+ * sent (20260928000006); the database refuses it regardless, and this says so
+ * in words before an email is attempted. Our own quotes need no approval.
+ */
+function partnerQuoteUnapproved(q: {
+  quoteNumber: string;
+  preparedByPartnerId?: string | null;
+  approvalStatus?: string | null;
+}): string | null {
+  if (!q.preparedByPartnerId || q.approvalStatus === "APPROVED") return null;
+  return q.approvalStatus === "PENDING"
+    ? `${q.quoteNumber} was prepared by a partner and is waiting for approval. Approve it before it is sent.`
+    : `${q.quoteNumber} was prepared by a partner and has not been approved, so it cannot be sent yet.`;
+}
+
+/**
+ * Approve a partner's quote so it can go to the customer, or send it back to
+ * them with the reason. Only for somebody who may approve quotations; the
+ * database checks that too, and that they can see the deal.
+ */
+export async function decideQuotationApproval(
+  id: string,
+  approve: boolean,
+  note?: string | null,
+): Promise<ActionResult> {
+  const _auth = await authorize(PERMISSIONS.QUOTATION_APPROVE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  if (!approve && !note?.trim()) {
+    return { ok: false, error: "Say why it is being sent back, so the partner knows what to change." };
+  }
+
+  const db = await supabaseServer();
+  const { error } = await db.rpc("decide_quotation_approval", {
+    p_id: id,
+    p_approve: approve,
+    p_note: note?.trim() || null,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/approvals");
+  revalidatePath("/quotations");
+  revalidatePath(`/quotations/${id}`);
+  return { ok: true, data: undefined };
 }
 
 /**

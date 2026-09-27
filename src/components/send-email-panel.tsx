@@ -32,6 +32,8 @@ export function SendEmailPanel({
   configured,
   emails,
   send,
+  blockedReason,
+  reloadOnSend,
 }: {
   documentLabel: string;
   defaultTo: string | null;
@@ -45,6 +47,15 @@ export function SendEmailPanel({
     subject: string;
     message: string;
   }) => Promise<{ ok: boolean; error?: string }>;
+  /** Why this cannot be sent yet. Shown in place of the send button. */
+  blockedReason?: string | null;
+  /**
+   * Reload the page after a send, so everything a send changes - the
+   * document's status above all - is shown. router.refresh() can deliver a
+   * page that is never displayed (the React 19.2 fault described in
+   * components/deal-product-services.tsx).
+   */
+  reloadOnSend?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -67,7 +78,8 @@ export function SendEmailPanel({
       if (result.ok) {
         setSent(true);
         setOpen(false);
-        router.refresh();
+        if (reloadOnSend) window.location.reload();
+        else router.refresh();
       } else {
         setError(result.error ?? "That did not send.");
       }
@@ -89,7 +101,7 @@ export function SendEmailPanel({
             </span>
           )}
         </CardTitle>
-        {configured && (
+        {configured && !blockedReason && (
           <Button variant="secondary" size="sm" onClick={() => setOpen((v) => !v)}>
             {open ? "Cancel" : `Email ${documentLabel}`}
           </Button>
@@ -105,10 +117,11 @@ export function SendEmailPanel({
           </Alert>
         )}
 
+        {configured && blockedReason && <Alert tone="info">{blockedReason}</Alert>}
         {error && <Alert tone="danger">{error}</Alert>}
         {sent && <Alert tone="success">Sent.</Alert>}
 
-        {open && configured && (
+        {open && configured && !blockedReason && (
           <form action={submit} className="space-y-3 rounded-lg border bg-muted/30 p-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="To" required>

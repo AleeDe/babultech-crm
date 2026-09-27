@@ -63,7 +63,16 @@ export interface PartnerDeal {
   account: { id: string; name: string } | null;
   primaryContact: { id: string; firstName: string; lastName: string } | null;
   contacts: { id: string; firstName: string; lastName: string }[];
-  quotations: { id: string; quoteNumber: string; versionNumber: number; status: string; totalAmount: string | number; currencyCode: string }[];
+  quotations: {
+    id: string;
+    quoteNumber: string;
+    versionNumber: number;
+    status: string;
+    approvalStatus: string;
+    preparedByPartnerId: string | null;
+    totalAmount: string | number;
+    currencyCode: string;
+  }[];
   commission: {
     id: string;
     status: string;
@@ -85,7 +94,10 @@ export async function getPartnerDeal(id: string): Promise<PartnerDeal | null> {
        nextStep, competitorName, lossReason, description, primaryContactId, createdAt, accountId,
        account ( id, name ),
        primaryContact:contact!opportunity_primaryContactId_fkey ( id, firstName, lastName ),
-       quotations:quotation ( id, quoteNumber, versionNumber, status, totalAmount, currencyCode, deletedAt )`,
+       quotations:quotation (
+         id, quoteNumber, versionNumber, status, approvalStatus, preparedByPartnerId,
+         totalAmount, currencyCode, deletedAt
+       )`,
     )
     .eq("id", id)
     .is("deletedAt", null)

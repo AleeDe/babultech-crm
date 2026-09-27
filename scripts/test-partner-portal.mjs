@@ -21,6 +21,7 @@ const ids = {
   partner: randomUUID(), otherPartner: randomUUID(),
   myDeal: randomUUID(), otherDeal: randomUUID(),
   myCommission: randomUUID(), otherCommission: randomUUID(),
+  myItem: randomUUID(), otherItem: randomUUID(),
   login: null,
 };
 const cleanup = [];
@@ -82,6 +83,14 @@ try {
   assert.ok(ids.myCommission && ids.otherCommission, "Both deals must have a commission record");
   pass("Each partner's deal has its commission record");
 
+  // An item of this partner's own, and one of the other partner's.
+  await check(db.from("product").insert([
+    { id: ids.myItem, productCode: "auto", name: `QA Reseller Item ${run}`, productType: "PRODUCT", addInTask: false, active: true, ownerAccountId: ids.account, updatedAt: now() },
+    { id: ids.otherItem, productCode: "auto", name: `QA Other Item ${run}`, productType: "PRODUCT", addInTask: false, active: true, ownerAccountId: ids.otherAccount, updatedAt: now() },
+  ]), "Create temporary items");
+  cleanup.push(() => db.from("product").delete().in("id", [ids.myItem, ids.otherItem]));
+  const company = await check(db.from("company_setting").select("accountId").limit(1).maybeSingle(), "Find BabulTech's company account");
+
   const role = await check(db.from("security_role").select("id").eq("name", "Partner").single(), "Find the Partner role");
   const password = randomBytes(24).toString("base64url");
   const email = `qa-partner-${run}@example.com`;
@@ -124,7 +133,6 @@ try {
     ["invoice", "invoices"],
     ["support_case", "support cases"],
     ["project", "projects"],
-    ["product", "the product catalogue"],
     // Their own leads they may read (20260928000004); this partner has none, so
     // any lead that comes back is somebody else's.
     ["lead", "anybody else's leads"],
@@ -132,7 +140,16 @@ try {
     const { data } = await asPartner.from(table).select("id").limit(5);
     assert.equal((data ?? []).length, 0, `A partner must not read ${what}`);
   }
-  pass("Cannot read expenses, invoices, cases, projects, products or anybody else's leads");
+  pass("Cannot read expenses, invoices, cases, projects or anybody else's leads");
+
+  // The catalogue they sell from: BabulTech's items and their own, never the
+  // other partner's (20260928000006).
+  const items = await check(asPartner.from("product").select("id, ownerAccountId"), "Read items as the partner");
+  assert.ok(items.some((p) => p.id === ids.myItem), "A partner sees their own items");
+  assert.ok(!items.some((p) => p.id === ids.otherItem), "A partner must never see another partner's items");
+  const allowedOwners = new Set([company?.accountId ?? null, ids.account, null]);
+  assert.ok(items.every((p) => allowedOwners.has(p.ownerAccountId)), "Every item a partner sees is BabulTech's or theirs");
+  pass("Reads BabulTech's items and their own, never another partner's");
 
   const people = await check(asPartner.from("app_user").select("id"), "Read people as the partner");
   assert.deepEqual(people.map((p) => p.id), [ids.login], "A partner must see only their own login");

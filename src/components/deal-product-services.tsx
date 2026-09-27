@@ -11,6 +11,8 @@ import {
   PricedLinesEditor, PricedTotals, emptyRow, num, rowFromLine, rowTotals, type PricedRow,
 } from "@/components/priced-lines";
 import { saveOpportunityLines, type OpportunityPricing } from "@/server/opportunity-lines";
+import type { DealLinesInput } from "@/lib/priced-input";
+import type { ActionResult } from "@/server/partners";
 
 /**
  * Opportunity Product Services: what this deal sells.
@@ -23,16 +25,24 @@ import { saveOpportunityLines, type OpportunityPricing } from "@/server/opportun
  *
  * The editor itself is shared with the deal's quotes (components/priced-lines),
  * because a quote is priced exactly as its deal is and accepting one puts its
- * lines here.
+ * lines here. The card is shared with the partner portal, which saves through
+ * its own action - the partner's deal, checked by the database - and says why
+ * a partner can no longer change what was sold.
  */
 export function OpportunityProductServices({
   opportunityId,
   pricing,
   canWrite,
+  saveLines = saveOpportunityLines,
+  lockedNote,
 }: {
   opportunityId: string;
   pricing: OpportunityPricing;
   canWrite: boolean;
+  /** How the lines are saved. Our team's action unless the portal passes its own. */
+  saveLines?: (input: DealLinesInput) => Promise<ActionResult<{ amount: string; lines: number }>>;
+  /** Why the lines cannot be changed, shown when they cannot. */
+  lockedNote?: string | null;
 }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +83,7 @@ export function OpportunityProductServices({
       return;
     }
     start(async () => {
-      const result = await saveOpportunityLines({
+      const result = await saveLines({
         opportunityId,
         priceBookId: bookId || null,
         lines: usable.map((r) => ({
@@ -136,6 +146,9 @@ export function OpportunityProductServices({
                 "Nothing added yet. The deal's value becomes the total of what is added here."
               )}
             </p>
+            {!canWrite && lockedNote && (
+              <p className="mt-1 text-sm text-muted-foreground">{lockedNote}</p>
+            )}
           </div>
           {canWrite && !lost && (
             <Button onClick={beginEditing}>

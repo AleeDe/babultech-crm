@@ -47,7 +47,7 @@ export function PartnerActivityPanel({
 
   // A full reload after each change rather than router.refresh(): in the
   // production build a refreshed page can arrive and not be shown (the React
-  // 19.2 fault described in opportunities/[id]/product-services.tsx).
+  // 19.2 fault described in components/deal-product-services.tsx).
   const reload = () => window.location.reload();
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
