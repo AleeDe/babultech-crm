@@ -4,7 +4,6 @@ import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone, DetailRow, Alert,
 } from "@/components/ui";
 import { formatDate, formatPercent, humanize } from "@/lib/utils";
-import { protectionDaysFor } from "@/lib/partner-policy";
 import { ChangePasswordForm } from "@/app/(app)/profile/profile-client";
 
 export default async function PortalAccountPage() {
@@ -29,11 +28,10 @@ export default async function PortalAccountPage() {
             <DetailRow label="Territory">{partner.territory ?? "—"}</DetailRow>
             <DetailRow label="Partner since">{formatDate(partner.startDate)}</DetailRow>
             <DetailRow label="Agreement expires">{formatDate(partner.agreementExpiryDate)}</DetailRow>
-            <DetailRow label="Deal protection">
-              {protectionDaysFor(partner.tier, partner.registrationProtectionDays)} days from
-              registration
+            <DetailRow label="Commission rate">
+              {partner.defaultCommissionPercent ? formatPercent(partner.defaultCommissionPercent, 2) : "—"}
             </DetailRow>
-            <DetailRow label="Payout currency">{partner.payoutCurrencyCode}</DetailRow>
+            <DetailRow label="Paid in">{partner.payoutCurrencyCode}</DetailRow>
             <DetailRow label="Withholding tax">
               {partner.withholdingTaxPercent ? formatPercent(partner.withholdingTaxPercent, 2) : "None"}
             </DetailRow>

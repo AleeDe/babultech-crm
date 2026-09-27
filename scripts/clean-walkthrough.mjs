@@ -94,9 +94,8 @@ await wipeBy("partner_message_attachment", "messageId",
   (await db.from("partner_message").select("id").in("partnerId", partners.length ? partners : ["00000000-0000-0000-0000-000000000000"])).data?.map((r) => r.id) ?? [],
   "message attachments");
 await wipeBy("partner_message", "partnerId", partners, "partner messages");
-await wipeBy("commission_proposal", "partnerId", partners, "rate requests");
-await wipeBy("commission_record", "partnerId", partners, "commission records");
-await wipeBy("opportunity_partner", "partnerId", partners, "deal-partner links");
+// A partner cannot be removed while commission names it.
+await wipeBy("partner_commission", "partnerId", partners, "partner commission");
 await wipeBy("partner_contact", "partnerId", partners, "partner contact links");
 
 // --- delivery ---------------------------------------------------------------
@@ -112,7 +111,6 @@ await wipeBy("support_case", "id", cases, "support cases");
 // --- sales ------------------------------------------------------------------
 await wipeBy("quote_line", "quotationId", quotations, "quote lines");
 await wipeBy("quotation", "id", quotations, "quotations");
-await wipeBy("opportunity_partner", "opportunityId", opportunities, "deal-partner links");
 await wipeBy("opportunity", "id", opportunities, "deals");
 await wipe("lead", "leadNumber", numberLike, "leads");
 await wipe("campaign", "campaignNumber", numberLike, "campaigns");

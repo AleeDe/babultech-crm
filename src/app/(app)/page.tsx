@@ -7,7 +7,7 @@ import { supabaseServer } from "@/lib/supabase";
 import { requireUser, can, scopeFilter, PERMISSIONS } from "@/lib/authz";
 import { applyScope } from "@/lib/db";
 import { getPipelineByStage } from "@/server/opportunities";
-import { getCommissionTotals } from "@/server/commissions";
+import { getPartnerCommissionTotals } from "@/server/partner-commissions";
 import {
   getModuleSummary, getAttentionItems, getDeliveryAnalytics,
   getSalesAnalytics, getFinanceAnalytics, getServiceAnalytics, getPartnerAnalytics,
@@ -104,16 +104,16 @@ export default async function DashboardPage({
       // commission:read, which took the whole dashboard down for Project
       // Managers and Consultants. Empty buckets render as a ledger of zeros,
       // and the panel is already gated on summary.visible.partners.
-      getCommissionTotals().catch(() => {
-        const empty = { amount: toDecimal(0), count: 0 };
-        return {
-          accrued: empty,
-          pendingApproval: empty,
-          payable: empty,
-          paid: empty,
-          clawedBack: empty,
-        };
-      }),
+      getPartnerCommissionTotals().catch(() => ({
+        currency: "PKR",
+        openTotal: toDecimal(0),
+        owedTotal: toDecimal(0),
+        owedCount: 0,
+        dueTotal: toDecimal(0),
+        dueCount: 0,
+        paidTotal: toDecimal(0),
+        pendingRequests: 0,
+      })),
       (async () => {
         if (!seeCases) return 0;
         const db = await supabaseServer();
@@ -171,24 +171,23 @@ export default async function DashboardPage({
           .from("partner")
           .select(
             `*,
-             opportunities:opportunity_partner ( count ),
-             commissionRecords:commission_record ( commissionAmount, status, deletedAt )`,
+             opportunities:opportunity!opportunity_sourcePartnerId_fkey ( count ),
+             commissions:partner_commission ( partnerAmount, status )`,
           )
           .is("deletedAt", null)
           .eq("status", "ACTIVE")
           .limit(6);
 
-        // Prisma filtered the embedded records in the query; PostgREST returns
-        // them all, so the soft-delete filter is applied here.
         return (data ?? []).map((p: Record<string, any>) => ({
           ...p,
           _count: {
             opportunities:
               (p.opportunities as { count: number }[] | undefined)?.[0]?.count ?? 0,
           },
-          commissionRecords: (
-            (p.commissionRecords ?? []) as { deletedAt: string | null }[]
-          ).filter((r: Record<string, any>) => !r.deletedAt),
+          // Rejected commission was never earned.
+          commissions: ((p.commissions ?? []) as { status: string }[]).filter(
+            (c) => c.status !== "REJECTED",
+          ),
         }));
       })(),
       (async () => {
@@ -349,9 +348,9 @@ export default async function DashboardPage({
   const partnersRanked = topPartners
     .map((p: Record<string, any>) => ({
       ...p,
-      earned: p.commissionRecords.reduce(
+      earned: p.commissions.reduce(
         (s: ReturnType<typeof toDecimal>, r: Record<string, any>) =>
-          s.plus(toDecimal(r.commissionAmount)),
+          s.plus(toDecimal(r.partnerAmount)),
         toDecimal(0),
       ),
     }))
@@ -667,10 +666,10 @@ export default async function DashboardPage({
             title="Partners"
             icon={Handshake}
             href="/partners"
-            headline={{ label: "commission payable", value: formatCompactMoney(summary.partners.commissionPayable) }}
+            headline={{ label: "commission owed on won deals", value: formatCompactMoney(summary.partners.commissionPayable) }}
             rows={[
               { label: "Active partners", value: String(summary.partners.activePartners), href: "/partners" },
-              { label: "Awaiting approval", value: String(summary.partners.commissionPendingApproval), href: "/commissions", alert: summary.partners.commissionPendingApproval > 0 },
+              { label: "Rate requests waiting", value: String(summary.partners.commissionPendingApproval), href: "/commissions?view=requests", alert: summary.partners.commissionPendingApproval > 0 },
               { label: "Agreements expiring in 60 days", value: String(summary.partners.agreementsExpiringSoon), href: "/partners", alert: summary.partners.agreementsExpiringSoon > 0 },
             ]}
           />
@@ -730,27 +729,27 @@ export default async function DashboardPage({
         {summary.visible.partners && (
         <Card>
           <CardHeader>
-            <CardTitle>Commission ledger</CardTitle>
+            <CardTitle>Partner commission</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {[
-              { label: "Accrued", data: commissions.accrued, tone: "info" as const },
-              { label: "Pending approval", data: commissions.pendingApproval, tone: "warning" as const },
-              { label: "Payable", data: commissions.payable, tone: "warning" as const },
-              { label: "Paid", data: commissions.paid, tone: "success" as const },
-            ].map((row: Record<string, any>) => (
-              <div key={row.label} className="flex items-center justify-between border-b pb-2 last:border-0">
+              { label: "On open deals", note: "An estimate that follows each deal", amount: commissions.openTotal, href: "/commissions?view=open" },
+              { label: "Owed on won deals", note: `${commissions.owedCount} to pay`, amount: commissions.owedTotal, href: "/commissions?view=owed" },
+              { label: "Due now", note: `${commissions.dueCount} past their payment date`, amount: commissions.dueTotal, href: "/commissions?view=due" },
+              { label: "Paid", note: "Marked paid", amount: commissions.paidTotal, href: "/commissions?view=paid" },
+            ].map((row) => (
+              <Link key={row.label} href={row.href} className="flex items-center justify-between border-b pb-2 last:border-0 hover:opacity-80">
                 <div>
                   <p className="text-sm font-medium">{row.label}</p>
-                  <p className="text-xs text-muted-foreground">{row.data.count} records</p>
+                  <p className="text-xs text-muted-foreground">{row.note}</p>
                 </div>
                 <span className="text-sm font-semibold tabular">
-                  {formatMoney(row.data.amount)}
+                  {formatMoney(row.amount, commissions.currency)}
                 </span>
-              </div>
+              </Link>
             ))}
             <Link href="/commissions" className="block pt-1 text-sm text-primary hover:underline">
-              Open the commission ledger →
+              Open partner commission →
             </Link>
           </CardContent>
         </Card>

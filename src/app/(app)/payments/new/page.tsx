@@ -51,7 +51,7 @@ export default async function NewPaymentPage() {
         backTo="/payments"
         backLabel="Back to payments"
         title="Record a payment"
-        description="Apply it against open invoices as you record it. Cleared cash is what settles a balance and what most commission plans pay on."
+        description="Apply it against open invoices as you record it. Cleared cash is what settles a balance."
       />
       <PaymentForm
         accounts={accounts}

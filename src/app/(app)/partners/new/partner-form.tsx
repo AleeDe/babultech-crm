@@ -10,13 +10,11 @@ import {
 } from "@/components/ui";
 import { RecordLookup } from "@/components/record-lookup";
 import { cn, humanize } from "@/lib/utils";
-import { TIER_PROTECTION_DAYS, DEAL_REGISTRATION_PROTECTION_DAYS } from "@/lib/partner-policy";
 
 interface Options {
   users: { id: string; fullName: string }[];
   accounts: { id: string; name: string; accountType: string }[];
   contacts: { id: string; firstName: string; lastName: string; email: string | null }[];
-  plans: { id: string; name: string; rateType: string; flatPercent: unknown }[];
   currencies: { code: string; name: string }[];
 }
 
@@ -59,11 +57,9 @@ export function PartnerForm({ options }: { options: Options }) {
       startDate: get("startDate"),
       agreementExpiryDate: get("agreementExpiryDate"),
       defaultCommissionPercent: get("defaultCommissionPercent"),
-      commissionPlanId: get("commissionPlanId"),
       payoutCurrencyCode: get("payoutCurrencyCode") ?? "PKR",
       taxNumber: get("taxNumber"),
       withholdingTaxPercent: get("withholdingTaxPercent"),
-      registrationProtectionDays: get("registrationProtectionDays"),
       email: get("email"),
       phone: get("phone"),
       website: get("website"),
@@ -300,22 +296,8 @@ export function PartnerForm({ options }: { options: Options }) {
           <CardTitle>Commission and payment</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field
-            label="Commission plan"
-            hint="Tiered or flat rules. Takes precedence over the default rate below."
-            help="The plan that decides how much they earn. Set the plans up first under Commissions."
-          >
-            <Select name="commissionPlanId">
-              <option value="">No plan - use the default rate</option>
-              {options.plans.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({humanize(p.rateType)})
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Default commission %" hint="Fallback when no plan applies."
-            help="The rate applied when no plan covers a particular deal.">
+          <Field label="Commission %" hint="Copied onto each of their deals."
+            help="What they earn on a deal, as a share of its final amount after discounts, tax included. Each deal keeps the rate it started with; a different rate on one deal is agreed on its commission record.">
             <Input name="defaultCommissionPercent" type="number" step="0.01" min="0" max="100" placeholder="10" />
           </Field>
           <Field label="Payout currency" required
@@ -330,19 +312,12 @@ export function PartnerForm({ options }: { options: Options }) {
             help="Their National Tax Number. Needed before you can pay them.">
             <Input name="taxNumber" />
           </Field>
-          <Field label="Withholding tax %" hint="Deducted automatically at payout."
-            help="Tax deducted at source before paying them. Set it here and payouts calculate net automatically.">
+          <Field label="Withholding tax %" hint="Deducted from each commission."
+            help="Tax deducted at source before paying them. Each commission record shows it separately and pays the partner the rest.">
             <Input name="withholdingTaxPercent" type="number" step="0.01" min="0" max="100" placeholder="10" />
           </Field>
-          <Field
-            label="Deal protection (days)"
-            hint={`Blank uses the tier default, ${TIER_PROTECTION_DAYS[tierValue] ?? DEAL_REGISTRATION_PROTECTION_DAYS} days for ${humanize(tierValue)}.`}
-            help="How long a partner keeps exclusive claim to a deal they registered. Stops a second partner or your own team registering the same customer behind them."
-          >
-            <Input name="registrationProtectionDays" type="number" min="1" max="365" />
-          </Field>
           <Field label="Bank name"
-            help="The bank their payouts go to.">
+            help="The bank their commission is paid into.">
             <Input name="bankName" />
           </Field>
           <Field label="Account title"
@@ -350,7 +325,7 @@ export function PartnerForm({ options }: { options: Options }) {
             <Input name="accountTitle" />
           </Field>
           <Field label="Account number / IBAN"
-            help="The account number or IBAN for payouts.">
+            help="The account number or IBAN their commission is paid into.">
             <Input name="iban" />
           </Field>
         </CardContent>

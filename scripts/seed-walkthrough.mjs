@@ -675,8 +675,7 @@ try {
       id: made.partner, partnerNumber: `WT-PTR-${tag}`, displayName: `WT Nexus Systems ${tag}`,
       kind: "COMPANY", accountId: made.partnerAccount, partnerType: "ACCOUNT_MANAGEMENT",
       tier: "SILVER", status: "ACTIVE", partnerManagerId: meId,
-      defaultCommissionPercent: 12, payoutCurrencyCode: "PKR",
-      registrationProtectionDays: 90, startDate: today(),
+      defaultCommissionPercent: 12, payoutCurrencyCode: "PKR", startDate: today(),
       email: `wt-sana-${tag.toLowerCase()}@example.com`, updatedAt: now(),
     }),
     "Create the partner",
@@ -767,76 +766,55 @@ try {
   step("14", "Commission, and the partner asking for more");
   // -------------------------------------------------------------------------
 
+  // The won deal was ours before the partner was involved, so it is given the
+  // partner by hand - once, which is what creates the commission record.
   await ok(
-    db.from("opportunity_partner").insert({
-      id: randomUUID(), opportunityId: made.opportunity, partnerId: made.partner,
-      role: "SOURCED", revenueSharePercent: 100, registeredAt: now(), updatedAt: now(),
-    }),
-    "Attach the partner to the won deal",
+    db.rpc("set_opportunity_partner", { p_opportunity: made.opportunity, p_partner: made.partner }),
+    "Give the won deal its partner",
   );
+  const record = await ok(
+    admin.from("partner_commission")
+      .select("id, status, baseAmount, commissionPercent, commissionAmount, partnerAmount, paymentDate")
+      .eq("opportunityId", made.opportunity).single(),
+    "Read the commission record",
+  );
+  made.commission = record.id;
+  const expectedCommission = Math.round(money(record.baseAmount) * 12) / 100;
+  assert.equal(money(record.commissionPercent), 12, "At the partner's 12%");
+  assert.equal(money(record.commissionAmount), expectedCommission, "Commission is 12% of the deal amount");
+  assert.equal(record.status, "IN_PROGRESS", "Nothing is paid until somebody marks it paid");
+  assert.ok(record.paymentDate, "A won deal's commission has its payment date");
+  pass(`Commission of ${expectedCommission.toLocaleString()} recorded at 12%, payment date ${record.paymentDate}`);
 
-  made.commission = randomUUID();
   await ok(
-    admin.from("commission_record").insert({
-      id: made.commission, commissionNumber: `WT-COM-${tag}`, partnerId: made.partner,
-      opportunityId: made.opportunity, status: "ACCRUED", basis: "OPPORTUNITY_AMOUNT",
-      basisAmount: 1566000, ratePercent: 12, commissionAmount: 187920,
-      withholdingTaxAmount: 0, netPayableAmount: 187920, currencyCode: "PKR",
-      earnedDate: today(), updatedAt: now(),
-    }),
-    "Accrue commission",
-  );
-  pass("Commission of 187,920 accrued at the 12% default rate");
-
-  const adjustedRaw = await ok(
-    db.rpc("adjust_commission", {
-      p_partner_id: made.partner, p_opportunity_id: made.opportunity,
-      p_adjusts_record_id: made.commission, p_amount: 25000, p_currency: "PKR",
-      p_reason: "Goodwill top-up for the extra scoping work on this deal.",
-      p_actor_id: meId,
-    }),
-    "Adjust the commission",
-  );
-  const adjusted = typeof adjustedRaw === "string" ? JSON.parse(adjustedRaw) : adjustedRaw;
-  const ledger = await ok(
-    admin.from("commission_record").select("commissionAmount, isAdjustment").eq("partnerId", made.partner),
-    "Read the commission ledger",
-  );
-  const total = ledger.reduce((s, r) => s + money(r.commissionAmount), 0);
-  assert.equal(total, 212920, "The ledger must sum the accrual and the adjustment");
-  assert.ok(ledger.some((r) => r.isAdjustment), "The adjustment must be marked as one");
-  pass(`Adjustment ${adjusted.commissionNumber} added; the ledger now totals ${total.toLocaleString()}`);
-
-  const proposedRaw = await ok(
-    asPartner.rpc("partner_propose_commission", {
-      p_opportunity_id: made.opportunity, p_percent: 18,
+    asPartner.rpc("partner_commission_request_percent", {
+      p_id: made.commission, p_percent: 18,
       p_reason: "We ran the whole pre-sales cycle on this one, including the site survey.",
     }),
-    "Propose a higher rate as the partner",
+    "Ask for a higher rate as the partner",
   );
-  const proposed = typeof proposedRaw === "string" ? JSON.parse(proposedRaw) : proposedRaw;
-  made.proposal = proposed.id;
-  assert.equal(money(proposed.currentPercent), 12, "The proposal must snapshot the rate they were on");
-  pass("Partner asked for 18%, with their reasoning, against a snapshot of the 12% they were on");
+  const waiting = await ok(
+    admin.from("partner_commission").select("commissionPercent, requestStatus").eq("id", made.commission).single(),
+    "Read the record after the request",
+  );
+  assert.equal(waiting.requestStatus, "PENDING", "The request waits for an answer");
+  assert.equal(money(waiting.commissionPercent), 12, "The rate does not change until it is approved");
+  pass("Partner asked for 18%, with their reasoning; the rate stays 12% until we answer");
 
-  const decidedRaw = await ok(
-    db.rpc("decide_commission_proposal", {
-      p_id: made.proposal, p_approve: true, p_percent: 15,
-      p_note: "Meeting you halfway - 15% on this one, given the survey work.",
-      p_actor_id: meId,
+  await ok(
+    db.rpc("partner_commission_decide_request", {
+      p_id: made.commission, p_approve: true,
+      p_reason: "Agreed - the survey work was yours.",
     }),
-    "Answer the request with a counter-offer",
+    "Approve the request",
   );
-  const decided = typeof decidedRaw === "string" ? JSON.parse(decidedRaw) : decidedRaw;
-  assert.equal(decided.status, "APPROVED", "A counter-offer is still an approval");
-
-  const link = await ok(
-    admin.from("opportunity_partner").select("commissionPercentOverride")
-      .eq("opportunityId", made.opportunity).eq("partnerId", made.partner).single(),
-    "Check the rate on the deal",
+  const agreed = await ok(
+    admin.from("partner_commission").select("commissionPercent, requestStatus").eq("id", made.commission).single(),
+    "Read the record after approval",
   );
-  assert.equal(money(link.commissionPercentOverride), 15, "Approving must write the rate onto the deal");
-  pass("Counter-offer of 15% agreed, and written straight onto the deal");
+  assert.equal(agreed.requestStatus, "APPROVED");
+  assert.equal(money(agreed.commissionPercent), 18, "Approving applies the requested rate");
+  pass("Request approved: 18% on this deal");
 
   // -------------------------------------------------------------------------
   step("15", "The conversation with the partner");
@@ -919,7 +897,7 @@ try {
   for (const [table, what] of [
     ["opportunity", "deals"],
     ["invoice", "invoices"],
-    ["commission_record", "commission"],
+    ["partner_commission", "commission"],
     ["partner", "partners"],
     ["expense", "expenses"],
   ]) {

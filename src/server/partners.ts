@@ -8,7 +8,6 @@ import { supabaseServer } from "@/lib/supabase";
 import { updateRecord, LIST_LIMIT } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
-import { registrationExpiry, protectionDaysFor } from "@/lib/partner-policy";
 
 /**
  * Partner management.
@@ -42,12 +41,9 @@ const basePartnerSchema = z.object({
   startDate: z.coerce.date().optional().nullable(),
   agreementExpiryDate: z.coerce.date().optional().nullable(),
   defaultCommissionPercent: z.coerce.number().min(0).max(100).optional().nullable(),
-  commissionPlanId: z.string().uuid().optional().nullable(),
   payoutCurrencyCode: z.string().length(3).default("PKR"),
   taxNumber: z.string().max(50).optional().nullable(),
   withholdingTaxPercent: z.coerce.number().min(0).max(100).optional().nullable(),
-  /// Blank means the tier default applies.
-  registrationProtectionDays: z.coerce.number().int().min(1).max(365).optional().nullable(),
   email: z.string().email().optional().nullable().or(z.literal("")),
   phone: z.string().max(50).optional().nullable(),
   website: z.string().max(255).optional().nullable(),
@@ -153,7 +149,6 @@ export async function createPartner(input: PartnerInput): Promise<ActionResult<{
           ? data.agreementExpiryDate.toISOString().slice(0, 10)
           : null,
         defaultCommissionPercent: data.defaultCommissionPercent ?? null,
-        commissionPlanId: data.commissionPlanId ?? null,
         payoutCurrencyCode: data.payoutCurrencyCode,
         taxNumber: data.taxNumber ?? null,
         withholdingTaxPercent: data.withholdingTaxPercent ?? null,
@@ -217,105 +212,6 @@ export async function updatePartner(
   }
 }
 
-/** Attach a partner to a deal, with its revenue share and optional rate override. */
-const linkSchema = z.object({
-  opportunityId: z.string().uuid(),
-  partnerId: z.string().uuid(),
-  role: z.enum(["SOURCED", "INFLUENCED", "RESOLD", "DELIVERED"]).default("SOURCED"),
-  revenueSharePercent: z.coerce.number().min(0).max(100).default(100),
-  commissionPercentOverride: z.coerce.number().min(0).max(100).optional().nullable(),
-  registrationExpiresAt: z.coerce.date().optional().nullable(),
-  notes: z.string().optional().nullable(),
-});
-
-export async function linkPartnerToOpportunity(
-  input: z.infer<typeof linkSchema>,
-): Promise<ActionResult<{ id: string }>> {
-  const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
-  if (!_auth.ok) return { ok: false, error: _auth.error };
-  const user = _auth.user;
-
-  const parsed = linkSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: "Please correct the highlighted fields.", fieldErrors: parsed.error.flatten().fieldErrors };
-  }
-  const data = parsed.data;
-
-  try {
-    const db = await supabaseServer();
-
-    // The partner tier drives the default protection window, so it is read
-    // here and the resolved day count passed in — the tier rules stay in
-    // partner-policy.ts rather than being duplicated in SQL.
-    const { data: partner } = await db
-      .from("partner")
-      .select("tier, registrationProtectionDays")
-      .eq("id", data.partnerId)
-      .maybeSingle();
-
-    if (!partner) return { ok: false, error: "That partner no longer exists." };
-
-    const defaultDays = protectionDaysFor(
-      partner.tier as never,
-      partner.registrationProtectionDays,
-    );
-
-    // The 100%% guard runs inside the function, under a lock on the deal: two
-    // concurrent attaches each seeing 60%% used would otherwise both pass.
-    const { data: link, error } = await db.rpc("attach_partner_to_deal", {
-      p_opportunity_id: data.opportunityId,
-      p_partner_id: data.partnerId,
-      p_role: data.role,
-      p_share_percent: data.revenueSharePercent,
-      p_override_percent: data.commissionPercentOverride ?? null,
-      p_expires_at: data.registrationExpiresAt
-        ? data.registrationExpiresAt.toISOString()
-        : null,
-      p_default_days: defaultDays,
-      p_notes: data.notes ?? null,
-    });
-
-    if (error) return { ok: false, error: error.message };
-
-    revalidatePath(`/opportunities/${data.opportunityId}`);
-    revalidatePath(`/partners/${data.partnerId}`);
-    return { ok: true, data: { id: link.id } };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Could not link the partner." };
-  }
-}
-
-export async function unlinkPartnerFromOpportunity(linkId: string): Promise<ActionResult> {
-  const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
-  if (!_auth.ok) return { ok: false, error: _auth.error };
-
-  try {
-    const db = await supabaseServer();
-
-    const { data: link } = await db
-      .from("opportunity_partner")
-      .select("opportunityId, commissionRecords:commission_record ( id )")
-      .eq("id", linkId)
-      .maybeSingle();
-
-    if (!link) return { ok: false, error: "That link no longer exists." };
-
-    if (((link.commissionRecords ?? []) as unknown[]).length > 0) {
-      return {
-        ok: false,
-        error: "This partner already has commission records on the deal. Claw those back before removing the link.",
-      };
-    }
-
-    const { error } = await db.from("opportunity_partner").delete().eq("id", linkId);
-    if (error) throw new Error(error.message);
-    revalidatePath(`/opportunities/${link.opportunityId}`);
-    return { ok: true, data: undefined };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Could not remove the partner." };
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Queries
 // ---------------------------------------------------------------------------
@@ -337,9 +233,8 @@ export async function listPartners(filters?: {
        account!partner_accountId_fkey ( id, name ),
        contact!partner_contactId_fkey ( id, firstName, lastName, email ),
        partnerManager:app_user!partner_partnerManagerId_fkey ( id, fullName ),
-       commissionPlan:commission_plan ( id, name ),
-       opportunities:opportunity_partner ( count ),
-       commissionRecords:commission_record ( count ),
+       opportunities:opportunity!opportunity_sourcePartnerId_fkey ( count ),
+       commissions:partner_commission ( count ),
        referredLeads:lead ( count )`,
     )
     .is("deletedAt", null)
@@ -365,10 +260,9 @@ export async function listPartners(filters?: {
     account: one(p.account as never),
     contact: one(p.contact as never),
     partnerManager: one(p.partnerManager as never),
-    commissionPlan: one(p.commissionPlan as never),
     _count: {
       opportunities: countOf(p.opportunities),
-      commissionRecords: countOf(p.commissionRecords),
+      commissions: countOf(p.commissions),
       referredLeads: countOf(p.referredLeads),
     },
   }));
@@ -386,21 +280,17 @@ export async function getPartner(id: string) {
        account!partner_accountId_fkey ( * ),
        contact!partner_contactId_fkey ( * ),
        partnerManager:app_user!partner_partnerManagerId_fkey ( id, fullName, email ),
-       commissionPlan:commission_plan ( *, tiers:commission_tier ( * ) ),
        contacts:partner_contact ( *, contact ( * ) ),
        referredLeads:lead ( id, leadNumber, firstName, lastName, companyName, status, estimatedValue, createdAt, deletedAt ),
-       opportunities:opportunity_partner (
-         *,
-         opportunity (
-           id, opportunityNumber, name, stage, amount, currencyCode,
-           expectedCloseDate, account ( name )
-         )
+       opportunities:opportunity!opportunity_sourcePartnerId_fkey (
+         id, opportunityNumber, name, stage, amount, currencyCode,
+         expectedCloseDate, createdAt, deletedAt, account ( name )
        ),
-       commissionRecords:commission_record (
-         *,
-         opportunity ( opportunityNumber, name )
-       ),
-       payouts:commission_payout ( * )`,
+       commissions:partner_commission (
+         id, commissionNumber, status, commissionPercent, commissionAmount,
+         withholdingAmount, partnerAmount, currencyCode, paymentDate, createdAt,
+         requestStatus, opportunity ( id, opportunityNumber, name, stage )
+       )`,
     )
     .eq("id", id)
     .maybeSingle();
@@ -414,44 +304,27 @@ export async function getPartner(id: string) {
   const rows = (v: unknown) => ((v as Row[] | null) ?? []);
   const desc = (a: unknown, b: unknown) => String(b ?? "").localeCompare(String(a ?? ""));
 
-  const plan = one(data.commissionPlan as never) as Row | null;
-
   return {
     ...data,
     account: one(data.account as never),
     contact: one(data.contact as never),
     partnerManager: one(data.partnerManager as never),
-    commissionPlan: plan
-      ? {
-          ...plan,
-          tiers: rows(plan.tiers).sort(
-            (a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0),
-          ),
-        }
-      : null,
     contacts: rows(data.contacts).map((c): Row => ({ ...c, contact: one(c.contact as never) })),
     referredLeads: rows(data.referredLeads)
       .filter((l) => !l.deletedAt)
       .sort((a, b) => desc(a.createdAt, b.createdAt))
       .slice(0, 20),
     opportunities: rows(data.opportunities)
-      .map((o): Row => {
-        const opp = one(o.opportunity as never) as Row | null;
-        return {
-          ...o,
-          opportunity: opp ? { ...opp, account: one(opp.account as never) } : null,
-        };
-      })
+      .filter((o) => !o.deletedAt)
+      .map((o): Row => ({ ...o, account: one(o.account as never) }))
       .sort((a, b) => desc(a.createdAt, b.createdAt)),
-    commissionRecords: rows(data.commissionRecords)
-      .filter((r) => !r.deletedAt)
-      .map((r): Row => ({ ...r, opportunity: one(r.opportunity as never) }))
-      .sort((a, b) => desc(a.earnedDate, b.earnedDate)),
-    payouts: rows(data.payouts).sort((a, b) => desc(a.createdAt, b.createdAt)),
+    commissions: rows(data.commissions)
+      .map((c): Row => ({ ...c, opportunity: one(c.opportunity as never) }))
+      .sort((a, b) => desc(a.createdAt, b.createdAt)),
   };
 }
 
-/** Headline numbers for the partner detail page. */
+/** Headline numbers for the partner detail page. Amounts paid to the partner are after withholding. */
 export async function getPartnerSummary(partnerId: string) {
   await requirePermission(PERMISSIONS.PARTNER_READ);
 
@@ -459,59 +332,42 @@ export async function getPartnerSummary(partnerId: string) {
 
   const [dealsRes, commissionsRes] = await Promise.all([
     db
-      .from("opportunity_partner")
-      .select("revenueSharePercent, opportunity ( stage, amount )")
-      .eq("partnerId", partnerId),
-    // PostgREST has no groupBy, so the records are fetched and bucketed below.
-    db
-      .from("commission_record")
-      .select("status, netPayableAmount")
-      .eq("partnerId", partnerId)
+      .from("opportunity")
+      .select("stage, amount")
+      .eq("sourcePartnerId", partnerId)
       .is("deletedAt", null),
+    db
+      .from("partner_commission")
+      .select("status, partnerAmount, opportunity ( stage )")
+      .eq("partnerId", partnerId),
   ]);
 
-  type DealRow = { revenueSharePercent: unknown; opportunity: { stage: string; amount: unknown } };
+  const deals = (dealsRes.data ?? []) as { stage: string; amount: unknown }[];
+  const won = deals.filter((d) => d.stage === "CLOSED_WON");
+  const lost = deals.filter((d) => d.stage === "CLOSED_LOST");
+  const open = deals.filter((d) => d.stage !== "CLOSED_WON" && d.stage !== "CLOSED_LOST");
+  const valueOf = (rows: { amount: unknown }[]) =>
+    rows.reduce((sum, d) => sum.plus(toDecimal(d.amount)), toDecimal(0));
 
-  const deals = (dealsRes.data ?? []).map((d) => ({
-    revenueSharePercent: d.revenueSharePercent,
-    opportunity: one(d.opportunity as never) as unknown as { stage: string; amount: unknown },
-  })) as DealRow[];
-
-  const won = deals.filter((d) => d.opportunity?.stage === "CLOSED_WON");
-  const lost = deals.filter((d) => d.opportunity?.stage === "CLOSED_LOST");
-  const open = deals.filter(
-    (d) => d.opportunity?.stage !== "CLOSED_WON" && d.opportunity?.stage !== "CLOSED_LOST",
-  );
-
-  const sourcedValue = (rows: DealRow[]) =>
-    rows.reduce(
-      (sum, d) =>
-        sum.plus(
-          toDecimal(d.opportunity?.amount)
-            .times(toDecimal(d.revenueSharePercent))
-            .dividedBy(100),
-        ),
-      toDecimal(0),
-    );
-
-  const byStatus: Record<string, Decimal> = {};
-  for (const c of commissionsRes.data ?? []) {
-    const key = c.status as string;
-    byStatus[key] = (byStatus[key] ?? toDecimal(0)).plus(toDecimal(c.netPayableAmount));
-  }
-
-  const sumOf = (...statuses: string[]) =>
-    statuses.reduce((acc, s) => acc.plus(byStatus[s] ?? toDecimal(0)), toDecimal(0));
+  const commissions = (commissionsRes.data ?? []).map((c) => ({
+    status: c.status as string,
+    amount: toDecimal(c.partnerAmount),
+    stage: (one(c.opportunity as never) as { stage?: string } | null)?.stage ?? null,
+  }));
+  const total = (pick: (c: (typeof commissions)[number]) => boolean): Decimal =>
+    commissions.filter(pick).reduce((sum, c) => sum.plus(c.amount), toDecimal(0));
 
   return {
     dealsOpen: open.length,
     dealsWon: won.length,
     dealsLost: lost.length,
-    openPipeline: sourcedValue(open),
-    wonValue: sourcedValue(won),
+    openPipeline: valueOf(open),
+    wonValue: valueOf(won),
     winRate: won.length + lost.length === 0 ? null : (won.length / (won.length + lost.length)) * 100,
-    commissionAccrued: sumOf("ACCRUED", "PENDING_APPROVAL"),
-    commissionPayable: sumOf("APPROVED", "PAYABLE", "PARTIALLY_PAID"),
-    commissionPaid: sumOf("PAID"),
+    /** On deals still open: an estimate that moves with the deal. */
+    commissionAccrued: total((c) => c.status === "IN_PROGRESS" && c.stage !== "CLOSED_WON"),
+    /** On won deals, not yet paid. */
+    commissionPayable: total((c) => c.status === "IN_PROGRESS" && c.stage === "CLOSED_WON"),
+    commissionPaid: total((c) => c.status === "PAID"),
   };
 }

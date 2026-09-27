@@ -203,11 +203,11 @@ describe("ALL scope", () => {
 describe("permission matching", () => {
   it("grants the admin wildcard everything", () => {
     expect(can(admin, "opportunity:read")).toBe(true);
-    expect(can(admin, "payout:approve")).toBe(true);
+    expect(can(admin, "commission:approve")).toBe(true);
   });
 
   it("refuses a permission the exec's role does not carry", () => {
-    expect(can(exec, "payout:approve")).toBe(false);
+    expect(can(exec, "commission:approve")).toBe(false);
   });
 
   it("honours entity and action wildcards without granting everything", () => {

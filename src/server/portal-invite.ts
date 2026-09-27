@@ -69,7 +69,7 @@ export async function sendPortalWelcome(input: {
   const message = first
     ? `Hello ${firstName},\n\n` +
       (partner
-        ? "You can now sign in to our partner portal to register deals, follow the ones you have brought us, and see your commission and payouts.\n\n"
+        ? "You can now sign in to our partner portal to add customers and deals, follow the ones you have brought us, and see your commission on each.\n\n"
         : "You can now sign in to raise support tickets with us, follow what is happening with them, and read our help articles.\n\n") +
       "Use the details below to sign in. Please change the password after you first sign in, and do not share it."
     : `Hello ${firstName},\n\n` +

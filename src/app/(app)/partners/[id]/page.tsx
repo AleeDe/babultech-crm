@@ -18,7 +18,6 @@ import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, EmptyState, Button, Alert, Forbidden
 } from "@/components/ui";
-import { protectionDaysFor } from "@/lib/partner-policy";
 import { formatMoney, formatDate, formatPercent, humanize, serialize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 
@@ -62,8 +61,9 @@ export default async function PartnerDetailPage({
       {agreementExpired && (
         <div className="mb-5">
           <Alert tone="warning">
-            The partner agreement expired on {formatDate(partner.agreementExpiryDate)}. New commission
-            accruals will still be created - renew or terminate the agreement to stop them.
+            The partner agreement expired on {formatDate(partner.agreementExpiryDate)}. New deals
+            credited to this partner still get commission - renew the agreement, or set the partner to
+            Inactive to stop that.
           </Alert>
         </div>
       )}
@@ -138,12 +138,6 @@ export default async function PartnerDetailPage({
                 </a>
               ) : "—"}
             </Row>
-            <Row label="Deal protection">
-              {protectionDaysFor(partner.tier, partner.registrationProtectionDays)} days
-              {partner.registrationProtectionDays
-                ? " (negotiated)"
-                : ` (${humanize(partner.tier)} tier default)`}
-            </Row>
             <Row label="Agreement">
               {partner.startDate ? formatDate(partner.startDate) : "—"}
               {partner.agreementExpiryDate && ` → ${formatDate(partner.agreementExpiryDate)}`}
@@ -156,59 +150,16 @@ export default async function PartnerDetailPage({
             <CardTitle>Commission terms</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
-            {partner.commissionPlan ? (
-              <>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <Row label="Plan">{partner.commissionPlan?.name}</Row>
-                  <Row label="Basis">{humanize(partner.commissionPlan?.basis)}</Row>
-                  <Row label="Earned when">{humanize(partner.commissionPlan?.trigger)}</Row>
-                  <Row label="Rate type">{humanize(partner.commissionPlan?.rateType)}</Row>
-                  <Row label="Payout delay">{partner.commissionPlan?.payoutDelayDays} days</Row>
-                  <Row label="Clawback window">
-                    {partner.commissionPlan?.clawbackWindowDays
-                      ? `${partner.commissionPlan?.clawbackWindowDays} days`
-                      : "None"}
-                  </Row>
-                </div>
-
-                {partner.commissionPlan?.rateType === "TIERED_PERCENT" &&
-                  (partner.commissionPlan?.tiers?.length ?? 0) > 0 && (
-                    <div>
-                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Tiers (applied progressively)
-                      </p>
-                      <Table>
-                        <THead>
-                          <TR>
-                            <TH>From</TH>
-                            <TH>To</TH>
-                            <TH className="text-right">Rate</TH>
-                          </TR>
-                        </THead>
-                        <TBody>
-                          {partner.commissionPlan?.tiers?.map((t: Record<string, any>) => (
-                            <TR key={t.id}>
-                              <TD className="tabular">{formatMoney(t.fromAmount)}</TD>
-                              <TD className="tabular">{t.toAmount ? formatMoney(t.toAmount) : "and above"}</TD>
-                              <TD className="text-right tabular">{formatPercent(t.ratePercent)}</TD>
-                            </TR>
-                          ))}
-                        </TBody>
-                      </Table>
-                    </div>
-                  )}
-
-                {partner.commissionPlan?.rateType === "FLAT_PERCENT" && (
-                  <Row label="Flat rate">{formatPercent(partner.commissionPlan?.flatPercent)}</Row>
-                )}
-              </>
-            ) : (
-              <Alert tone="info">
-                No commission plan assigned. Deals fall back to the partner default rate of{" "}
-                <strong>{formatPercent(partner.defaultCommissionPercent)}</strong>, applied to the
-                opportunity amount when the customer pays.
-              </Alert>
-            )}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Row label="Commission rate">{formatPercent(partner.defaultCommissionPercent)}</Row>
+              <Row label="Worked out on">The deal&apos;s final amount, after discounts, tax included</Row>
+              <Row label="Paid">90 days after the deal is won</Row>
+            </div>
+            <p className="text-muted-foreground">
+              Every deal credited to this partner gets a commission record at this rate, less the
+              withholding tax below. The partner can ask for a different rate on a deal; you approve or
+              decline it on the commission record.
+            </p>
 
             <div className="grid gap-3 border-t pt-4 sm:grid-cols-3">
               <Row label="Payout currency">{partner.payoutCurrencyCode}</Row>
@@ -248,8 +199,8 @@ export default async function PartnerDetailPage({
           {partner.opportunities.length === 0 ? (
             <div className="px-5">
               <EmptyState
-                title="No deals attached yet"
-                description="Attach this partner to an opportunity from the deal page to start earning commission."
+                title="No deals yet"
+                description="Deals appear here when they are raised on a customer this partner brought, or when the partner adds one in their portal."
               />
             </div>
           ) : (
@@ -258,37 +209,23 @@ export default async function PartnerDetailPage({
                 <TR>
                   <TH>Deal</TH>
                   <TH priority="secondary">Customer</TH>
-                  <TH priority="tertiary">Role</TH>
-                  <TH priority="tertiary" className="text-right">Share</TH>
-                  <TH priority="tertiary" className="text-right">Rate</TH>
                   <TH className="text-right">Deal value</TH>
                   <TH>Stage</TH>
                 </TR>
               </THead>
               <TBody>
-                {partner.opportunities.map((link: Record<string, any>) => (
-                  <TR key={link.id}>
+                {partner.opportunities.map((o: Record<string, any>) => (
+                  <TR key={o.id}>
                     <TD>
-                      <Link href={`/opportunities/${link.opportunity?.id}`} className="font-medium hover:underline">
-                        {link.opportunity?.name}
+                      <Link href={`/opportunities/${o.id}`} className="font-medium hover:underline">
+                        {o.name}
                       </Link>
-                      <p className="text-xs text-muted-foreground">{link.opportunity?.opportunityNumber}</p>
+                      <p className="text-xs text-muted-foreground">{o.opportunityNumber}</p>
                     </TD>
-                    <TD priority="secondary" className="text-sm">{link.opportunity?.account?.name}</TD>
-                    <TD priority="tertiary">
-                      <Badge tone="neutral">{humanize(link.role)}</Badge>
-                    </TD>
-                    <TD priority="tertiary" className="text-right tabular">{formatPercent(link.revenueSharePercent, 0)}</TD>
-                    <TD priority="tertiary" className="text-right tabular">
-                      {link.commissionPercentOverride
-                        ? `${formatPercent(link.commissionPercentOverride)} (override)`
-                        : "plan"}
-                    </TD>
-                    <TD className="text-right tabular">
-                      {formatMoney(link.opportunity?.amount, link.opportunity?.currencyCode)}
-                    </TD>
+                    <TD priority="secondary" className="text-sm">{o.account?.name}</TD>
+                    <TD className="text-right tabular">{formatMoney(o.amount, o.currencyCode)}</TD>
                     <TD>
-                      <Badge tone={statusTone(link.opportunity?.stage)}>{humanize(link.opportunity?.stage)}</Badge>
+                      <Badge tone={statusTone(o.stage)}>{humanize(o.stage)}</Badge>
                     </TD>
                   </TR>
                 ))}
@@ -300,17 +237,17 @@ export default async function PartnerDetailPage({
 
       <Card className="mt-6">
         <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Commission ledger ({partner.commissionRecords.length})</CardTitle>
+          <CardTitle>Commission ({partner.commissions.length})</CardTitle>
           <Button asChild variant="outline" size="sm">
-            <Link href={`/commissions?partnerId=${partner.id}`}>Open in ledger</Link>
+            <Link href={`/commissions?partnerId=${partner.id}`}>Open in commission list</Link>
           </Button>
         </CardHeader>
         <CardContent className="px-0">
-          {partner.commissionRecords.length === 0 ? (
+          {partner.commissions.length === 0 ? (
             <div className="px-5">
               <EmptyState
-                title="Nothing earned yet"
-                description="Commission is created automatically when the plan's trigger fires - a deal is won, an invoice is sent, or a payment clears."
+                title="No commission yet"
+                description="A commission record is created with every deal credited to this partner."
               />
             </div>
           ) : (
@@ -319,26 +256,26 @@ export default async function PartnerDetailPage({
                 <TR>
                   <TH>Number</TH>
                   <TH priority="secondary">Deal</TH>
-                  <TH priority="secondary">Earned</TH>
-                  <TH priority="tertiary" className="text-right">Basis</TH>
                   <TH priority="tertiary" className="text-right">Rate</TH>
-                  <TH priority="tertiary" className="text-right">Gross</TH>
-                  <TH className="text-right">Net payable</TH>
+                  <TH priority="tertiary" className="text-right">Commission</TH>
+                  <TH className="text-right">Partner is paid</TH>
+                  <TH priority="secondary">Payment date</TH>
                   <TH>Status</TH>
                 </TR>
               </THead>
               <TBody>
-                {partner.commissionRecords.map((r: Record<string, any>) => (
-                  <TR key={r.id}>
-                    <TD className="font-mono text-xs">{r.commissionNumber}</TD>
-                    <TD priority="secondary" className="text-sm">{r.opportunity?.name}</TD>
-                    <TD priority="secondary" className="text-sm">{formatDate(r.earnedDate)}</TD>
-                    <TD priority="tertiary" className="text-right tabular">{formatMoney(r.basisAmount, r.currencyCode)}</TD>
-                    <TD priority="tertiary" className="text-right tabular">{formatPercent(r.ratePercent)}</TD>
-                    <TD priority="tertiary" className="text-right tabular">{formatMoney(r.commissionAmount, r.currencyCode)}</TD>
-                    <TD className="text-right font-medium tabular">{formatMoney(r.netPayableAmount, r.currencyCode)}</TD>
+                {partner.commissions.map((c: Record<string, any>) => (
+                  <TR key={c.id}>
+                    <TD className="font-mono text-xs">
+                      <Link href={`/commissions/${c.id}`} className="hover:underline">{c.commissionNumber}</Link>
+                    </TD>
+                    <TD priority="secondary" className="text-sm">{c.opportunity?.name}</TD>
+                    <TD priority="tertiary" className="text-right tabular">{formatPercent(c.commissionPercent)}</TD>
+                    <TD priority="tertiary" className="text-right tabular">{formatMoney(c.commissionAmount, c.currencyCode)}</TD>
+                    <TD className="text-right font-medium tabular">{formatMoney(c.partnerAmount, c.currencyCode)}</TD>
+                    <TD priority="secondary" className="text-sm">{c.paymentDate ? formatDate(c.paymentDate) : "When won"}</TD>
                     <TD>
-                      <Badge tone={statusTone(r.status)}>{humanize(r.status)}</Badge>
+                      <Badge tone={statusTone(c.status)}>{humanize(c.status)}</Badge>
                     </TD>
                   </TR>
                 ))}

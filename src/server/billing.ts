@@ -12,7 +12,6 @@ import { listCatalogueProducts } from "./price-books";
 import { createRecord, updateRecord, LIST_LIMIT, applySearch } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, authorizeAny, requirePermission } from "@/lib/authz";
-import { accrueForInvoice, accrueForPayment } from "./commission-engine";
 import type { ActionResult } from "./partners";
 
 /**
@@ -270,9 +269,9 @@ export async function updateInvoice(
 
 /**
  * Issues the invoice. Also stamps the milestone as invoiced so a milestone can
- * never be billed twice (spec §13), and fires ON_INVOICE_SENT commission.
+ * never be billed twice (spec §13).
  */
-export async function sendInvoice(id: string): Promise<ActionResult<{ commissionsCreated: number }>> {
+export async function sendInvoice(id: string): Promise<ActionResult> {
   // Asking a customer for money. Separate from forgiving what they owe.
   const _auth = await authorizeAny(PERMISSIONS.INVOICE_ISSUE, PERMISSIONS.INVOICE_APPROVE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
@@ -339,14 +338,9 @@ export async function sendInvoice(id: string): Promise<ActionResult<{ commission
         .eq("id", before.milestoneId);
     }
 
-    // Accrual runs outside the transaction so a commission-config problem can
-    // never roll back a legitimate invoice being issued.
-    const records = await accrueForInvoice(id, user.id);
-
     revalidatePath("/invoices");
     revalidatePath(`/invoices/${id}`);
-    revalidatePath("/commissions");
-    return { ok: true, data: { commissionsCreated: records.length } };
+    return { ok: true, data: undefined };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Could not send the invoice." };
   }
@@ -628,7 +622,7 @@ const paymentSchema = z.object({
 
 export async function recordPayment(
   input: z.infer<typeof paymentSchema>,
-): Promise<ActionResult<{ id: string; commissionsCreated: number }>> {
+): Promise<ActionResult<{ id: string }>> {
   const _auth = await authorize(PERMISSIONS.PAYMENT_WRITE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
   const user = _auth.user;
@@ -677,13 +671,9 @@ export async function recordPayment(
 
     if (error) return { ok: false, error: error.message };
 
-    // Collected cash is what most commission plans actually pay on.
-    const records = data.status === "CLEARED" ? await accrueForPayment(payment.id, user.id) : [];
-
     revalidatePath("/invoices");
     revalidatePath("/payments");
-    revalidatePath("/commissions");
-    return { ok: true, data: { id: payment.id, commissionsCreated: records.length } };
+    return { ok: true, data: { id: payment.id } };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Could not record the payment." };
   }
@@ -694,7 +684,7 @@ export async function allocatePayment(
   paymentId: string,
   invoiceId: string,
   amount: number,
-): Promise<ActionResult<{ commissionsCreated: number }>> {
+): Promise<ActionResult> {
   const _auth = await authorize(PERMISSIONS.PAYMENT_WRITE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
   const user = _auth.user;
@@ -715,13 +705,10 @@ export async function allocatePayment(
 
     if (error) return { ok: false, error: error.message };
 
-    const records = await accrueForPayment(paymentId, user.id);
-
     revalidatePath("/invoices");
     revalidatePath(`/invoices/${invoiceId}`);
     revalidatePath("/payments");
-    revalidatePath("/commissions");
-    return { ok: true, data: { commissionsCreated: records.length } };
+    return { ok: true, data: undefined };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Could not apply the payment." };
   }

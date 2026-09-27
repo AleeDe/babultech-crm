@@ -42,6 +42,4 @@ export const SEQUENCES = {
   CHANGE_REQUEST: "ChangeRequest",
   TRANSACTION: "FinancialTransaction",
   PARTNER: "Partner",
-  COMMISSION: "CommissionRecord",
-  PAYOUT: "CommissionPayout",
 } as const;

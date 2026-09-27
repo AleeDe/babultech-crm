@@ -50,10 +50,8 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
     permissions: [
       { value: "partner:read", label: "See partners", help: "Open the partner list and partner pages." },
       { value: "partner:write", label: "Manage partners", help: "Create and edit partners, and give their people portal access." },
-      { value: "commission:read", label: "See commission", help: "Read the commission ledger." },
-      { value: "commission:write", label: "Record commission", help: "Create and adjust commission records." },
-      { value: "commission:approve", label: "Approve commission", help: "Approve commission for payout, and claw it back.", sensitive: true },
-      { value: "payout:approve", label: "Approve payouts", help: "Approve the money actually leaving for a partner.", sensitive: true },
+      { value: "commission:read", label: "See commission", help: "See what each partner is owed and paid, deal by deal." },
+      { value: "commission:approve", label: "Decide commission", help: "Answer partners' rate requests, change a rate, set the payment date, and mark commission paid or rejected.", sensitive: true },
     ],
   },
   {

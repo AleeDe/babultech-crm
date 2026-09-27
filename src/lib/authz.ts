@@ -344,9 +344,7 @@ export const PERMISSIONS = {
   PARTNER_READ: "partner:read",
   PARTNER_WRITE: "partner:write",
   COMMISSION_READ: "commission:read",
-  COMMISSION_WRITE: "commission:write",
   COMMISSION_APPROVE: "commission:approve",
-  PAYOUT_APPROVE: "payout:approve",
   // Support / delivery / finance
   CASE_READ: "case:read",
   CASE_WRITE: "case:write",

@@ -5,7 +5,7 @@ import { listAccounts, listContacts, listLeads, listProducts, listCampaigns } fr
 import { listOpportunities } from "@/server/opportunities";
 import { listProjects } from "@/server/projects";
 import { listPartners } from "@/server/partners";
-import { listCommissions } from "@/server/commissions";
+import { listPartnerCommissions } from "@/server/partner-commissions";
 import { listPayments } from "@/server/billing";
 import { listExpenses, listVendorBills } from "@/server/payables";
 import { LIST_LIMIT } from "@/lib/db";
@@ -222,25 +222,26 @@ const EXPORTS: Record<string, ExportDefinition> = {
 
   commissions: {
     needs: PERMISSIONS.COMMISSION_READ,
-    filename: "commissions",
+    filename: "partner-commission",
     load: (p) =>
-      listCommissions({
-        status: p.get("status") ?? undefined,
+      listPartnerCommissions({
+        view: p.get("view") ?? undefined,
         partnerId: p.get("partnerId") ?? undefined,
+        search: p.get("search") ?? undefined,
       }),
     columns: [
       { header: "Number", value: (r) => r.commissionNumber },
       { header: "Partner", value: (r) => r.partner?.displayName },
       { header: "Deal", value: (r) => r.opportunity?.name },
+      { header: "Deal stage", value: (r) => r.opportunity?.stage },
       { header: "Status", value: (r) => r.status },
-      { header: "Basis", value: (r) => r.basis },
-      { header: "Basis amount", value: (r) => Number(r.basisAmount ?? 0) },
-      { header: "Rate %", value: (r) => Number(r.ratePercent ?? 0) },
+      { header: "Deal amount", value: (r) => Number(r.baseAmount ?? 0) },
+      { header: "Rate %", value: (r) => Number(r.commissionPercent ?? 0) },
       { header: "Commission", value: (r) => Number(r.commissionAmount ?? 0) },
-      { header: "Withheld", value: (r) => Number(r.withholdingTaxAmount ?? 0) },
-      { header: "Net payable", value: (r) => Number(r.netPayableAmount ?? 0) },
+      { header: "Withholding tax", value: (r) => Number(r.withholdingAmount ?? 0) },
+      { header: "Partner amount", value: (r) => Number(r.partnerAmount ?? 0) },
       { header: "Currency", value: (r) => r.currencyCode },
-      { header: "Earned", value: (r) => r.earnedDate },
+      { header: "Payment date", value: (r) => r.paymentDate },
     ],
   },
 

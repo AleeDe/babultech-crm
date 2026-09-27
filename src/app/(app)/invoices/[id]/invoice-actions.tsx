@@ -35,12 +35,7 @@ export function InvoiceActions({
     startTransition(async () => {
       const result = await sendInvoice(invoiceId);
       if (result.ok) {
-        const emailReminder = " Nothing has been emailed - use the Email panel to send it.";
-        setNotice(
-          result.data.commissionsCreated > 0
-            ? `Marked as issued. ${result.data.commissionsCreated} commission record(s) accrued.${emailReminder}`
-            : `Marked as issued.${emailReminder}`,
-        );
+        setNotice("Marked as issued. Nothing has been emailed - use the Email panel to send it.");
         router.refresh();
       } else setError(result.error);
     });
@@ -73,8 +68,7 @@ export function InvoiceActions({
         {EDITABLE.includes(status) ? (
           <>
             <p className="text-sm text-muted-foreground">
-              Still a draft. Issuing it stamps any linked milestone as invoiced and accrues
-              commission on plans that pay when the invoice goes out.
+              Still a draft. Issuing it stamps any linked milestone as invoiced.
             </p>
             <p className="text-sm text-muted-foreground">
               <strong className="font-medium text-foreground">It does not email the customer.</strong>{" "}

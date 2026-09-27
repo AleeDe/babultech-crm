@@ -238,13 +238,15 @@ export async function getModuleSummary(): Promise<ModuleSummary> {
       ? db.from("partner").select("id", { count: "exact", head: true })
           .is("deletedAt", null).eq("status", "ACTIVE")
       : skip(),
+    // Owed to partners: in progress on deals already won.
     seePartners
-      ? db.from("commission_record").select("netPayableAmount").is("deletedAt", null)
-          .in("status", ["APPROVED", "PAYABLE", "PARTIALLY_PAID"])
+      ? db.from("partner_commission").select("partnerAmount, opportunity!inner ( stage )")
+          .eq("status", "IN_PROGRESS").eq("opportunity.stage", "CLOSED_WON")
       : { data: [] },
+    // Partners waiting on an answer to a rate request.
     seePartners
-      ? db.from("commission_record").select("id", { count: "exact", head: true })
-          .is("deletedAt", null).in("status", ["ACCRUED", "PENDING_APPROVAL"])
+      ? db.from("partner_commission").select("id", { count: "exact", head: true })
+          .eq("requestStatus", "PENDING")
       : skip(),
     seePartners
       ? db.from("partner").select("id", { count: "exact", head: true })
@@ -301,7 +303,7 @@ export async function getModuleSummary(): Promise<ModuleSummary> {
     },
     partners: {
       activePartners: n(activePartners),
-      commissionPayable: sum(payableRows, "netPayableAmount"),
+      commissionPayable: sum(payableRows, "partnerAmount"),
       commissionPendingApproval: n(pendingApproval),
       agreementsExpiringSoon: n(expiringAgreements),
     },
@@ -467,12 +469,13 @@ export async function getPartnerAnalytics() {
       .select("id, partnerNumber, displayName, partnerType, tier, status, agreementExpiryDate")
       .is("deletedAt", null),
     db
-      .from("commission_record")
-      .select("id, partnerId, commissionAmount, status, earnedDate")
-      .is("deletedAt", null),
+      .from("partner_commission")
+      .select("id, partnerId, partnerAmount, status, opportunity ( stage )"),
     db
-      .from("opportunity_partner")
-      .select("partnerId, opportunity!inner ( id, stage, amount, deletedAt )"),
+      .from("opportunity")
+      .select("sourcePartnerId, stage, amount")
+      .not("sourcePartnerId", "is", null)
+      .is("deletedAt", null),
   ]);
 
   const partners = (partnersRes.data ?? []) as Record<string, any>[];
@@ -480,10 +483,8 @@ export async function getPartnerAnalytics() {
 
   // Deals per partner, split won versus still open.
   const deals = new Map<string, { won: number; wonValue: number; open: number; openValue: number }>();
-  for (const link of (linksRes.data ?? []) as Record<string, any>[]) {
-    const opp = one(link.opportunity as never) as Record<string, any> | null;
-    if (!opp || opp.deletedAt) continue;
-    const key = String(link.partnerId);
+  for (const opp of (linksRes.data ?? []) as Record<string, any>[]) {
+    const key = String(opp.sourcePartnerId);
     const f = deals.get(key) ?? { won: 0, wonValue: 0, open: 0, openValue: 0 };
     if (opp.stage === "CLOSED_WON") {
       f.won += 1;
@@ -497,10 +498,10 @@ export async function getPartnerAnalytics() {
 
   const rows = partners.map((p) => {
     const theirs = commissions.filter((c) => String(c.partnerId) === String(p.id));
-    const sum = (statuses: string[]) =>
-      theirs
-        .filter((c) => statuses.includes(String(c.status)))
-        .reduce((s, c) => s + Number(c.commissionAmount ?? 0), 0);
+    const won = (c: Record<string, any>) =>
+      (one(c.opportunity as never) as { stage?: string } | null)?.stage === "CLOSED_WON";
+    const sum = (pick: (c: Record<string, any>) => boolean) =>
+      theirs.filter(pick).reduce((s, c) => s + Number(c.partnerAmount ?? 0), 0);
 
     const d = deals.get(String(p.id)) ?? { won: 0, wonValue: 0, open: 0, openValue: 0 };
     const expiry = p.agreementExpiryDate ? String(p.agreementExpiryDate) : null;
@@ -518,16 +519,15 @@ export async function getPartnerAnalytics() {
       dealsOpen: d.open,
       revenueSourced: d.wonValue,
       pipelineSourced: d.openValue,
-      // PARTIALLY_PAID counts as earned: the partner has the money owed, some
-      // of it has simply already gone out. Leaving it out would understate what
-      // every partner has made.
-      earned: sum(["ACCRUED", "PENDING_APPROVAL", "APPROVED", "PAYABLE", "PARTIALLY_PAID", "PAID"]),
-      payable: sum(["APPROVED", "PAYABLE"]),
-      paid: sum(["PAID", "PARTIALLY_PAID"]),
-      pending: sum(["ACCRUED", "PENDING_APPROVAL"]),
+      // What the partner is paid, after withholding. Earned means won: paid,
+      // or owed on a won deal. Pending is the estimate on deals still open.
+      earned: sum((c) => c.status === "PAID" || (c.status === "IN_PROGRESS" && won(c))),
+      payable: sum((c) => c.status === "IN_PROGRESS" && won(c)),
+      paid: sum((c) => c.status === "PAID"),
+      pending: sum((c) => c.status === "IN_PROGRESS" && !won(c)),
       daysToExpiry,
-      // A partner who cannot earn is worth flagging: inactive status or a lapsed
-      // agreement both stop commission accruing, silently.
+      // A partner who cannot earn is worth flagging: an inactive partner gets no
+      // commission on new deals, and a lapsed agreement needs renewing.
       blocked: String(p.status) !== "ACTIVE" || (daysToExpiry !== null && daysToExpiry < 0),
     };
   });

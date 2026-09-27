@@ -15,7 +15,7 @@ const WATCHED = [
   "lead",
   "quotation",
   "project",
-  "commission_record",
+  "partner_commission",
 ] as const;
 
 type Status = "connecting" | "live" | "offline";

@@ -204,7 +204,7 @@ describe("partner isolation is enforced by the database", () => {
       { auth: { persistSession: false } },
     );
 
-    for (const table of ["partner", "commission_record", "opportunity_partner"]) {
+    for (const table of ["partner", "partner_commission", "opportunity"]) {
       const { count } = await anon
         .from(table)
         .select("*", { count: "exact", head: true });

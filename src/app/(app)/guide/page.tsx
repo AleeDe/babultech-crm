@@ -106,7 +106,7 @@ const FLOW: Step[] = [
     needs: PERMISSIONS.INVOICE_READ,
     what: "Asking for the money, and recording it when it arrives.",
     how: "Invoices › New invoice. Raise it against the account, project or milestone.",
-    then: "Record a payment and allocate it to the invoice. Partner commission accrues on what is actually collected.",
+    then: "Record a payment and allocate it to the invoice. Partner commission is separate: it follows the deal, and is marked paid on its own record.",
   },
 ];
 
@@ -143,21 +143,21 @@ const REFERENCE: Reference[] = [
     title: "Products",
     href: "/products",
     needs: PERMISSIONS.OPPORTUNITY_READ,
-    body: "The catalogue quote and invoice lines price from. Set a standard price, a cost and a commission percentage per item.",
+    body: "The catalogue that deal and quote lines are priced from, through its price books.",
   },
   {
     icon: Handshake,
     title: "Partners",
     href: "/partners",
     needs: PERMISSIONS.PARTNER_READ,
-    body: "Companies and individuals who source or deliver deals. Register a partner against an opportunity to make them eligible for commission on it.",
+    body: "Companies and individuals who bring us deals, each with their own commission rate and withholding tax. A deal credited to a partner - through their customer, their referral, or set by hand - gets a commission record at that rate.",
   },
   {
     icon: Coins,
     title: "Commission",
     href: "/commissions",
     needs: PERMISSIONS.COMMISSION_READ,
-    body: "What each partner has earned, and on what. Commission accrues from the plan attached to the partner or the deal, and is approved before it can be paid out.",
+    body: "One record per partner deal: the deal's final amount including tax, the partner's rate, withholding tax, and what the partner receives. It stays In progress until someone marks it Paid or Rejected, and a lost deal rejects it. A partner can ask for a different rate, which someone who decides commission approves or declines.",
   },
   {
     icon: LifeBuoy,

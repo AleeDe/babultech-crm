@@ -15,7 +15,7 @@ const KIND: Record<ApprovalKind, { label: string; icon: LucideIcon; href: string
   expense: { label: "Expense", icon: Wallet, href: "/expenses" },
   timesheet: { label: "Timesheet", icon: Clock, href: "/timesheets/approvals" },
   "vendor-bill": { label: "Vendor bill", icon: FileInput, href: "/vendor-bills" },
-  commission: { label: "Commission", icon: Coins, href: "/commissions" },
+  commission: { label: "Partner rate requests", icon: Coins, href: "/commissions?view=requests" },
 };
 
 /**
@@ -54,7 +54,7 @@ export default async function ApprovalsPage() {
       {items.length === 0 ? (
         <EmptyState
           title="Nothing waiting"
-          description="When a quotation, expense, timesheet, vendor bill or commission needs a decision from you, it appears here."
+          description="When a quotation, expense, timesheet, vendor bill or a partner's rate request needs a decision from you, it appears here."
         />
       ) : (
         <>

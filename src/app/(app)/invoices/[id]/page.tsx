@@ -59,10 +59,6 @@ export default async function InvoiceDetailPage({
          *,
          payment ( id, paymentNumber, paymentDate, paymentMethod, currencyCode ),
          allocatedBy:app_user!payment_allocation_allocatedById_fkey ( id, fullName )
-       ),
-       commissionRecords:commission_record (
-         id, commissionNumber, commissionAmount, status, currencyCode,
-         partner ( id, displayName )
        )`,
     )
     .eq("id", id)
@@ -95,9 +91,6 @@ export default async function InvoiceDetailPage({
             allocatedBy: one(a.allocatedBy as never),
           }))
           .sort((a, b) => desc(a.allocatedAt, b.allocatedAt)),
-        commissionRecords: ((invoiceRow.commissionRecords ?? []) as Row[]).map(
-          (r): Row => ({ ...r, partner: one(r.partner as never) }),
-        ),
       }
     : null;
 
@@ -325,27 +318,6 @@ export default async function InvoiceDetailPage({
             </CardContent>
           </Card>
 
-          {invoice.commissionRecords.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Partner commission</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                {invoice.commissionRecords.map((c: Record<string, any>) => (
-                  <div key={c.id} className="flex items-center justify-between gap-2 border-b pb-2 last:border-0">
-                    <Link href={`/partners/${c.partner?.id}`} className="text-primary hover:underline">
-                      {c.partner?.displayName}
-                      <span className="block font-mono text-xs text-muted-foreground">{c.commissionNumber}</span>
-                    </Link>
-                    <div className="text-right">
-                      <p className="tabular text-xs">{formatMoney(c.commissionAmount, c.currencyCode)}</p>
-                      <Badge tone={statusTone(c.status)}>{humanize(c.status)}</Badge>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
 
           {invoice.notes && (
             <Card>

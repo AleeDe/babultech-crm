@@ -170,8 +170,8 @@ export async function bulkSetOpportunityStage(
   ];
 
   if (!allowed.includes(stage)) {
-    // Closing a deal sets the close date, drives commission accrual and needs a
-    // loss reason. That belongs on the record, not on a batch.
+    // Closing a deal sets the close date, moves its partner commission on and
+    // needs a loss reason. That belongs on the record, not on a batch.
     return { ok: false, error: "Closing a deal has to be done on the deal itself." };
   }
 

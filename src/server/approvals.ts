@@ -8,7 +8,7 @@ import { toDecimal, one } from "@/lib/decimal";
  * Everything waiting on a decision, in one queue.
  *
  * Approvals are not centralised in the database and deliberately stay that
- * way: quotations, expenses, timesheets, vendor bills and commissions each
+ * way: quotations, expenses, timesheets, vendor bills and partner rate requests each
  * carry their own status column and their own transition rules, and those
  * rules differ — an expense cannot be approved by the person who claimed it,
  * a quotation can be revised instead of rejected. Rewriting five working
@@ -118,15 +118,16 @@ export async function getPendingApprovals(): Promise<{
           .limit(100)
       : none,
 
+    // A partner asking for a different rate on one deal. Commission itself
+    // needs no approval: it follows the deal, and is marked paid by hand.
     seeCommission
       ? db
-          .from("commission_record")
+          .from("partner_commission")
           .select(
-            "id, commissionNumber, netPayableAmount, currencyCode, createdAt, partner ( displayName ), opportunity ( name )",
+            "id, commissionNumber, commissionPercent, requestedPercent, partnerAmount, currencyCode, requestedAt, partner ( displayName ), opportunity ( name )",
           )
-          .in("status", ["ACCRUED", "PENDING_APPROVAL"])
-          .is("deletedAt", null)
-          .order("createdAt")
+          .eq("requestStatus", "PENDING")
+          .order("requestedAt")
           .limit(100)
       : none,
   ]);
@@ -232,12 +233,12 @@ export async function getPendingApprovals(): Promise<{
       kind: "commission",
       id: c.id,
       reference: c.commissionNumber,
-      title: partner?.displayName ?? "Commission",
+      title: `${partner?.displayName ?? "Partner"} asks for ${Number(c.requestedPercent)}% instead of ${Number(c.commissionPercent)}%`,
       subtitle: opportunity?.name ?? null,
-      amount: String(c.netPayableAmount ?? 0),
+      amount: String(c.partnerAmount ?? 0),
       currencyCode: c.currencyCode,
       requestedBy: null,
-      waitingSince: c.createdAt,
+      waitingSince: c.requestedAt,
       href: `/commissions/${c.id}`,
     });
   }

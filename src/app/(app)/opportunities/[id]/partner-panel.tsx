@@ -3,15 +3,15 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Trash2 } from "lucide-react";
-import { linkPartnerToOpportunity, unlinkPartnerFromOpportunity } from "@/server/partners";
+import { Handshake } from "lucide-react";
 import { changeStage } from "@/server/opportunities";
+import { setDealPartner } from "@/server/partner-commissions";
 import {
   Button, Card, CardHeader, CardTitle, CardContent, Field, Input,
-  Select, Badge, Alert, Table, THead, TBody, TR, TH, TD,
+  Select, Badge, Alert, statusTone,
 } from "@/components/ui";
 import { PicklistOptions } from "@/components/picklist";
-import { formatPercent, formatMoney, humanize } from "@/lib/utils";
+import { formatPercent, formatMoney, formatDate, humanize } from "@/lib/utils";
 
 const ALL_STAGES = [
   "DISCOVERY", "QUALIFICATION", "REQUIREMENTS", "SOLUTION_PROPOSED",
@@ -19,92 +19,56 @@ const ALL_STAGES = [
   "CLOSED_WON", "CLOSED_LOST", "ON_HOLD",
 ];
 
-interface PartnerLink {
+interface DealCommission {
   id: string;
-  role: string;
-  revenueSharePercent: string;
-  commissionPercentOverride: string | null;
-  registrationExpiresAt: string | null;
-  partner: {
-    id: string;
-    partnerNumber: string;
-    displayName: string;
-    kind: string;
-    partnerType: string;
-    defaultCommissionPercent: string | null;
-    commissionPlan: { name: string; flatPercent: string | null; rateType: string } | null;
-  };
+  commissionNumber: string;
+  status: string;
+  commissionPercent: string | number;
+  commissionAmount: string | number;
+  withholdingAmount: string | number;
+  partnerAmount: string | number;
+  currencyCode: string;
+  paymentDate: string | null;
+  rejectedReason: string | null;
+  requestStatus: string | null;
 }
 
 /**
- * Attach partners to a deal and see, before the deal closes, roughly what each
- * will be owed. The estimate is indicative — the authoritative figure is what
- * the engine computes at trigger time against the snapshotted plan.
+ * The deal's partner, and what they will be paid on it.
+ *
+ * A deal takes its partner from its account when it is created, so most deals
+ * never need this card to do anything. A deal raised before its account had a
+ * partner can be given one here - once. Credit decides who is paid, so it is
+ * never moved to another partner afterwards.
+ *
+ * The commission shown is live: it follows the deal's amount until it is paid
+ * or rejected. Decisions about it are made on the commission record itself.
  */
-export function PartnerPanel({
+export function DealPartnerPanel({
   opportunityId,
-  amount,
-  currencyCode,
-  links,
+  partner,
+  commission,
+  canSeeCommission,
+  canSetPartner,
   availablePartners,
 }: {
   opportunityId: string;
-  amount: string;
-  currencyCode: string;
-  links: PartnerLink[];
-  availablePartners: { id: string; displayName: string; partnerNumber: string; kind: string }[];
+  partner: { id: string; displayName: string; partnerNumber: string; status: string } | null;
+  commission: DealCommission | null;
+  canSeeCommission: boolean;
+  canSetPartner: boolean;
+  availablePartners: { id: string; displayName: string; partnerNumber: string }[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [adding, setAdding] = useState(false);
+  const [choice, setChoice] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const usedShare = links.reduce((s, l) => s + Number(l.revenueSharePercent), 0);
-  const remainingShare = Math.max(0, 100 - usedShare);
-
-  const alreadyLinked = new Set(links.map((l) => l.partner?.id));
-  const selectable = availablePartners.filter((p) => !alreadyLinked.has(p.id));
-
-  function estimate(link: PartnerLink): number | null {
-    const rate =
-      link.commissionPercentOverride ??
-      (link.partner?.commissionPlan?.rateType === "FLAT_PERCENT"
-        ? link.partner?.commissionPlan?.flatPercent
-        : null) ??
-      link.partner?.defaultCommissionPercent;
-
-    if (rate === null || rate === undefined) return null;
-    return (Number(amount) * Number(link.revenueSharePercent) * Number(rate)) / 10_000;
-  }
-
-  function onAdd(formData: FormData) {
+  function attach() {
+    if (!choice) return;
     setError(null);
     startTransition(async () => {
-      const result = await linkPartnerToOpportunity({
-        opportunityId,
-        partnerId: String(formData.get("partnerId")),
-        role: String(formData.get("role")) as never,
-        revenueSharePercent: Number(formData.get("revenueSharePercent")),
-        commissionPercentOverride: formData.get("commissionPercentOverride")
-          ? Number(formData.get("commissionPercentOverride"))
-          : null,
-        registrationExpiresAt: formData.get("registrationExpiresAt")
-          ? new Date(String(formData.get("registrationExpiresAt")))
-          : null,
-      });
-      if (result.ok) {
-        setAdding(false);
-        router.refresh();
-      } else {
-        setError(result.error);
-      }
-    });
-  }
-
-  function onRemove(linkId: string) {
-    setError(null);
-    startTransition(async () => {
-      const result = await unlinkPartnerFromOpportunity(linkId);
+      const result = await setDealPartner(opportunityId, choice);
       if (result.ok) router.refresh();
       else setError(result.error);
     });
@@ -112,155 +76,109 @@ export function PartnerPanel({
 
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>Partners on this deal</CardTitle>
-        {!adding && remainingShare > 0 && selectable.length > 0 && (
-          <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
-            Attach partner
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardTitle>Partner</CardTitle>
+        {commission && canSeeCommission && (
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/commissions/${commission.id}`}>Open commission</Link>
           </Button>
         )}
       </CardHeader>
-
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 text-sm">
         {error && <Alert tone="danger">{error}</Alert>}
 
-        {links.length === 0 && !adding && (
-          <p className="text-sm text-muted-foreground">
-            No partner involved. Attach one to credit them with the deal and generate commission
-            automatically when it closes.
-          </p>
-        )}
-
-        {links.length > 0 && (
-          <Table>
-            <THead>
-              <TR>
-                <TH>Partner</TH>
-                <TH>Role</TH>
-                <TH className="text-right">Share</TH>
-                <TH>Rate source</TH>
-                <TH className="text-right">Est. commission</TH>
-                <TH className="w-10" />
-              </TR>
-            </THead>
-            <TBody>
-              {links.map((l) => {
-                const est = estimate(l);
-                return (
-                  <TR key={l.id}>
-                    <TD>
-                      <Link href={`/partners/${l.partner?.id}`} className="text-sm font-medium hover:underline">
-                        {l.partner?.displayName}
-                      </Link>
-                      <p className="text-xs text-muted-foreground">
-                        {l.partner?.kind === "INDIVIDUAL" ? "Individual" : "Company"} ·{" "}
-                        {humanize(l.partner?.partnerType)}
-                      </p>
-                    </TD>
-                    <TD>
-                      <Badge tone="neutral">{humanize(l.role)}</Badge>
-                    </TD>
-                    <TD className="text-right tabular">{formatPercent(l.revenueSharePercent, 0)}</TD>
-                    <TD className="text-sm text-muted-foreground">
-                      {l.commissionPercentOverride
-                        ? `Override ${formatPercent(l.commissionPercentOverride)}`
-                        : l.partner?.commissionPlan
-                          ? l.partner?.commissionPlan?.name
-                          : `Default ${formatPercent(l.partner?.defaultCommissionPercent)}`}
-                    </TD>
-                    <TD className="text-right tabular">
-                      {est === null ? (
-                        <span className="text-muted-foreground">tiered</span>
-                      ) : (
-                        formatMoney(est, currencyCode)
-                      )}
-                    </TD>
-                    <TD>
-                      <button
-                        onClick={() => onRemove(l.id)}
-                        disabled={pending}
-                        className="text-muted-foreground hover:text-destructive"
-                        aria-label={`Remove ${l.partner?.displayName}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </TD>
-                  </TR>
-                );
-              })}
-            </TBody>
-          </Table>
-        )}
-
-        {links.length > 0 && (
-          <p className="text-xs text-muted-foreground">
-            {formatPercent(usedShare, 0)} of the deal is credited to partners; {formatPercent(remainingShare, 0)}{" "}
-            remains unallocated. Estimates use the current rate - the ledger figure is computed against the
-            plan snapshotted when the partner was attached.
-          </p>
-        )}
-
-        {adding && (
-          <form action={onAdd} className="grid gap-4 rounded-md border bg-muted/30 p-4 sm:grid-cols-2">
-            <Field label="Partner" required
-            help="The partner involved in this deal.">
-              <Select name="partnerId" required>
-                <option value="">Select a partner…</option>
-                {selectable.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.displayName} ({p.kind === "INDIVIDUAL" ? "individual" : "company"})
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Role" required
-            help="What they are doing here - who brought it in, who is delivering it, who resells it.">
-              <Select name="role" required defaultValue="SOURCED">
-                {["SOURCED", "INFLUENCED", "RESOLD", "DELIVERED"].map((r) => (
-                  <option key={r} value={r}>{humanize(r)}</option>
-                ))}
-              </Select>
-            </Field>
-            <Field
-              label="Revenue share %"
-              required
-              hint={`${formatPercent(remainingShare, 0)} unallocated on this deal.`}
-            help="The share of this deal's value that is theirs."
-            >
-              <Input
-                name="revenueSharePercent"
-                type="number"
-                step="0.01"
-                min="0"
-                max={remainingShare}
-                defaultValue={remainingShare}
-                required
-              />
-            </Field>
-            <Field label="Commission % override" hint="Leave blank to use the partner's plan or default rate."
-            help="Use only when this deal pays a different rate from the partner's usual plan.">
-              <Input name="commissionPercentOverride" type="number" step="0.01" min="0" max="100" />
-            </Field>
-            <Field label="Deal registration expires" hint="After this date the claim lapses and no commission accrues."
-            help="How long this partner keeps exclusive claim to the deal. After this it is open again.">
-              <Input name="registrationExpiresAt" type="date" />
-            </Field>
-            <div className="flex items-end gap-2">
-              <Button type="submit" size="sm" disabled={pending}>
-                {pending ? "Attaching…" : "Attach"}
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => setAdding(false)} disabled={pending}>
-                Cancel
-              </Button>
+        {!partner ? (
+          canSetPartner && availablePartners.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-muted-foreground">
+                No partner on this deal. If a partner brought this customer, add them here. It
+                starts their commission record, and cannot be moved to another partner later.
+              </p>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="min-w-56 flex-1">
+                  <Field label="Partner">
+                    <Select value={choice} onChange={(e) => setChoice(e.target.value)} aria-label="Partner">
+                      <option value="">Choose a partner…</option>
+                      {availablePartners.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.displayName} ({p.partnerNumber})
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+                <Button size="sm" onClick={attach} disabled={!choice || pending}>
+                  {pending ? "Adding…" : "Add partner"}
+                </Button>
+              </div>
             </div>
-          </form>
+          ) : (
+            <p className="text-muted-foreground">No partner on this deal.</p>
+          )
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <Handshake className="h-4 w-4 text-muted-foreground" />
+              <Link href={`/partners/${partner.id}`} className="font-medium hover:underline">
+                {partner.displayName}
+              </Link>
+              <span className="font-mono text-xs text-muted-foreground">{partner.partnerNumber}</span>
+              {partner.status !== "ACTIVE" && <Badge tone="warning">{humanize(partner.status)}</Badge>}
+            </div>
+
+            {!canSeeCommission ? null : !commission ? (
+              <p className="text-muted-foreground">
+                No commission record. Commission is recorded only for active partners.
+              </p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Figure label="Commission">
+                  {formatMoney(commission.commissionAmount, commission.currencyCode)}
+                  <span className="ml-1 text-xs text-muted-foreground">
+                    at {formatPercent(commission.commissionPercent, 2)}
+                  </span>
+                </Figure>
+                <Figure label="Withholding tax">
+                  {formatMoney(commission.withholdingAmount, commission.currencyCode)}
+                </Figure>
+                <Figure label="Partner is paid">
+                  <span className="font-semibold">
+                    {formatMoney(commission.partnerAmount, commission.currencyCode)}
+                  </span>
+                </Figure>
+                <Figure label="Status">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <Badge tone={statusTone(commission.status)}>{humanize(commission.status)}</Badge>
+                    {commission.requestStatus === "PENDING" && (
+                      <Badge tone="warning">Rate request waiting</Badge>
+                    )}
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {commission.status === "REJECTED"
+                      ? commission.rejectedReason
+                      : commission.paymentDate
+                        ? `Payment date ${formatDate(commission.paymentDate)}`
+                        : "Payment date is set when the deal is won"}
+                  </span>
+                </Figure>
+              </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>
   );
 }
 
-/** Stage transitions, including the win/loss rules and commission accrual. */
+function Figure({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="mt-0.5 tabular">{children}</div>
+    </div>
+  );
+}
+
 export function StageControl({
   opportunityId,
   currentStage,
@@ -288,9 +206,6 @@ export function StageControl({
 
       if (result.ok) {
         const parts = ["Stage updated."];
-        if (result.data.commissionsCreated > 0) {
-          parts.push(`${result.data.commissionsCreated} commission record${result.data.commissionsCreated === 1 ? "" : "s"} accrued.`);
-        }
         if (result.data.project) {
           parts.push(`Project ${result.data.project.projectNumber} created for delivery.`);
         }
@@ -318,7 +233,7 @@ export function StageControl({
 
         <form action={onChange} className="space-y-3">
           <Field label="Stage"
-            help="Where the deal stands from the partner's point of view.">
+            help="Where the deal stands. Winning or losing it also moves the partner's commission.">
             <Select name="stage" value={stage} onChange={(e) => setStage(e.target.value)}>
               <PicklistOptions list="opportunity_stage" fallback={ALL_STAGES} within={ALL_STAGES} current={stage} />
             </Select>
@@ -339,8 +254,8 @@ export function StageControl({
 
           {stage === "CLOSED_WON" && (
             <Alert tone="info">
-              Winning this deal needs an accepted quotation. Any partner on plans that pay on close
-              will accrue commission immediately.
+              Winning this deal needs an accepted quotation. If it has a partner, their commission
+              payment date is set 90 days from today.
             </Alert>
           )}
 

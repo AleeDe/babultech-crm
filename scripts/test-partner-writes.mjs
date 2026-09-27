@@ -127,7 +127,13 @@ try {
   created.accounts.push(made.accountId);
   created.contacts.push(made.contactId);
   if (made.opportunityId) created.opportunities.push(made.opportunityId);
-  cleanup.push(() => db.from("opportunity_partner").delete().in("opportunityId", created.opportunities));
+  // Deleting a deal takes its commission record with it; the record's history
+  // rows are separate and go first.
+  cleanup.push(async () => {
+    const { data } = await db.from("partner_commission").select("id").in("opportunityId", created.opportunities);
+    const recordIds = (data ?? []).map((r) => r.id);
+    return recordIds.length ? db.from("audit_history").delete().in("entityId", recordIds) : { error: null };
+  });
   cleanup.push(() => db.from("opportunity").delete().in("id", created.opportunities));
   cleanup.push(() => db.from("contact").delete().in("id", created.contacts));
   cleanup.push(() => db.from("account").delete().in("id", created.accounts));
@@ -145,13 +151,18 @@ try {
   assert.equal(stored.ownerUserId, owner.id, "The account must be owned by the partner's manager, never the partner");
   pass("The account is credited to the partner and owned by their manager");
 
-  const link = await check(
-    db.from("opportunity_partner").select("partnerId, role").eq("opportunityId", made.opportunityId).single(),
-    "Re-read the deal's partner link",
+  const credited = await check(
+    db.from("opportunity").select("sourcePartnerId").eq("id", made.opportunityId).single(),
+    "Re-read the deal's partner",
   );
-  assert.equal(link.partnerId, ids.myPartner, "The deal must be linked to the creating partner");
-  assert.equal(link.role, "SOURCED", "A partner-created deal must be SOURCED, or it pays no commission");
-  pass("The deal is linked SOURCED, so commission will follow it");
+  assert.equal(credited.sourcePartnerId, ids.myPartner, "The deal must be credited to the creating partner");
+  const record = await check(
+    db.from("partner_commission").select("partnerId, status").eq("opportunityId", made.opportunityId).single(),
+    "Re-read the deal's commission record",
+  );
+  assert.equal(record.partnerId, ids.myPartner, "Its commission record must name the partner");
+  assert.equal(record.status, "IN_PROGRESS", "And start in progress");
+  pass("The deal is credited to the partner, with a commission record from the start");
 
   // --- 2. Seeing what they created -----------------------------------------
 
@@ -254,33 +265,40 @@ try {
   pass("Cannot edit an account after creating it");
 
   // --- 6. Rate requests ----------------------------------------------------
+  //
+  // The partner's half only: asking. Answering is done by a signed-in person who
+  // decides commission, and is covered by scripts/test-lead-to-commission.mjs.
 
-  const proposedRaw = await check(asPartner.rpc("partner_propose_commission", {
-    p_opportunity_id: made.opportunityId,
+  const myRecord = await check(
+    db.from("partner_commission").select("id, commissionPercent").eq("opportunityId", made.opportunityId).single(),
+    "Find the partner's commission record",
+  );
+  await check(asPartner.rpc("partner_commission_request_percent", {
+    p_id: myRecord.id,
     p_percent: 17.5,
     p_reason: "This one took three months of pre-sales work on our side.",
-  }), "Propose a rate as the partner");
-  const proposed = typeof proposedRaw === "string" ? JSON.parse(proposedRaw) : proposedRaw;
-  cleanup.push(() => db.from("commission_proposal").delete().eq("id", proposed.id));
+  }), "Ask for a different rate as the partner");
   pass("A partner can ask for a different rate on their own deal");
 
-  // Proposing must not pay anybody: the rate on the deal stays where it was
-  // until somebody internal agrees it.
+  // Asking must not pay anybody: the rate stays where it was until somebody
+  // internal agrees it.
   const untouched = await check(
-    db.from("opportunity_partner").select("commissionPercentOverride").eq("opportunityId", made.opportunityId).single(),
-    "Re-read the deal link after the request",
+    db.from("partner_commission").select("commissionPercent, requestStatus").eq("id", myRecord.id).single(),
+    "Re-read the record after the request",
   );
-  assert.equal(untouched.commissionPercentOverride, null, "A request must not change the rate by itself");
+  assert.equal(Number(untouched.commissionPercent), Number(myRecord.commissionPercent), "A request must not change the rate by itself");
+  assert.equal(untouched.requestStatus, "PENDING", "The request waits");
   pass("Asking does not change the rate");
 
-  const second = await asPartner.rpc("partner_propose_commission", {
-    p_opportunity_id: made.opportunityId, p_percent: 20, p_reason: "Trying again immediately.",
+  const second = await asPartner.rpc("partner_commission_request_percent", {
+    p_id: myRecord.id, p_percent: 20, p_reason: "Trying again immediately.",
   });
   assert.ok(second.error, "A second open request on the same deal must be refused");
-  assert.match(second.error.message, /already have a request open/i, "The refusal should explain why");
+  assert.match(second.error.message, /already have a request/i, "The refusal should explain why");
   pass("Cannot stack a second open request on the same deal");
 
-  // The rival's deal is not theirs to ask about.
+  // The rival's deal is not theirs to ask about. It takes the rival as its
+  // partner from the rival's customer, and gets the rival's commission record.
   const rivalDeal = randomUUID();
   await check(db.from("opportunity").insert({
     id: rivalDeal, opportunityNumber: `QAWRD-${run}`, name: `QA Rival Deal ${run}`,
@@ -288,51 +306,27 @@ try {
     amount: 1000, currencyCode: "PKR", expectedCloseDate: "2026-12-01", updatedAt: now(),
   }), "Create the rival's deal");
   cleanup.push(() => db.from("opportunity").delete().eq("id", rivalDeal));
-  await check(db.from("opportunity_partner").insert({
-    id: randomUUID(), opportunityId: rivalDeal, partnerId: ids.otherPartner,
-    role: "SOURCED", revenueSharePercent: 100, updatedAt: now(),
-  }), "Link the rival to their deal");
+  const rivalRecord = await check(
+    db.from("partner_commission").select("id, partnerId").eq("opportunityId", rivalDeal).single(),
+    "Find the rival's commission record",
+  );
+  assert.equal(rivalRecord.partnerId, ids.otherPartner, "The rival's deal pays the rival");
 
-  const notMine = await asPartner.rpc("partner_propose_commission", {
-    p_opportunity_id: rivalDeal, p_percent: 50, p_reason: "Not my deal at all.",
+  const notMine = await asPartner.rpc("partner_commission_request_percent", {
+    p_id: rivalRecord.id, p_percent: 50, p_reason: "Not my deal at all.",
   });
-  assert.ok(notMine.error, "Proposing on another partner's deal must be refused");
-  assert.match(notMine.error.message, /not registered on that deal/i, "The refusal should say they are not on it");
+  assert.ok(notMine.error, "Asking on another partner's deal must be refused");
+  assert.match(notMine.error.message, /not found/i, "The refusal should not confirm the record exists");
   pass("Cannot ask for a rate on another partner's deal");
 
-  // A rejection without a reason is refused: the whole point is that the
-  // partner is told something.
-  const silent = await db.rpc("decide_commission_proposal", {
-    p_id: proposed.id, p_approve: false, p_percent: null, p_note: "   ", p_actor_id: owner.id,
-  });
-  assert.ok(silent.error, "Declining without a reason must be refused");
-  pass("Cannot decline a request without telling the partner why");
+  const reject = await asPartner.rpc("partner_commission_mark", { p_id: myRecord.id, p_status: "REJECTED", p_reason: "No" });
+  assert.ok(reject.error, "A partner must not reject commission");
+  pass("Cannot reject their own commission");
 
-  // Approving at a different number is a counter-offer, and writes the rate.
-  const decidedRaw = await check(db.rpc("decide_commission_proposal", {
-    p_id: proposed.id, p_approve: true, p_percent: 12.5,
-    p_note: "Meeting you halfway on this one.", p_actor_id: owner.id,
-  }), "Approve the request at a counter-offer");
-  const decided = typeof decidedRaw === "string" ? JSON.parse(decidedRaw) : decidedRaw;
-  assert.equal(decided.status, "APPROVED", "A counter-offer is still an approval");
-  assert.equal(Number(decided.percent), 12.5, "The granted rate must be the counter-offer, not what was asked");
-
-  const applied = await check(
-    db.from("opportunity_partner").select("commissionPercentOverride").eq("opportunityId", made.opportunityId).single(),
-    "Re-read the deal link after approval",
-  );
-  assert.equal(Number(applied.commissionPercentOverride), 12.5, "Approving must write the rate onto the deal");
-  pass("Approving writes the agreed rate onto the deal in one step");
-
-  const twice = await db.rpc("decide_commission_proposal", {
-    p_id: proposed.id, p_approve: true, p_percent: 90, p_note: null, p_actor_id: owner.id,
-  });
-  assert.ok(twice.error, "An answered request must not be answerable again");
-  pass("A request cannot be answered twice");
-
-  const seen = await check(asPartner.from("commission_proposal").select("id, partnerId"), "Read requests as the partner");
-  assert.deepEqual(seen.map((r) => r.partnerId), [ids.myPartner], "A partner must see only their own requests");
-  pass("Sees their own rate requests, and no other partner's");
+  const seen = await check(asPartner.from("partner_commission").select("id, partnerId"), "Read commission as the partner");
+  assert.ok(seen.length > 0, "The partner sees their own commission");
+  assert.ok(seen.every((r) => r.partnerId === ids.myPartner), "A partner must see only their own commission");
+  pass("Sees their own commission, and no other partner's");
 
   // --- 7. The conversation -------------------------------------------------
 

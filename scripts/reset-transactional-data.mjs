@@ -110,10 +110,7 @@ await clear("financial_transaction", "financial transactions", all);
 // --- partner surface --------------------------------------------------------
 await clear("partner_message_attachment", "message attachments", all);
 await clear("partner_message", "partner messages", all);
-await clear("commission_proposal", "rate requests", all);
-await clear("commission_payout", "commission payouts", all);
-await clear("commission_record", "commission records", all);
-await clear("opportunity_partner", "deal-partner links", all);
+await clear("partner_commission", "partner commission", all);
 await clear("partner_contact", "partner contact links", all);
 
 // --- delivery, but only what is entangled -----------------------------------

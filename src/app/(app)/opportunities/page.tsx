@@ -39,7 +39,7 @@ export default async function OpportunitiesPage({
         s.plus(toDecimal(d.amount).times(d.probabilityPercent).dividedBy(100)),
       toDecimal(0),
     );
-  const partnerSourced = deals.filter((d) => d.partners.length > 0).length;
+  const partnerSourced = deals.filter((d) => d.sourcePartner).length;
 
   return (
     <>
@@ -117,20 +117,17 @@ export default async function OpportunitiesPage({
                     </TD>
                     <TD priority="tertiary" className="text-sm text-muted-foreground">{d.owner?.fullName}</TD>
                     <TD>
-                      {d.partners.length === 0 ? (
+                      {!d.sourcePartner ? (
                         <span className="text-sm text-muted-foreground">—</span>
                       ) : (
                         <div className="flex items-center gap-1.5">
                           <Handshake className="h-3.5 w-3.5 text-muted-foreground" />
                           <Link
-                            href={`/partners/${d.partners[0].partner?.id}`}
+                            href={`/partners/${d.sourcePartner.id}`}
                             className="text-sm hover:underline"
                           >
-                            {d.partners[0].partner?.displayName}
+                            {d.sourcePartner.displayName}
                           </Link>
-                          {d.partners.length > 1 && (
-                            <span className="text-xs text-muted-foreground">+{d.partners.length - 1}</span>
-                          )}
                         </div>
                       )}
                     </TD>

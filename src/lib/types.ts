@@ -10,74 +10,14 @@
  * through `toDecimal()` from lib/decimal before doing arithmetic.
  */
 
-export type CommissionBasis =
-  | "OPPORTUNITY_AMOUNT"
-  | "INVOICED_AMOUNT"
-  | "COLLECTED_AMOUNT"
-  | "GROSS_MARGIN";
-
-export type CommissionRateType = "FLAT_PERCENT" | "TIERED_PERCENT" | "FIXED_AMOUNT";
-
-export type CommissionTrigger =
-  | "ON_OPPORTUNITY_WON"
-  | "ON_INVOICE_SENT"
-  | "ON_PAYMENT_RECEIVED";
-
 /**
  * A money value as it comes back from PostgREST.
  *
  * Nullable columns widen this to `Numeric | null` at the field. Arithmetic must
- * go through `toDecimal()`, which maps null/undefined to zero — passing a raw
+ * go through `toDecimal()`, which maps null/undefined to zero - passing a raw
  * null into `new Decimal()` throws.
  */
 export type Numeric = number | string;
-
-export interface CommissionTier {
-  id: string;
-  planId: string;
-  fromAmount: Numeric;
-  toAmount: Numeric | null;
-  ratePercent: Numeric;
-}
-
-export interface CommissionPlan {
-  id: string;
-  name: string;
-  rateType: CommissionRateType;
-  flatPercent: Numeric | null;
-  fixedAmount: Numeric | null;
-  minimumDealAmount: Numeric | null;
-  maximumPayout: Numeric | null;
-  basis: CommissionBasis;
-  trigger: CommissionTrigger;
-  payoutDelayDays: number | null;
-  clawbackWindowDays: number | null;
-  active: boolean;
-}
-
-export type PlanWithTiers = CommissionPlan & { tiers: CommissionTier[] };
-
-export interface PartnerSummary {
-  id: string;
-  displayName: string;
-  status: string;
-  tier: string | null;
-  defaultCommissionPercent: Numeric;
-  withholdingTaxPercent: Numeric;
-  registrationProtectionDays: number | null;
-  commissionPlanId: string | null;
-}
-
-export interface OpportunityPartnerLink {
-  id: string;
-  partnerId: string;
-  role: string;
-  revenueSharePercent: Numeric;
-  commissionPercentOverride: Numeric;
-  registeredAt: string | null;
-  registrationExpiresAt: string | null;
-  commissionPlanId: string | null;
-}
 
 /**
  * The mediums a MESSAGE_SENT touch can go out on.

@@ -78,7 +78,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
     needs: ["An account, usually from converting a lead"],
     feeds: [
       "Quotations are raised against a deal",
-      "Winning one accrues partner commission and can start a project",
+      "A partner's deal carries their commission record, and winning one can start a project",
     ],
     watchOut:
       "A deal cannot be marked Closed Won without an accepted quote, an amount and a close date.",
@@ -119,17 +119,17 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
 
   "/partners": {
     purpose: "Resellers and referrers who bring you business.",
-    feeds: ["Attaching a partner to a deal is what earns them commission"],
+    feeds: ["Each deal credited to a partner gets a commission record at the partner's rate"],
     watchOut:
-      "Commission only accrues for partners whose status is Active and who hold a commission plan.",
+      "Only an Active partner gets commission records. Changing a partner's rate applies to their new deals, not ones already running.",
   },
 
   "/commissions": {
-    purpose: "What partners have earned, and where each amount is in its approval.",
-    needs: ["A partner attached to a won deal, with a commission plan"],
-    feeds: ["Payouts, once approved"],
+    purpose: "One record per partner deal - what the partner is owed on it, and whether it has been paid.",
+    needs: ["A deal credited to an Active partner"],
+    feeds: ["The partner sees the same record in the portal"],
     watchOut:
-      "When commission accrues depends on the plan's trigger - on close, on invoice, or on payment received.",
+      "The payment date is set when the deal is won, 90 days on. Paid and Rejected are final.",
   },
 
   "/projects": {
@@ -188,7 +188,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
   "/invoices": {
     purpose: "What you have billed, and what is still outstanding.",
     needs: ["Something to bill - a milestone, approved time, or a contract"],
-    feeds: ["Payments are allocated against invoices", "Commission may accrue on issue"],
+    feeds: ["Payments are allocated against invoices"],
     watchOut:
       "A draft invoice can be edited; once issued it cannot. Reverse it with a credit note instead.",
   },
@@ -196,7 +196,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
   "/payments": {
     purpose: "Money received, and which invoices it settles.",
     needs: ["An issued invoice"],
-    feeds: ["Allocation clears an invoice's outstanding amount", "May trigger partner commission"],
+    feeds: ["Allocation clears an invoice's outstanding amount"],
     watchOut:
       "A payment and its allocation are separate: one payment often settles several invoices.",
   },
@@ -217,7 +217,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
     purpose:
       "Everything waiting on you - quotes, expenses, time, bills and commission, in one queue.",
     needs: ["An approval permission for the kind of record"],
-    feeds: ["Approving here unblocks invoicing, payment and payout elsewhere"],
+    feeds: ["Approving here unblocks invoicing and payment elsewhere"],
   },
 
   "/my-work": {

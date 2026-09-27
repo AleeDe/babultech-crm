@@ -50,8 +50,8 @@ export default async function PortalHomePage() {
       {partner.status !== "ACTIVE" && (
         <div className="mb-5">
           <Alert tone="warning">
-            Your partnership is currently {humanize(partner.status).toLowerCase()}. New deal
-            registrations may not earn commission - speak to your partner manager.
+            Your partnership is currently {humanize(partner.status).toLowerCase()}. New deals do not
+            earn commission until it is active again - speak to your partner manager.
           </Alert>
         </div>
       )}
@@ -74,22 +74,22 @@ export default async function PortalHomePage() {
         />
         <StatTile
           label="Owed to you"
-          value={formatMoney(summary.pendingTotal, summary.currency)}
-          sublabel={summary.payoutsPending > 0 ? `${summary.payoutsPending} payout(s) in progress` : "Nothing batched yet"}
-          tone={Number(summary.pendingTotal) > 0 ? "warning" : "neutral"}
-          href="/portal/commissions"
+          value={formatMoney(summary.owedTotal, summary.currency)}
+          sublabel={summary.owedCount > 0 ? `On ${summary.owedCount} won deal(s), not yet paid` : "Nothing owed right now"}
+          tone={summary.owedCount > 0 ? "warning" : "neutral"}
+          href="/portal/commissions?status=IN_PROGRESS"
         />
         <StatTile
-          label="Total earned"
-          value={formatMoney(summary.earnedTotal, summary.currency)}
-          sublabel={`${summary.recordCount} commission record(s)`}
+          label="In your pipeline"
+          value={formatMoney(summary.pipelineTotal, summary.currency)}
+          sublabel="Your commission on open deals, if they are won"
+          tone="info"
         />
         <StatTile
           label="Your deals"
           value={String(summary.dealCount)}
-          sublabel="Registered with us"
+          sublabel="Credited to you"
           href="/portal/deals"
-          tone="info"
         />
       </div>
 
@@ -186,7 +186,7 @@ export default async function PortalHomePage() {
         />
       </div>
 
-      {(stats.attention.expiringSoon > 0 ||
+      {(stats.attention.paymentDue > 0 ||
         stats.attention.stale > 0 ||
         stats.attention.overdue > 0) && (
         <div className="mt-4">
@@ -194,14 +194,14 @@ export default async function PortalHomePage() {
           <AttentionList
             items={
               [
-                stats.attention.expiringSoon > 0 && {
-                  id: "expiring",
-                  count: stats.attention.expiringSoon,
-                  title: "Registration expiring within 30 days",
+                stats.attention.paymentDue > 0 && {
+                  id: "payment-due",
+                  count: stats.attention.paymentDue,
+                  title: "Commission past its payment date",
                   detail:
-                    "A lapsed registration earns no commission, even if the deal later closes.",
-                  href: "/portal/deals",
-                  tone: "critical" as const,
+                    "Won, and due to be paid. If the money has reached you, mark it paid on your Commission page.",
+                  href: "/portal/commissions?status=IN_PROGRESS",
+                  tone: "warning" as const,
                 },
                 stats.attention.overdue > 0 && {
                   id: "overdue",
@@ -225,16 +225,6 @@ export default async function PortalHomePage() {
         </div>
       )}
 
-      {Number(summary.clawedBackTotal) < 0 && (
-        <div className="mt-5">
-          <Alert tone="danger">
-            {formatMoney(Math.abs(Number(summary.clawedBackTotal)), summary.currency)} has been
-            reversed against your account. Each reversal is listed on your commission page with its
-            reason.
-          </Alert>
-        </div>
-      )}
-
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <Card>
@@ -249,7 +239,7 @@ export default async function PortalHomePage() {
                 <div className="px-5">
                   <EmptyState
                     title="Nothing earned yet"
-                    description="Commission appears here once a deal you are attached to reaches the point your plan pays on."
+                    description="Every deal credited to you gets a commission record the day it is created."
                   />
                 </div>
               ) : (
@@ -257,8 +247,8 @@ export default async function PortalHomePage() {
                   <THead>
                     <TR>
                       <TH>Deal</TH>
-                      <TH>Earned</TH>
-                      <TH className="text-right">Amount</TH>
+                      <TH>Payment date</TH>
+                      <TH className="text-right">You are paid</TH>
                       <TH>Status</TH>
                     </TR>
                   </THead>
@@ -271,9 +261,11 @@ export default async function PortalHomePage() {
                             {r.opportunity?.account?.name}
                           </p>
                         </TD>
-                        <TD className="whitespace-nowrap text-sm">{formatDate(r.earnedDate)}</TD>
+                        <TD className="whitespace-nowrap text-sm">
+                          {r.paymentDate ? formatDate(r.paymentDate) : "When the deal is won"}
+                        </TD>
                         <TD className="text-right font-medium tabular">
-                          {formatMoney(r.netPayableAmount, r.currencyCode)}
+                          {formatMoney(r.partnerAmount, r.currencyCode)}
                         </TD>
                         <TD><Badge tone={statusTone(r.status)}>{humanize(r.status)}</Badge></TD>
                       </TR>
@@ -290,59 +282,33 @@ export default async function PortalHomePage() {
             <CardTitle>How you are paid</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            {partner.commissionPlan ? (
-              <>
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Plan</p>
-                  <p className="mt-0.5 font-medium">{partner.commissionPlan?.name}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Rate</p>
-                  <p className="mt-0.5">
-                    {partner.commissionPlan?.rateType === "TIERED_PERCENT"
-                      ? "Tiered - see below"
-                      : partner.commissionPlan?.rateType === "FIXED_AMOUNT"
-                        ? formatMoney(partner.commissionPlan?.fixedAmount, partner.payoutCurrencyCode)
-                        : formatPercent(partner.commissionPlan?.flatPercent, 2)}
-                  </p>
-                </div>
-                {(partner.commissionPlan?.tiers?.length ?? 0) > 0 && (
-                  <div className="space-y-1">
-                    {partner.commissionPlan?.tiers?.map((t, i) => (
-                      <div key={i} className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">
-                          {formatMoney(t.fromAmount, partner.payoutCurrencyCode)}
-                          {t.toAmount ? ` – ${formatMoney(t.toAmount, partner.payoutCurrencyCode)}` : "+"}
-                        </span>
-                        <span className="tabular">{formatPercent(t.ratePercent, 2)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Paid when</p>
-                  <p className="mt-0.5">{humanize(partner.commissionPlan?.trigger)}</p>
-                </div>
-              </>
-            ) : (
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Rate</p>
-                <p className="mt-0.5">{formatPercent(partner.defaultCommissionPercent, 2)}</p>
-              </div>
-            )}
-
-            {partner.withholdingTaxPercent && (
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Your rate</p>
+              <p className="mt-0.5">
+                {formatPercent(partner.defaultCommissionPercent, 2)} of each deal&apos;s final amount,
+                after discounts, tax included.
+              </p>
+            </div>
+            {partner.withholdingTaxPercent ? (
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Withholding tax
                 </p>
                 <p className="mt-0.5">
-                  {formatPercent(partner.withholdingTaxPercent, 2)} is deducted before payment.
+                  {formatPercent(partner.withholdingTaxPercent, 2)} of your commission is deducted
+                  before payment.
                 </p>
               </div>
-            )}
+            ) : null}
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">When</p>
+              <p className="mt-0.5">
+                The payment date is set 90 days after a deal is won. A different rate on one deal can
+                be requested from your Commission page.
+              </p>
+            </div>
             <p className="pt-1 text-xs text-muted-foreground">
-              Payouts are made in {partner.payoutCurrencyCode}.
+              You are paid in {partner.payoutCurrencyCode}.
             </p>
           </CardContent>
         </Card>

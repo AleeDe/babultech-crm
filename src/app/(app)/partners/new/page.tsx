@@ -7,7 +7,7 @@ import { PartnerForm } from "./partner-form";
 export default async function NewPartnerPage() {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.PARTNER_WRITE)) return <Forbidden what="partners" />;
-  const [users, accounts, contacts, plans, currencies] = await Promise.all([
+  const [users, accounts, contacts, currencies] = await Promise.all([
     (async () => {
       const db = await supabaseServer();
       const { data } = await db
@@ -49,16 +49,6 @@ export default async function NewPartnerPage() {
     })(),
     (async () => {
       const db = await supabaseServer();
-      const { data } = await db
-        .from("commission_plan")
-        .select("id, name, rateType, flatPercent")
-        .is("deletedAt", null)
-        .eq("active", true)
-        .order("name");
-      return data ?? [];
-    })(),
-    (async () => {
-      const db = await supabaseServer();
       const { data } = await db.from("currency").select("*").eq("active", true).order("code");
       return data ?? [];
     })(),
@@ -72,7 +62,7 @@ export default async function NewPartnerPage() {
         title="Add partner"
         description="A partner can be a company or a single person. Individuals are stored as a contact with no account, so nothing fake ends up in your customer list."
       />
-      <PartnerForm options={serialize({ users, accounts, contacts, plans, currencies })} />
+      <PartnerForm options={serialize({ users, accounts, contacts, currencies })} />
     </div>
   );
 }

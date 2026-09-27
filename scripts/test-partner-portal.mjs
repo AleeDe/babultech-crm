@@ -53,8 +53,8 @@ try {
   cleanup.push(() => db.from("contact").delete().eq("id", ids.contact));
 
   await check(db.from("partner").insert([
-    { id: ids.partner, partnerNumber: `QAP-${run}`, displayName: `QA Reseller ${run}`, kind: "COMPANY", accountId: ids.account, partnerType: "RESELLER", status: "ACTIVE", updatedAt: now() },
-    { id: ids.otherPartner, partnerNumber: `QAPX-${run}`, displayName: `QA Other ${run}`, kind: "COMPANY", accountId: ids.otherAccount, partnerType: "RESELLER", status: "ACTIVE", updatedAt: now() },
+    { id: ids.partner, partnerNumber: `QAP-${run}`, displayName: `QA Reseller ${run}`, kind: "COMPANY", accountId: ids.account, partnerType: "ACCOUNT_MANAGEMENT", status: "ACTIVE", updatedAt: now() },
+    { id: ids.otherPartner, partnerNumber: `QAPX-${run}`, displayName: `QA Other ${run}`, kind: "COMPANY", accountId: ids.otherAccount, partnerType: "ACCOUNT_MANAGEMENT", status: "ACTIVE", updatedAt: now() },
   ]), "Create temporary partners");
   cleanup.push(() => db.from("partner").delete().in("id", [ids.partner, ids.otherPartner]));
   pass("A customer account can carry a partner record, and stays a customer");
@@ -67,21 +67,20 @@ try {
   }), "Link the contact to the partner");
 
   await check(db.from("opportunity").insert([
-    { id: ids.myDeal, opportunityNumber: `QAPO1-${run}`, name: `QA partner deal ${run}`, accountId: ids.account, ownerUserId: owner.id, stage: "DISCOVERY", amount: 1000, currencyCode: "PKR", expectedCloseDate: "2026-12-01", updatedAt: now() },
-    { id: ids.otherDeal, opportunityNumber: `QAPO2-${run}`, name: `QA other deal ${run}`, accountId: ids.otherAccount, ownerUserId: owner.id, stage: "DISCOVERY", amount: 2000, currencyCode: "PKR", expectedCloseDate: "2026-12-01", updatedAt: now() },
+    { id: ids.myDeal, opportunityNumber: `QAPO1-${run}`, name: `QA partner deal ${run}`, accountId: ids.account, ownerUserId: owner.id, stage: "DISCOVERY", amount: 1000, currencyCode: "PKR", expectedCloseDate: "2026-12-01", sourcePartnerId: ids.partner, updatedAt: now() },
+    { id: ids.otherDeal, opportunityNumber: `QAPO2-${run}`, name: `QA other deal ${run}`, accountId: ids.otherAccount, ownerUserId: owner.id, stage: "DISCOVERY", amount: 2000, currencyCode: "PKR", expectedCloseDate: "2026-12-01", sourcePartnerId: ids.otherPartner, updatedAt: now() },
   ]), "Create temporary deals");
   cleanup.push(() => db.from("opportunity").delete().in("id", [ids.myDeal, ids.otherDeal]));
 
-  await check(db.from("opportunity_partner").insert([
-    { id: randomUUID(), opportunityId: ids.myDeal, partnerId: ids.partner, role: "SOURCED", revenueSharePercent: 10, updatedAt: now() },
-    { id: randomUUID(), opportunityId: ids.otherDeal, partnerId: ids.otherPartner, role: "SOURCED", revenueSharePercent: 10, updatedAt: now() },
-  ]), "Attach the partners to their deals");
-
-  await check(db.from("commission_record").insert([
-    { id: ids.myCommission, commissionNumber: `QAC1-${run}`, partnerId: ids.partner, opportunityId: ids.myDeal, status: "ACCRUED", basis: "OPPORTUNITY_AMOUNT", basisAmount: 1000, ratePercent: 10, commissionAmount: 100, netPayableAmount: 100, currencyCode: "PKR", earnedDate: "2026-09-01", updatedAt: now() },
-    { id: ids.otherCommission, commissionNumber: `QAC2-${run}`, partnerId: ids.otherPartner, opportunityId: ids.otherDeal, status: "ACCRUED", basis: "OPPORTUNITY_AMOUNT", basisAmount: 2000, ratePercent: 10, commissionAmount: 200, netPayableAmount: 200, currencyCode: "PKR", earnedDate: "2026-09-01", updatedAt: now() },
-  ]), "Create temporary commission records");
-  cleanup.push(() => db.from("commission_record").delete().in("id", [ids.myCommission, ids.otherCommission]));
+  // Each deal got its commission record from the database when it was created.
+  const records = await check(
+    db.from("partner_commission").select("id, opportunityId").in("opportunityId", [ids.myDeal, ids.otherDeal]),
+    "Find the commission records",
+  );
+  ids.myCommission = records.find((r) => r.opportunityId === ids.myDeal)?.id;
+  ids.otherCommission = records.find((r) => r.opportunityId === ids.otherDeal)?.id;
+  assert.ok(ids.myCommission && ids.otherCommission, "Both deals must have a commission record");
+  pass("Each partner's deal has its commission record");
 
   const role = await check(db.from("security_role").select("id").eq("name", "Partner").single(), "Find the Partner role");
   const password = randomBytes(24).toString("base64url");
@@ -108,13 +107,13 @@ try {
   if (signIn.error) throw new Error(`Partner sign-in: ${signIn.error.message}`);
   pass("A partner contact can sign in");
 
-  const deals = await check(asPartner.from("opportunity_partner").select("opportunityId, partnerId"), "Read deal links as the partner");
-  assert.deepEqual(deals.map((d) => d.partnerId), [ids.partner], "A partner must see only their own deal attachments");
+  const deals = await check(asPartner.from("opportunity").select("id, sourcePartnerId"), "Read deals as the partner");
+  assert.deepEqual(deals.map((d) => d.id), [ids.myDeal], "A partner must see only the deals credited to them");
   pass("Sees their own deals, and no other partner's");
 
-  const commissions = await check(asPartner.from("commission_record").select("id, partnerId"), "Read commission as the partner");
+  const commissions = await check(asPartner.from("partner_commission").select("id, partnerId"), "Read commission as the partner");
   assert.deepEqual(commissions.map((c) => c.id), [ids.myCommission], "A partner must see only their own commission");
-  pass("Sees their own commission ledger, and nobody else's");
+  pass("Sees their own commission, and nobody else's");
 
   const partners = await check(asPartner.from("partner").select("id"), "Read partners as the partner");
   assert.deepEqual(partners.map((p) => p.id), [ids.partner], "A partner must see only their own partner record");
@@ -137,7 +136,7 @@ try {
   assert.deepEqual(people.map((p) => p.id), [ids.login], "A partner must see only their own login");
   pass("Sees their own login only, never an employee");
 
-  const write = await asPartner.from("commission_record").update({ commissionAmount: 999999 }).eq("id", ids.myCommission).select("id");
+  const write = await asPartner.from("partner_commission").update({ commissionPercent: 99 }).eq("id", ids.myCommission).select("id");
   assert.equal((write.data ?? []).length, 0, "A partner must not be able to edit their own commission");
   pass("Cannot edit their own commission");
 

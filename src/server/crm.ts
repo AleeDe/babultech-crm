@@ -12,7 +12,6 @@ import { createRecord, updateRecord, applyScope, applySearch, LIST_LIMIT } from 
 import { one, toDecimal } from "@/lib/decimal";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission, requireUser, scopedContext, can } from "@/lib/authz";
-import { registrationExpiry, protectionDaysFor } from "@/lib/partner-policy";
 import { MESSAGE_CHANNELS } from "@/lib/types";
 import type { ActionResult } from "./partners";
 
@@ -157,7 +156,7 @@ export async function getAccount(id: string) {
       `*,
        owner:app_user!account_ownerUserId_fkey ( id, fullName, email ),
        parentAccount:parentAccountId ( id, name ),
-       partner!partner_accountId_fkey ( *, commissionPlan:commission_plan ( name ) ),
+       partner!partner_accountId_fkey ( * ),
        contacts:contact ( * ),
        opportunities:opportunity ( id, opportunityNumber, name, stage, amount, currencyCode, expectedCloseDate, deletedAt ),
        contracts:contract ( *, deletedAt ),
@@ -204,10 +203,7 @@ export async function getAccount(id: string) {
     owner: one(data.owner as never),
     parentAccount: one(data.parentAccount as never),
     childAccounts: childAccounts ?? [],
-    partner: (() => {
-      const p = one(data.partner as never) as { commissionPlan?: unknown } | null;
-      return p ? { ...p, commissionPlan: one(p.commissionPlan as never) } : null;
-    })(),
+    partner: one(data.partner as never),
     contacts,
     opportunities: byDesc(live(data.opportunities), "expectedCloseDate").slice(0, 20),
     contracts: byDesc(live(data.contracts), "endDate" as never).slice(0, 10),
@@ -646,8 +642,8 @@ const convertSchema = z.object({
 /**
  * Lead conversion (spec §13): the lead becomes read-only and points at the
  * resulting Account and Contact; the Opportunity is optional. If the lead came
- * through a partner referral, that partner is attached to the new opportunity
- * as SOURCED so commission flows automatically when the deal is won.
+ * through a partner referral, the partner is credited on the account and the
+ * deal, which is what gives the deal its partner commission record.
  */
 export async function convertLead(
   input: z.infer<typeof convertSchema>,
@@ -665,16 +661,9 @@ export async function convertLead(
   try {
     const db = await supabaseServer();
 
-    // Protection runs from when the partner registered the deal, not from
-    // today — a slow internal review must not quietly extend their claim, and
-    // a fast one must not shorten it. The tier rules stay in partner-policy.ts,
-    // so the dates are computed here and passed to the function.
     const { data: leadRow } = await db
       .from("lead")
-      .select(
-        `status, leadNumber, createdAt, referredByPartnerId,
-         referredByPartner:partner ( tier, registrationProtectionDays )`,
-      )
+      .select("status, leadNumber")
       .eq("id", data.leadId)
       .maybeSingle();
 
@@ -682,17 +671,6 @@ export async function convertLead(
     if (leadRow.status === "CONVERTED") {
       return { ok: false, error: `Lead ${leadRow.leadNumber} has already been converted.` };
     }
-
-    const referrer = one(leadRow.referredByPartner as never) as
-      | { tier?: string; registrationProtectionDays?: number }
-      | null;
-
-    const registeredAt = new Date(leadRow.createdAt as string);
-    const days = protectionDaysFor(
-      referrer?.tier as never,
-      referrer?.registrationProtectionDays ?? null,
-    );
-    const expiresAt = registrationExpiry(registeredAt, days);
 
     // Five tables in one transaction — see supabase/functions-sql/016_fn_convert_lead.sql.
     const { data: result, error } = await db.rpc("convert_lead", {
@@ -705,9 +683,11 @@ export async function convertLead(
       p_expected_close: data.expectedCloseDate
         ? data.expectedCloseDate.toISOString().slice(0, 10)
         : null,
-      p_registered_at: registeredAt.toISOString(),
-      p_expires_at: expiresAt.toISOString(),
-      p_protection_days: days,
+      // Kept in the signature for callers that still pass them; the
+      // registration window they described no longer exists.
+      p_registered_at: null,
+      p_expires_at: null,
+      p_protection_days: null,
     });
 
     if (error) throw new Error(error.message);
@@ -871,7 +851,7 @@ export async function getFormOptions() {
 
   const db = await supabaseServer();
 
-  const [users, accounts, campaigns, plans, currencies, partners, contacts, products, taxRates] =
+  const [users, accounts, campaigns, currencies, partners, contacts, products, taxRates] =
     await Promise.all([
       db
         .from("app_user")
@@ -889,12 +869,6 @@ export async function getFormOptions() {
         .select("id, name")
         .is("deletedAt", null)
         .in("status", ["PLANNED", "ACTIVE"])
-        .order("name"),
-      db
-        .from("commission_plan")
-        .select("id, name, rateType, flatPercent")
-        .is("deletedAt", null)
-        .eq("active", true)
         .order("name"),
       db.from("currency").select("*").eq("active", true).order("code"),
       db
@@ -926,7 +900,6 @@ export async function getFormOptions() {
     users: users.data ?? [],
     accounts: accounts.data ?? [],
     campaigns: campaigns.data ?? [],
-    plans: plans.data ?? [],
     currencies: currencies.data ?? [],
     partners: partners.data ?? [],
     contacts: contacts.data ?? [],

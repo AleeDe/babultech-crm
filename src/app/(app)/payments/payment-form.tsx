@@ -172,7 +172,7 @@ export function PaymentForm({
           <Field
             label="Status"
             required
-            hint="Only cleared money settles an invoice or accrues commission - and choosing Cleared is what pays the partner."
+            hint="Only cleared money settles an invoice. Partner commission is not touched here - it is marked paid on its own record."
             help="Nothing checks this against the bank. Mark it Cleared only once you have seen the money arrive; choose Pending clearance until then."
           >
             <Select name="status" required defaultValue="CLEARED">

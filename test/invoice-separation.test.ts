@@ -6,7 +6,6 @@ const mocks = vi.hoisted(() => ({
   server: vi.fn(),
   maybeSingle: vi.fn(),
   updateRecord: vi.fn(),
-  accrue: vi.fn(),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -28,10 +27,6 @@ vi.mock("@/lib/db", () => ({
   LIST_LIMIT: 100,
   applySearch: vi.fn((query: unknown) => query),
 }));
-vi.mock("@/server/commission-engine", () => ({
-  accrueForInvoice: mocks.accrue,
-  accrueForPayment: vi.fn(),
-}));
 
 import { sendInvoice } from "@/server/billing";
 
@@ -51,7 +46,6 @@ describe("issuing an invoice needs a second person", () => {
     mocks.authorize.mockResolvedValue({ ok: true, user: { id: "approver" } });
     mocks.authorizeAny.mockResolvedValue({ ok: true, user: { id: "approver" } });
     mocks.updateRecord.mockResolvedValue(undefined);
-    mocks.accrue.mockResolvedValue([]);
     mocks.maybeSingle.mockResolvedValue({ data: invoice() });
     mocks.server.mockResolvedValue({
       from: () => ({

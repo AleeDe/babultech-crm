@@ -32,11 +32,12 @@ export default async function PartnersPage({
       .select("kind")
       .is("deletedAt", null)
       .eq("status", "ACTIVE"),
+    // Owed: in progress on won deals, what the partner is actually paid.
     db
-      .from("commission_record")
-      .select("netPayableAmount")
-      .is("deletedAt", null)
-      .in("status", ["APPROVED", "PAYABLE", "PARTIALLY_PAID"]),
+      .from("partner_commission")
+      .select("partnerAmount, opportunity!inner ( stage )")
+      .eq("status", "IN_PROGRESS")
+      .eq("opportunity.stage", "CLOSED_WON"),
   ]);
 
   const kinds = kindRes.data ?? [];
@@ -46,33 +47,22 @@ export default async function PartnersPage({
   const payableAgg = {
     _sum: {
       netPayableAmount: (payableRes.data ?? []).reduce(
-        (sum, r) => sum.plus(toDecimal(r.netPayableAmount)),
+        (sum, r) => sum.plus(toDecimal(r.partnerAmount)),
         toDecimal(0),
       ),
     },
   };
 
+  // Deals credited to a partner, still open.
   const { data: sourcedRows } = await db
-    .from("opportunity_partner")
-    .select("revenueSharePercent, opportunity ( amount, stage )");
+    .from("opportunity")
+    .select("amount, stage")
+    .not("sourcePartnerId", "is", null)
+    .is("deletedAt", null);
 
-  const sourcedPipeline = (sourcedRows ?? []).map((d) => ({
-    ...d,
-    opportunity: one(d.opportunity as never) as unknown as {
-      amount: unknown;
-      stage: string;
-    },
-  }));
-
-  const openSourced = sourcedPipeline
-    .filter((d) => !["CLOSED_WON", "CLOSED_LOST"].includes(d.opportunity?.stage))
-    .reduce(
-      (s, d) =>
-        s.plus(
-          toDecimal(d.opportunity?.amount).times(d.revenueSharePercent).dividedBy(100),
-        ),
-      toDecimal(0),
-    );
+  const openSourced = (sourcedRows ?? [])
+    .filter((d) => !["CLOSED_WON", "CLOSED_LOST"].includes(d.stage as string))
+    .reduce((s, d) => s.plus(toDecimal(d.amount)), toDecimal(0));
 
   return (
     <>
@@ -89,13 +79,13 @@ export default async function PartnersPage({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Partner companies" value={String(companies)} sublabel="Active, backed by an account" />
         <StatTile label="Individual partners" value={String(individuals)} sublabel="Active, contact-only" />
-        <StatTile label="Partner-sourced pipeline" value={formatMoney(openSourced)} sublabel="Open deals, share-adjusted" tone="info" />
+        <StatTile label="Partner-sourced pipeline" value={formatMoney(openSourced)} sublabel="Open deals credited to partners" tone="info" />
         <StatTile
           label="Commission owed"
           value={formatMoney(payableAgg._sum.netPayableAmount ?? 0)}
-          sublabel="Approved and awaiting payout"
+          sublabel="On won deals, not yet paid"
           tone="warning"
-          href="/commissions"
+          href="/commissions?view=owed"
         />
       </div>
 
@@ -141,7 +131,7 @@ export default async function PartnersPage({
                 <TH>Partner</TH>
                 <TH>Type / Tier</TH>
                 <TH>Manager</TH>
-                <TH>Commission basis</TH>
+                <TH>Commission rate</TH>
                 <TH className="text-right" priority="tertiary">Deals</TH>
                 <TH className="text-right">Referrals</TH>
                 <TH>Agreement</TH>
@@ -184,10 +174,9 @@ export default async function PartnersPage({
                       {p.partnerManager?.fullName ?? "—"}
                     </TD>
                     <TD className="text-sm">
-                      {p.commissionPlan?.name ??
-                        (p.defaultCommissionPercent
-                          ? `${formatPercent(p.defaultCommissionPercent)} default`
-                          : "—")}
+                      {p.defaultCommissionPercent
+                        ? formatPercent(p.defaultCommissionPercent)
+                        : "—"}
                     </TD>
                     <TD priority="tertiary" className="text-right tabular">{p._count.opportunities}</TD>
                     <TD className="text-right tabular">{p._count.referredLeads}</TD>

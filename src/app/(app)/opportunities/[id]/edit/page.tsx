@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { getOpportunity } from "@/server/opportunities";
 import { getFormOptions } from "@/server/crm";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
-import { PageHeader, Alert , Forbidden} from "@/components/ui";
+import { PageHeader, Forbidden } from "@/components/ui";
 import { serialize } from "@/lib/utils";
 import {
   OpportunityForm,
@@ -41,7 +41,6 @@ export default async function EditOpportunityPage({
     pricedByLines: Boolean(opp.pricedByLines),
   }) as unknown as OpportunityDefaults;
 
-  const accrued = opp.commissionRecords.length > 0;
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -51,14 +50,6 @@ export default async function EditOpportunityPage({
         title={`Edit ${opp.name}`}
         description={`${opp.opportunityNumber} · ${opp.account?.name}`}
       />
-      {accrued && (
-        <div className="mb-6">
-          <Alert tone="warning">
-            Commission has accrued on this deal, so its amount is locked. Claw the commission back
-            from the deal page if the value was wrong.
-          </Alert>
-        </div>
-      )}
       <OpportunityForm
         options={serialize(options) as unknown as OpportunityFormOptions}
         defaults={defaults}

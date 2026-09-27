@@ -1,13 +1,12 @@
+import Link from "next/link";
 import { getPortalCommissions } from "@/server/portal";
 import {
-  PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
-  EmptyState, StatTile, Select, Button, Alert,
+  PageHeader, Card, CardContent, Badge, statusTone, EmptyState, StatTile, Select, Button,
 } from "@/components/ui";
 import { formatMoneyPlain as formatMoney, formatDate, formatPercent, humanize } from "@/lib/utils";
+import { PortalCommissionActions } from "./commission-actions";
 
-const STATUSES = [
-  "ACCRUED", "PENDING_APPROVAL", "APPROVED", "PAYABLE", "PAID", "CLAWED_BACK", "REJECTED",
-];
+const STATUSES = ["IN_PROGRESS", "PAID", "REJECTED"];
 
 export default async function PortalCommissionsPage({
   searchParams,
@@ -18,110 +17,135 @@ export default async function PortalCommissionsPage({
   const records = await getPortalCommissions(status);
 
   const currency = records[0]?.currencyCode ?? "PKR";
-  const total = records.reduce((s, r) => s + Number(r.commissionAmount), 0);
-  const net = records.reduce((s, r) => s + Number(r.netPayableAmount), 0);
-  const tax = records.reduce((s, r) => s + Number(r.withholdingTaxAmount), 0);
-  const paid = records.filter((r) => r.status === "PAID").reduce((s, r) => s + Number(r.netPayableAmount), 0);
+  const sum = (rows: typeof records) => rows.reduce((s, r) => s + Number(r.partnerAmount), 0);
+  const won = (r: (typeof records)[number]) => r.opportunity?.stage === "CLOSED_WON";
+  const inProgress = records.filter((r) => r.status === "IN_PROGRESS");
 
   return (
     <>
       <PageHeader
         title="Commission"
-        description="Every record raised against your deals, and where each one has reached."
+        description="One record for each of your deals: what it is worth to you, and when it is paid."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Gross" value={formatMoney(total, currency)} sublabel={`${records.length} record(s)`} />
-        <StatTile label="Withholding tax" value={formatMoney(tax, currency)} sublabel="Deducted at payout" />
-        <StatTile label="Net" value={formatMoney(net, currency)} tone="info" />
-        <StatTile label="Already paid" value={formatMoney(paid, currency)} tone="success" />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <StatTile
+          label="Owed to you"
+          value={formatMoney(sum(inProgress.filter(won)), currency)}
+          sublabel="On won deals, not yet paid"
+          tone="warning"
+        />
+        <StatTile
+          label="In your pipeline"
+          value={formatMoney(sum(inProgress.filter((r) => !won(r))), currency)}
+          sublabel="On open deals, if they are won"
+          tone="info"
+        />
+        <StatTile
+          label="Paid to you"
+          value={formatMoney(sum(records.filter((r) => r.status === "PAID")), currency)}
+          sublabel="Net of withholding tax"
+          tone="success"
+        />
       </div>
 
       <Card className="mt-6">
         <form className="flex flex-wrap items-end gap-3 border-b p-4">
-          <Select name="status" defaultValue={status ?? ""} className="w-56">
-            <option value="">All statuses</option>
+          <Select name="status" defaultValue={status ?? ""} className="w-56" aria-label="Status">
+            <option value="">All</option>
             {STATUSES.map((s) => (
               <option key={s} value={s}>{humanize(s)}</option>
             ))}
           </Select>
-          <Button type="submit" variant="secondary">Filter</Button>
+          <Button type="submit" variant="outline">Filter</Button>
         </form>
 
         {records.length === 0 ? (
-          <EmptyState
-            title="No commission records"
-            description="A record is created when a deal you are attached to reaches the point your plan pays on - usually when the customer pays us."
-          />
+          <div className="p-5">
+            <EmptyState
+              title="No commission yet"
+              description="Every deal credited to you gets a commission record the day it is created."
+            />
+          </div>
         ) : (
-          <Table>
-            <THead>
-              <TR>
-                <TH>Reference</TH>
-                <TH>Deal</TH>
-                <TH>Earned</TH>
-                <TH className="text-right">Basis</TH>
-                <TH className="text-right">Rate</TH>
-                <TH className="text-right">Gross</TH>
-                <TH className="text-right">Net</TH>
-                <TH>Payout</TH>
-                <TH>Status</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {records.map((r) => {
-                const reversal = Number(r.commissionAmount) < 0;
-                return (
-                  <TR key={r.id}>
-                    <TD className="font-mono text-xs">{r.commissionNumber}</TD>
-                    <TD>
-                      <span className="text-sm font-medium">{r.opportunity?.name}</span>
-                      <p className="text-xs text-muted-foreground">
-                        {r.opportunity?.account?.name}
-                        {r.invoice && ` · invoice ${r.invoice?.invoiceNumber}`}
+          <ul className="divide-y">
+            {records.map((r) => {
+              const open = r.status === "IN_PROGRESS";
+              return (
+                <li key={r.id} className="p-4">
+                  <CardContent className="space-y-3 p-0">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium">{r.opportunity?.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          <span className="font-mono">{r.commissionNumber}</span>
+                          {r.opportunity?.account && (
+                            <>
+                              {" · "}
+                              <Link href={`/portal/customers/${r.opportunity.account.id}`} className="hover:underline">
+                                {r.opportunity.account.name}
+                              </Link>
+                            </>
+                          )}
+                          {r.opportunity && ` · ${humanize(r.opportunity.stage)}`}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge tone={statusTone(r.status)}>{humanize(r.status)}</Badge>
+                        {r.requestStatus === "PENDING" && <Badge tone="warning">Rate request waiting</Badge>}
+                      </div>
+                    </div>
+
+                    <dl className="grid gap-3 text-sm sm:grid-cols-5">
+                      <Figure label="Deal amount">{formatMoney(r.baseAmount, r.currencyCode)}</Figure>
+                      <Figure label="Your rate">{formatPercent(r.commissionPercent, 2)}</Figure>
+                      <Figure label="Commission">{formatMoney(r.commissionAmount, r.currencyCode)}</Figure>
+                      <Figure label="Withholding tax">{formatMoney(r.withholdingAmount, r.currencyCode)}</Figure>
+                      <Figure label="You are paid">
+                        <span className="font-semibold">{formatMoney(r.partnerAmount, r.currencyCode)}</span>
+                      </Figure>
+                    </dl>
+
+                    <p className="text-sm text-muted-foreground">
+                      {r.status === "PAID" && r.paymentDate && `Paid on ${formatDate(r.paymentDate)}.`}
+                      {r.status === "REJECTED" && `Not paid: ${r.rejectedReason ?? "rejected"}.`}
+                      {open && (r.paymentDate
+                        ? `Payment date ${formatDate(r.paymentDate)}.`
+                        : "The amount follows the deal until it is won; the payment date is set then.")}
+                    </p>
+
+                    {r.requestStatus && (
+                      <p className="rounded-md bg-muted/50 px-3 py-2 text-sm">
+                        {r.requestStatus === "PENDING"
+                          ? `You asked for ${Number(r.requestedPercent)}%${r.requestedAt ? ` on ${formatDate(r.requestedAt)}` : ""}. BabulTech will answer it.`
+                          : r.requestStatus === "APPROVED"
+                            ? `Your request for ${Number(r.requestedPercent)}% was approved${r.requestDecisionReason ? `: ${r.requestDecisionReason}` : "."}`
+                            : `Your request for ${Number(r.requestedPercent)}% was declined: ${r.requestDecisionReason ?? ""}`}
                       </p>
-                    </TD>
-                    <TD className="whitespace-nowrap text-sm">{formatDate(r.earnedDate)}</TD>
-                    <TD className="text-right tabular text-muted-foreground">
-                      {formatMoney(r.basisAmount, r.currencyCode)}
-                    </TD>
-                    <TD className="text-right tabular text-muted-foreground">
-                      {formatPercent(r.ratePercent, 2)}
-                    </TD>
-                    <TD className={`text-right tabular ${reversal ? "text-red-600 dark:text-red-400" : ""}`}>
-                      {formatMoney(r.commissionAmount, r.currencyCode)}
-                    </TD>
-                    <TD className="text-right font-medium tabular">
-                      {formatMoney(r.netPayableAmount, r.currencyCode)}
-                    </TD>
-                    <TD className="text-sm">
-                      {r.payout ? (
-                        <>
-                          <span className="font-mono text-xs">{r.payout.payoutNumber}</span>
-                          <p className="text-xs text-muted-foreground">
-                            {r.payout.paymentDate ? formatDate(r.payout.paymentDate) : humanize(r.payout.status)}
-                          </p>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">Not batched</span>
-                      )}
-                    </TD>
-                    <TD><Badge tone={statusTone(r.status)}>{humanize(r.status)}</Badge></TD>
-                  </TR>
-                );
-              })}
-            </TBody>
-          </Table>
+                    )}
+
+                    <PortalCommissionActions
+                      id={r.id}
+                      currentPercent={String(r.commissionPercent)}
+                      canRequest={open && r.requestStatus !== "PENDING"}
+                      canMarkPaid={open && r.opportunity?.stage === "CLOSED_WON"}
+                    />
+                  </CardContent>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </Card>
-
-      <div className="mt-4">
-        <Alert tone="info">
-          A negative record is a reversal - commission that was earned and later clawed back,
-          usually because the customer refunded or cancelled. The original record stays on your
-          statement so the history is never rewritten.
-        </Alert>
-      </div>
     </>
+  );
+}
+
+function Figure({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 tabular">{children}</dd>
+    </div>
   );
 }

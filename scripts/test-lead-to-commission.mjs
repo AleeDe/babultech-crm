@@ -1,11 +1,18 @@
 // The whole partner story, from a lead to money in their hand.
 //
 // A partner arrives as a lead like anybody else. It converts to an account of
-// type Partner with a contact. We make them a partner, set their rate, give
-// that contact a portal login. They sign in, bring us a customer, raise a deal.
-// We win it, invoice it, get paid — and only then does commission appear, at
-// the rate we agreed, less withholding. Then it is approved, batched, paid, and
-// leaves the bank.
+// type Partner with a contact. We make them a partner at a rate, give that
+// contact a portal login. They sign in, bring us a customer, raise a deal - and
+// the deal has a commission record from that moment, at their rate, which they
+// can see. The record follows the deal as it is priced. The partner asks for a
+// better rate; we decline, then approve a second request. The deal is won, the
+// payment date lands 90 days out, and the partner marks it paid once the money
+// reaches them. After that nothing about it can change.
+//
+// Around that: a lost deal rejects its commission and a reopened one brings it
+// back, a person's rejection is final, a deal with no partner can be given one
+// once, a lead referred by a partner carries them to the deal, and a partner
+// never sees another partner's commission.
 //
 // The arithmetic is checked at every step against a figure worked out here,
 // not read back from the same place that wrote it.
@@ -31,50 +38,42 @@ const today = () => new Date().toISOString().slice(0, 10);
 const inDays = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
 const digits = () => String(Math.floor(Math.random() * 9e6) + 1e6);
 
-const cleanup = [];
 const passed = [];
 
 /**
- * What the run created, and the order to remove it in.
- *
- * Foreign keys decide the order, not the order things were made: an account
- * names the staff member who owns it, a portal login names both its partner
- * and its contact, and a contact is named back by app_user.contactId. Get it
- * wrong and rows survive a teardown that reported success.
+ * What the run created, and the order to remove it in. Foreign keys decide the
+ * order: an account names the staff member who owns it, a portal login names
+ * both its partner and its contact.
  */
 const ids = {
-  authUsers: [], appUsers: [], partnerLogins: [],
-  leads: [], accounts: [], contacts: [], partners: [], products: [], projects: [], priceBooks: [],
-  opportunities: [], invoices: [], payments: [],
-  commissions: [], payouts: [], transactions: [],
+  authUsers: [], appUsers: [], partnerLogins: [], roles: [],
+  leads: [], accounts: [], partners: [], products: [], projects: [], priceBooks: [],
+  opportunities: [],
   teardown() {
     const del = (table, column, values) => async () =>
       values.length ? admin.from(table).delete().in(column, values) : { error: null };
     return [
-      del("financial_transaction", "sourceEntityId", this.payouts),
-      del("commission_record", "id", this.commissions),
-      del("commission_payout", "id", this.payouts),
-      del("payment_allocation", "paymentId", this.payments),
-      del("payment", "id", this.payments),
-      del("invoice_line", "invoiceId", this.invoices),
-      del("invoice", "id", this.invoices),
+      async () => {
+        const { data } = await admin.from("partner_commission").select("id").in("opportunityId", this.opportunities.length ? this.opportunities : ["00000000-0000-0000-0000-000000000000"]);
+        const pcIds = (data ?? []).map((r) => r.id);
+        return pcIds.length ? admin.from("audit_history").delete().in("entityId", pcIds) : { error: null };
+      },
       del("project_task", "projectId", this.projects),
       del("project_member", "projectId", this.projects),
       del("project", "id", this.projects),
-      del("opportunity_partner", "opportunityId", this.opportunities),
+      // Deleting a deal takes its lines and its commission record with it.
+      del("opportunity_product", "opportunityId", this.opportunities),
       del("opportunity", "id", this.opportunities),
       del("lead", "id", this.leads),
       del("price_book_entry", "priceBookId", this.priceBooks),
       del("price_book", "id", this.priceBooks),
       del("product", "id", this.products),
-      // Portal logins first: each names a partner and a contact, and nulling
-      // either on delete would trip app_user_type_links_check.
       del("app_user", "id", this.partnerLogins),
       del("partner", "id", this.partners),
-      // Accounts before staff, because an account names its owner.
       del("contact", "accountId", this.accounts),
       del("account", "id", this.accounts),
       del("app_user", "id", this.appUsers),
+      del("security_role", "id", this.roles),
       async () => {
         for (const id of this.authUsers) {
           const r = await admin.auth.admin.deleteUser(id);
@@ -87,26 +86,37 @@ const ids = {
 };
 const pass = (n) => { passed.push(n); console.log(`  PASS  ${n}`); };
 const step = (n, s) => console.log(`\n${n}  ${s}\n${"─".repeat(64)}`);
-const note = (s) => console.log(`  ·     ${s}`);
 
 async function ok(result, what) {
   const r = await result;
   if (r.error) throw new Error(`${what}: ${r.error.message}`);
   return r.data;
 }
+/** The call must be refused, and the refusal should say why. */
+async function refused(result, pattern, what) {
+  const r = await result;
+  assert.ok(r.error, `${what} must be refused`);
+  if (pattern) assert.match(r.error.message, pattern, `${what}: the refusal should say why (got "${r.error.message}")`);
+  return r.error.message;
+}
 const parse = (d) => (typeof d === "string" ? JSON.parse(d) : d);
 const money = (v) => Number(v ?? 0);
 const fmt = (n) => Number(n).toLocaleString("en-US", { minimumFractionDigits: 2 });
+const round2 = (n) => Math.round(n * 100) / 100;
 
 // The agreement, written here once so every assertion below is checked against
 // a number this file decided rather than one the database handed back.
 const RATE = 25;          // per cent commission
 const WITHHOLDING = 10;   // per cent tax withheld from it
-const DEAL = 800000;      // what the customer pays
+const HOURS = 160;
+const RATE_PER_HOUR = 5000;
+const DEAL = HOURS * RATE_PER_HOUR;   // 800,000
 
-const expectedCommission = (DEAL * RATE) / 100;                       // 200,000
-const expectedWithheld = (expectedCommission * WITHHOLDING) / 100;    //  20,000
-const expectedNet = expectedCommission - expectedWithheld;            // 180,000
+function expected(base, rate) {
+  const commission = round2((base * rate) / 100);
+  const withheld = round2((commission * WITHHOLDING) / 100);
+  return { commission, withheld, paid: round2(commission - withheld) };
+}
 
 console.log(`\nPartner commission, end to end   ·   run ${run}`);
 console.log(`Agreement: ${RATE}% of the deal, less ${WITHHOLDING}% withholding\n`);
@@ -116,12 +126,24 @@ try {
   step("00", "The people who will do the work");
   // ═══════════════════════════════════════════════════════════════════════
 
-  const superRole = await ok(
-    admin.from("security_role").select("id").contains("permissions", ["*"]).limit(1).single(),
-    "Find Super Admin",
+  // A role of our own, holding exactly what a salesperson who decides
+  // commission holds - rather than borrowing Super Admin, which would pass
+  // every check whether or not the rules were right.
+  const roleId = randomUUID();
+  await ok(
+    admin.from("security_role").insert({
+      id: roleId, name: `L2C sales ${run}`, dataScope: "ALL", updatedAt: now(),
+      permissions: [
+        "lead:read", "lead:write", "account:read", "account:write",
+        "opportunity:read", "opportunity:write", "partner:read", "partner:write",
+        "commission:read", "commission:approve", "project:read",
+      ],
+    }),
+    "Create the sales role",
   );
+  ids.roles.push(roleId);
 
-  async function makeUser(label, roleId, extra = {}) {
+  async function makeUser(label, role, extra = {}) {
     const address = `l2c-${label}-${run.toLowerCase()}@example.com`;
     const password = randomBytes(18).toString("base64url");
     const auth = await admin.auth.admin.createUser({ email: address, password, email_confirm: true });
@@ -130,7 +152,7 @@ try {
     ids.authUsers.push(id);
     await ok(
       admin.from("app_user").insert({
-        id, fullName: `L2C ${label} ${run}`, email: address, roleId,
+        id, fullName: `L2C ${label} ${run}`, email: address, roleId: role,
         userType: extra.partnerId ? "PARTNER" : "INTERNAL",
         status: "ACTIVE", updatedAt: now(), ...extra,
       }),
@@ -140,15 +162,14 @@ try {
     const client = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } });
     const si = await client.auth.signInWithPassword({ email: address, password });
     if (si.error) throw new Error(`${label} sign-in: ${si.error.message}`);
-    return { id, client, address, password };
+    return { id, client };
   }
 
-  const sales = await makeUser("sales", superRole.id);
-  const finance = await makeUser("finance", superRole.id);
-  note(`Sales and finance signed in (two people, because approvals need two)`);
+  const sales = await makeUser("sales", roleId);
+  pass("A salesperson who decides commission signed in");
 
   // ═══════════════════════════════════════════════════════════════════════
-  step("01", "A partner arrives as a LEAD");
+  step("01", "A partner arrives as a lead, and becomes a partner");
   // ═══════════════════════════════════════════════════════════════════════
 
   const leadId = randomUUID();
@@ -159,184 +180,112 @@ try {
       companyName: `L2C Nexus Systems ${run}`,
       email: `l2c-sana-${run.toLowerCase()}@example.com`,
       phone: `0321 ${digits()}`,
-      // The field that decides what conversion produces.
-      leadType: "PARTNER",
-      status: "QUALIFIED", rating: "HOT", leadSource: "Referral",
+      leadType: "PARTNER", status: "QUALIFIED", rating: "HOT", leadSource: "Referral",
       ownerUserId: sales.id, updatedAt: now(),
     }),
     "Create the partner lead",
   );
   ids.leads.push(leadId);
-  pass("Lead created with Lead type = Partner");
 
-  // ═══════════════════════════════════════════════════════════════════════
-  step("02", "Converting it makes an account of type PARTNER");
-  // ═══════════════════════════════════════════════════════════════════════
-
-  const convertedRaw = await ok(
+  const converted = parse(await ok(
     sales.client.rpc("convert_lead", {
       p_lead_id: leadId, p_actor_id: sales.id, p_account_id: null,
-      p_create_opportunity: true,
-      p_opportunity_name: `Should not be created ${run}`,
+      p_create_opportunity: true, p_opportunity_name: `Should not be created ${run}`,
       p_amount: 1, p_expected_close: inDays(30),
       p_registered_at: null, p_expires_at: null, p_protection_days: null,
     }),
     "Convert the lead",
-  );
-  const converted = parse(convertedRaw);
-  const partnerAccountId = converted.accountId;
-  const partnerContactId = converted.contactId;
-  
-  ids.accounts.push(partnerAccountId);
-
+  ));
+  ids.accounts.push(converted.accountId);
   const partnerAccount = await ok(
-    admin.from("account").select("name, accountType, ownerUserId").eq("id", partnerAccountId).single(),
+    admin.from("account").select("accountType").eq("id", converted.accountId).single(),
     "Read the converted account",
   );
   assert.equal(partnerAccount.accountType, "PARTNER", "A partner lead must convert to a PARTNER account");
-  pass(`Account "${partnerAccount.name}" created with type PARTNER`);
-
-  const partnerContact = await ok(
-    admin.from("contact").select("firstName, lastName, email, accountId").eq("id", partnerContactId).single(),
-    "Read the converted contact",
-  );
-  assert.equal(partnerContact.accountId, partnerAccountId, "The contact must sit on that account");
-  pass(`Contact ${partnerContact.firstName} ${partnerContact.lastName} created on it`);
-
-  // A partner lead is not a sale, so it opens no pipeline deal even when asked.
   assert.equal(converted.opportunityId, null, "A partner lead must not open a pipeline deal");
-  pass("No opportunity created — a partner lead is a partnership, not a sale");
-
-  // ═══════════════════════════════════════════════════════════════════════
-  step("03", "Making them a partner, and agreeing the rate");
-  // ═══════════════════════════════════════════════════════════════════════
+  pass("Partner lead converted to a Partner account, with no deal");
 
   const partnerId = randomUUID();
   await ok(
     sales.client.from("partner").insert({
       id: partnerId, partnerNumber: `L2CP-${run}`,
       displayName: `L2C Nexus Systems ${run}`, kind: "COMPANY",
-      // A COMPANY partner names its account and NOT a contact: the constraint
-      // says an INDIVIDUAL partner is the one that names a person. Their people
-      // are the account's contacts, and any of them can be given a login.
-      accountId: partnerAccountId, contactId: null,
+      accountId: converted.accountId, contactId: null,
       partnerType: "REFERRAL", tier: "GOLD", status: "ACTIVE",
       partnerManagerId: sales.id,
-      defaultCommissionPercent: RATE,
-      withholdingTaxPercent: WITHHOLDING,
+      defaultCommissionPercent: RATE, withholdingTaxPercent: WITHHOLDING,
       payoutCurrencyCode: "PKR", startDate: today(), updatedAt: now(),
     }),
     "Create the partner",
   );
   ids.partners.push(partnerId);
-  pass(`Partner created — ACTIVE, Gold, ${RATE}% commission, ${WITHHOLDING}% withholding`);
 
   const partnerRole = await ok(
     admin.from("security_role").select("id").eq("name", "Partner").single(),
     "Find the Partner role",
   );
-  const partner = await makeUser("partner", partnerRole.id, {
-    partnerId, contactId: partnerContactId,
-  });
-  pass("Their contact given a portal login");
+  const partner = await makeUser("partner", partnerRole.id, { partnerId, contactId: converted.contactId });
+  pass(`Partner at ${RATE}% with ${WITHHOLDING}% withholding, and a portal login for their contact`);
 
   // ═══════════════════════════════════════════════════════════════════════
-  step("04", "The partner signs in and brings us a customer");
+  step("02", "The partner brings a customer and raises a deal");
   // ═══════════════════════════════════════════════════════════════════════
 
-  const customerRaw = await ok(
+  const customer = parse(await ok(
     partner.client.rpc("partner_create_customer", {
       p_account_name: `L2C Meridian Foods ${run}`,
       p_first_name: "Imran", p_last_name: `Khalid ${run}`,
-      p_email: `l2c-imran-${run.toLowerCase()}@example.com`,
-      p_phone: `0300 ${digits()}`,
+      p_email: `l2c-imran-${run.toLowerCase()}@example.com`, p_phone: `0300 ${digits()}`,
       p_job_title: "Operations Director", p_industry: "Food", p_city: "Lahore",
-      p_website: null, p_deal_name: null, p_deal_amount: null,
-      p_deal_close: null, p_deal_currency: "PKR",
-      p_notes: "Three sites, wants one system across all of them.",
+      p_website: null, p_deal_name: null, p_deal_amount: null, p_deal_close: null,
+      p_deal_currency: "PKR", p_notes: "Three sites.",
     }),
     "Create the customer as the partner",
-  );
-  const customer = parse(customerRaw);
-  const customerAccountId = customer.accountId;
-  
-  ids.accounts.push(customerAccountId);
-  pass(`Account ${customer.accountNumber} created from the portal`);
+  ));
+  ids.accounts.push(customer.accountId);
 
-  const credited = await ok(
-    admin.from("account")
-      .select("sourcePartnerId, sourcePartnerUserId, ownerUserId")
-      .eq("id", customerAccountId).single(),
-    "Check the attribution",
-  );
-  assert.equal(credited.sourcePartnerId, partnerId, "Credited to the partner");
-  assert.equal(credited.sourcePartnerUserId, partner.id, "And to the person at the partner");
-  assert.equal(credited.ownerUserId, sales.id, "Owned internally by the partner manager");
-  pass("Brought by the partner and the person; owned by the partner manager");
-
-  // ═══════════════════════════════════════════════════════════════════════
-  step("05", "The partner raises an opportunity");
-  // ═══════════════════════════════════════════════════════════════════════
-
-  const dealRaw = await ok(
+  const deal = parse(await ok(
     partner.client.rpc("partner_add_opportunity", {
-      p_account_id: customerAccountId, p_name: `L2C Warehouse rollout ${run}`,
-      p_amount: DEAL, p_close_date: inDays(20), p_currency: "PKR",
-      p_contact_id: customer.contactId, p_notes: "Signed off by their board.",
-      p_deal_type: "NEW", p_next_step: "Contract review", p_competitor: "Another vendor",
-      p_new_first: null, p_new_last: null, p_new_title: null,
-      p_new_email: null, p_new_phone: null,
+      p_account_id: customer.accountId, p_name: `L2C Warehouse rollout ${run}`,
+      p_amount: 500000, p_close_date: inDays(20), p_currency: "PKR",
+      p_contact_id: customer.contactId, p_notes: null, p_deal_type: "NEW",
+      p_next_step: "Contract review", p_competitor: null,
+      p_new_first: null, p_new_last: null, p_new_title: null, p_new_email: null, p_new_phone: null,
       p_street: null, p_city: null, p_state: null, p_postal_code: null, p_country: null,
       p_probability: 70, p_lead_source: "Referral",
     }),
     "Add the opportunity",
-  );
-  const deal = parse(dealRaw);
+  ));
   const opportunityId = deal.opportunityId;
-  
   ids.opportunities.push(opportunityId);
-  pass(`Opportunity ${deal.opportunityNumber} created for ${fmt(DEAL)}`);
 
-  const link = await ok(
-    admin.from("opportunity_partner")
-      .select("partnerId, partnerUserId, role, revenueSharePercent, commissionPercentOverride")
-      .eq("opportunityId", opportunityId).single(),
-    "Read the commission link",
+  const readRecord = async () => ok(
+    admin.from("partner_commission").select("*").eq("opportunityId", opportunityId).single(),
+    "Read the commission record",
   );
-  assert.equal(link.partnerId, partnerId, "The commission link must name the partner");
-  assert.equal(link.role, "SOURCED", "As SOURCED");
-  assert.equal(money(link.revenueSharePercent), 100, "The whole deal is theirs");
-  assert.equal(link.commissionPercentOverride, null, "No per-deal override, so the default applies");
-  pass("Commission link created — SOURCED, 100% share, no override");
+
+  let pc = await readRecord();
+  let e = expected(500000, RATE);
+  assert.equal(pc.partnerId, partnerId, "The record names the partner");
+  assert.equal(pc.status, "IN_PROGRESS", "It starts in progress");
+  assert.equal(pc.paymentDate, null, "No payment date while the deal is open");
+  assert.equal(money(pc.commissionPercent), RATE, "At the partner's rate");
+  assert.equal(money(pc.commissionAmount), e.commission, "Commission is rate x deal amount");
+  assert.equal(money(pc.withholdingAmount), e.withheld, "Withholding is taken from the commission");
+  assert.equal(money(pc.partnerAmount), e.paid, "The partner is paid the rest");
+  assert.match(pc.commissionNumber, /^PC-\d{6}$/, "Numbered PC-000000");
+  pass(`Commission record ${pc.commissionNumber} created with the deal: ${fmt(e.commission)} less ${fmt(e.withheld)} = ${fmt(e.paid)}`);
+
+  const theirs = await ok(
+    partner.client.from("partner_commission").select("id, partnerAmount").eq("opportunityId", opportunityId),
+    "Read it as the partner",
+  );
+  assert.equal(theirs.length, 1, "The partner can see their own commission");
+  pass("The partner sees it in their portal from the first day");
 
   // ═══════════════════════════════════════════════════════════════════════
-  step("06", "Commission does NOT appear until the money does");
+  step("03", "It follows the deal as the deal is priced");
   // ═══════════════════════════════════════════════════════════════════════
-
-  
-  const commissionCount = async () => {
-    const { count } = await admin.from("commission_record")
-      .select("id", { count: "exact", head: true })
-      .eq("partnerId", partnerId).is("deletedAt", null);
-    return count ?? 0;
-  };
-
-  // A deal with no product cannot be won. The product is what creates the
-  // delivery project, and the project is how an invoice finds its way back
-  // here to pay commission - so the refusal is the thing that keeps the rest
-  // of this chain from failing silently later.
-  const tooEarly = await sales.client.from("opportunity")
-    .update({ stage: "CLOSED_WON", actualCloseDate: today(), updatedAt: now() })
-    .eq("id", opportunityId).select("id");
-  assert.ok(tooEarly.error, "Winning without a product must be refused");
-  assert.match(tooEarly.error.message, /needs at least one product or service/i, "The refusal should say why");
-  pass("Winning refused — nothing has been sold on the deal yet");
-
-  // A service sold in hours: Add in Task, so winning the deal turns its hours
-  // into a project task. 160 hours at 5,000 keeps the deal at the same 800,000
-  // the commission figures below are worked out from.
-  const HOURS = 160;
-  const RATE_PER_HOUR = DEAL / HOURS;
 
   const productId = randomUUID();
   await ok(
@@ -347,437 +296,374 @@ try {
     "Create the service being sold",
   );
   ids.products.push(productId);
-
   const bookId = randomUUID();
   await ok(
-    admin.from("price_book").insert({
-      id: bookId, name: `L2C rates ${run}`, currencyCode: "PKR", active: true, updatedAt: now(),
-    }),
+    admin.from("price_book").insert({ id: bookId, name: `L2C rates ${run}`, currencyCode: "PKR", active: true, updatedAt: now() }),
     "Create a price book",
   );
   ids.priceBooks.push(bookId);
-
   const entry = await ok(
-    admin.from("price_book_entry").insert({
-      priceBookId: bookId, productId, quantity: HOURS, rate: RATE_PER_HOUR,
-    }).select("id").single(),
-    "Price the service in the book",
+    admin.from("price_book_entry").insert({ priceBookId: bookId, productId, quantity: HOURS, rate: RATE_PER_HOUR }).select("id").single(),
+    "Price the service",
   );
 
-  // Saved the way the Add Product & Service screen saves: every line at once,
-  // through the one function that checks the caller may edit this deal.
   const saved = await ok(
     sales.client.rpc("save_opportunity_lines", {
-      p_opportunity: opportunityId,
-      p_price_book: bookId,
+      p_opportunity: opportunityId, p_price_book: bookId,
       p_lines: [{
-        productId, priceBookEntryId: entry.id,
-        quantity: HOURS, unitPrice: RATE_PER_HOUR,
+        productId, priceBookEntryId: entry.id, quantity: HOURS, unitPrice: RATE_PER_HOUR,
         licenseCost: 0, maintenanceCost: 0, cloudCost: 0, aiCost: 0, discountPercent: 0,
       }],
     }),
-    "Add the service to the deal",
+    "Price the deal",
   );
-  assert.equal(money(saved.amount), DEAL, "The deal's amount must become the total of its lines");
-  pass(`Service added: ${HOURS}h × ${fmt(RATE_PER_HOUR)} — deal amount now ${fmt(saved.amount)}, from its line`);
+  assert.equal(money(saved.amount), DEAL, "The deal is its lines' total");
+  pc = await readRecord();
+  e = expected(DEAL, RATE);
+  assert.equal(money(pc.baseAmount), DEAL, "The record follows the deal amount");
+  assert.equal(money(pc.partnerAmount), e.paid, "And the partner's figure with it");
+  pass(`Deal priced at ${fmt(DEAL)} from its line; the partner's figure follows to ${fmt(e.paid)}`);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  step("04", "The partner asks for a better rate");
+  // ═══════════════════════════════════════════════════════════════════════
+
+  await refused(
+    partner.client.rpc("partner_commission_request_percent", { p_id: pc.id, p_percent: 30, p_reason: "" }),
+    /why/i, "A request without a reason",
+  );
+  await ok(
+    partner.client.rpc("partner_commission_request_percent", {
+      p_id: pc.id, p_percent: 30, p_reason: "We are doing the installation ourselves.",
+    }),
+    "Ask for 30%",
+  );
+  pc = await readRecord();
+  assert.equal(pc.requestStatus, "PENDING", "The request waits");
+  assert.equal(money(pc.commissionPercent), RATE, "The rate does not change until it is approved");
+  pass("Request for 30% waiting; the rate stays at 25% meanwhile");
+
+  await refused(
+    partner.client.rpc("partner_commission_request_percent", { p_id: pc.id, p_percent: 35, p_reason: "More" }),
+    /already have a request/i, "A second request while one is waiting",
+  );
+  await refused(
+    sales.client.rpc("partner_commission_change_percent", { p_id: pc.id, p_percent: 20, p_reason: "Ours" }),
+    /answer|approve or decline/i, "Changing the rate over an unanswered request",
+  );
+  await refused(
+    sales.client.rpc("partner_commission_decide_request", { p_id: pc.id, p_approve: false, p_reason: null }),
+    /reason/i, "Declining without a reason",
+  );
+  pass("One request at a time; it must be answered, and a no needs a reason");
+
+  await ok(
+    sales.client.rpc("partner_commission_decide_request", {
+      p_id: pc.id, p_approve: false, p_reason: "Installation is priced separately on this deal.",
+    }),
+    "Decline",
+  );
+  pc = await readRecord();
+  assert.equal(pc.requestStatus, "DECLINED");
+  assert.equal(money(pc.commissionPercent), RATE, "Declining keeps the rate");
+  pass("Declined with a reason; still 25%");
+
+  await ok(
+    partner.client.rpc("partner_commission_request_percent", {
+      p_id: pc.id, p_percent: 28, p_reason: "Meeting you part of the way.",
+    }),
+    "Ask again for 28%",
+  );
+  await ok(
+    sales.client.rpc("partner_commission_decide_request", { p_id: pc.id, p_approve: true, p_reason: null }),
+    "Approve",
+  );
+  pc = await readRecord();
+  e = expected(DEAL, 28);
+  assert.equal(pc.requestStatus, "APPROVED");
+  assert.equal(money(pc.commissionPercent), 28, "Approving applies the requested rate");
+  assert.equal(money(pc.partnerAmount), e.paid, "And the amounts follow");
+  pass(`Second request approved: 28%, the partner is now paid ${fmt(e.paid)}`);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  step("05", "Only we reject, and nobody marks an open deal paid");
+  // ═══════════════════════════════════════════════════════════════════════
+
+  await refused(
+    partner.client.rpc("partner_commission_mark", { p_id: pc.id, p_status: "REJECTED", p_reason: "No" }),
+    /only babultech/i, "The partner rejecting",
+  );
+  await refused(
+    partner.client.rpc("partner_commission_mark", { p_id: pc.id, p_status: "PAID", p_reason: null }),
+    /once the deal is won/i, "Marking paid before the deal is won",
+  );
+  await refused(
+    partner.client.rpc("partner_commission_set_payment_date", { p_id: pc.id, p_date: inDays(10) }),
+    /not permitted/i, "The partner setting the payment date",
+  );
+  pass("The partner cannot reject, set the date, or mark an open deal paid");
+
+  // ═══════════════════════════════════════════════════════════════════════
+  step("06", "The deal is won");
+  // ═══════════════════════════════════════════════════════════════════════
 
   await ok(
     sales.client.from("opportunity")
       .update({ stage: "CLOSED_WON", actualCloseDate: today(), updatedAt: now() })
       .eq("id", opportunityId),
-    "Close the deal as won",
+    "Win the deal",
   );
-  assert.equal(await commissionCount(), 0, "Winning must not pay commission under this plan");
-  pass("Product added  →  deal WON  →  commission records: 0");
+  pc = await readRecord();
+  assert.equal(pc.paymentDate, inDays(90), "The payment date is 90 days after the win");
+  assert.equal(pc.status, "IN_PROGRESS", "Still in progress: nothing is paid automatically");
+  pass(`Won: payment date ${pc.paymentDate}, 90 days out; still in progress`);
 
-  // The project is created by the app, not a database trigger, so the test
-  // does what the app does rather than asserting a row appeared on its own.
-  const projectRaw = await ok(
-    sales.client.rpc("create_project_for_won_opportunity", { p_opportunity: opportunityId }),
-    "Create the delivery project",
-  );
-  const project = parse(projectRaw);
-  assert.ok(project?.id, "A won deal with a product must produce a delivery project");
-  ids.projects.push(project.id);
-  assert.match(project.name, /^Project-/, "A project from a sale is named Project-<deal>");
-  pass(`Delivery project ${project.projectNumber} "${project.name}" created from the won deal`);
-
-  const tasks = await ok(
-    admin.from("project_task").select("name, soldHours, soldRate, estimatedHours")
-      .eq("projectId", project.id),
-    "Read the project's tasks",
-  );
-  assert.equal(tasks.length, 1, "The service sold in hours must become one task");
-  assert.equal(money(tasks[0].soldHours), HOURS, "With the hours sold as its budget");
-  assert.equal(money(tasks[0].soldRate), RATE_PER_HOUR, "And the rate sold");
-  pass(`Task "${tasks[0].name}" created — ${HOURS}h sold at ${fmt(RATE_PER_HOUR)}`);
-
-  const invoiceId = randomUUID();
   await ok(
-    finance.client.from("invoice").insert({
-      id: invoiceId, invoiceNumber: `L2CI-${run}`, accountId: customerAccountId,
-      contactId: customer.contactId, invoiceDate: today(), dueDate: inDays(30),
-      // This is the link commission travels back along:
-      //   payment -> invoice -> project -> opportunity -> partner link
-      // Leave it out and the invoice is paid, the numbers look right, and no
-      // commission is ever created.
-      projectId: project.id,
-      // An invoice may only be CREATED as a draft or approved - never straight
-      // to sent. Issuing is an approval act, so it is its own step below.
-      status: "DRAFT", currencyCode: "PKR", subtotal: DEAL, discountAmount: 0,
-      taxAmount: 0, totalAmount: DEAL, paidAmount: 0, outstandingAmount: DEAL,
-      writeOffAmount: 0, paymentTermsDays: 30,
-      preparedById: sales.id, updatedAt: now(),
+    sales.client.rpc("partner_commission_set_payment_date", { p_id: pc.id, p_date: inDays(75) }),
+    "Move the payment date",
+  );
+  pc = await readRecord();
+  assert.equal(pc.paymentDate, inDays(75));
+  pass("Staff can move the payment date");
+
+  // ═══════════════════════════════════════════════════════════════════════
+  step("07", "The partner is paid, and says so");
+  // ═══════════════════════════════════════════════════════════════════════
+
+  await ok(
+    partner.client.rpc("partner_commission_mark", { p_id: pc.id, p_status: "PAID", p_reason: null }),
+    "Mark paid as the partner",
+  );
+  pc = await readRecord();
+  assert.equal(pc.status, "PAID");
+  assert.equal(pc.paymentDate, today(), "The payment date becomes the day it was marked paid");
+  assert.equal(pc.closedById, partner.id, "And records who said so");
+  pass(`Marked paid by the partner; payment date is now today, ${pc.paymentDate}`);
+
+  await refused(
+    sales.client.rpc("partner_commission_change_percent", { p_id: pc.id, p_percent: 10, p_reason: "Late change" }),
+    /closed/i, "Changing a paid commission",
+  );
+  await refused(
+    sales.client.from("opportunity").update({ stage: "NEGOTIATION", updatedAt: now() }).eq("id", opportunityId),
+    /already been paid/i, "Reopening a deal whose commission is paid",
+  );
+  await ok(
+    sales.client.from("opportunity").update({ amount: DEAL + 1, updatedAt: now() }).eq("id", opportunityId),
+    "Touch the paid deal's amount",
+  ).catch(() => null);
+  pc = await readRecord();
+  assert.equal(money(pc.baseAmount), DEAL, "A paid record no longer follows the deal");
+  pass("Paid is final: no rate change, the deal cannot be reopened, the amount is frozen");
+
+  const history = await ok(
+    admin.from("audit_history").select("fieldName, source").eq("entityType", "PartnerCommission").eq("entityId", pc.id),
+    "Read the history",
+  );
+  const fields = history.map((h) => h.fieldName);
+  for (const f of ["requestedPercent", "requestStatus", "paymentDate", "status"]) {
+    assert.ok(fields.includes(f), `The history records ${f}`);
+  }
+  assert.ok(history.some((h) => h.source === "portal"), "Partner actions are marked as from the portal");
+  pass(`History kept: ${history.length} entries, the partner's marked as from the portal`);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  step("08", "Lost, reopened, and rejected");
+  // ═══════════════════════════════════════════════════════════════════════
+
+  const second = parse(await ok(
+    partner.client.rpc("partner_add_opportunity", {
+      p_account_id: customer.accountId, p_name: `L2C Second site ${run}`,
+      p_amount: 200000, p_close_date: inDays(40), p_currency: "PKR",
+      p_contact_id: customer.contactId, p_notes: null, p_deal_type: "UPSELL",
+      p_next_step: null, p_competitor: null,
+      p_new_first: null, p_new_last: null, p_new_title: null, p_new_email: null, p_new_phone: null,
+      p_street: null, p_city: null, p_state: null, p_postal_code: null, p_country: null,
+      p_probability: 30, p_lead_source: "Referral",
     }),
-    "Draft the invoice",
+    "Add a second deal",
+  ));
+  ids.opportunities.push(second.opportunityId);
+  const readSecond = async () => ok(
+    admin.from("partner_commission").select("*").eq("opportunityId", second.opportunityId).single(),
+    "Read the second record",
   );
-  ids.invoices.push(invoiceId);
 
   await ok(
-    finance.client.from("invoice")
-      .update({ status: "APPROVED", updatedAt: now() }).eq("id", invoiceId),
-    "Approve the invoice",
+    sales.client.from("opportunity").update({ stage: "CLOSED_LOST", lossReason: "Budget", actualCloseDate: today(), updatedAt: now() }).eq("id", second.opportunityId),
+    "Lose it",
+  );
+  let pc2 = await readSecond();
+  assert.equal(pc2.status, "REJECTED");
+  assert.equal(pc2.rejectedReason, "Deal lost");
+  pass("A lost deal's commission is rejected: Deal lost");
+
+  await ok(
+    sales.client.from("opportunity").update({ stage: "NEGOTIATION", lossReason: null, actualCloseDate: null, updatedAt: now() }).eq("id", second.opportunityId),
+    "Reopen it",
+  );
+  pc2 = await readSecond();
+  assert.equal(pc2.status, "IN_PROGRESS", "Reopening brings the commission back");
+  pass("Reopened: back in progress");
+
+  await refused(
+    sales.client.rpc("partner_commission_mark", { p_id: pc2.id, p_status: "REJECTED", p_reason: " " }),
+    /reason/i, "Rejecting without a reason",
   );
   await ok(
-    finance.client.from("invoice")
-      .update({ status: "SENT", sentAt: now(), issuedById: finance.id, updatedAt: now() })
-      .eq("id", invoiceId),
-    "Issue the invoice",
+    sales.client.rpc("partner_commission_mark", { p_id: pc2.id, p_status: "REJECTED", p_reason: "Sold by our own team in the end." }),
+    "Reject it",
   );
-  assert.equal(await commissionCount(), 0, "Nor does invoicing");
-  pass(`Invoice SENT for ${fmt(DEAL)}  →  commission records: 0`);
-  note("The partner has no plan, so the trigger is ON_PAYMENT_RECEIVED");
+  await ok(
+    sales.client.from("opportunity").update({ stage: "QUALIFICATION", updatedAt: now() }).eq("id", second.opportunityId),
+    "Move the deal again",
+  );
+  pc2 = await readSecond();
+  assert.equal(pc2.status, "REJECTED", "A person's rejection is not undone by the deal moving");
+  pass("Rejected by a person, with a reason, and it stays rejected");
 
   // ═══════════════════════════════════════════════════════════════════════
-  step("07", "The customer pays, and commission is calculated");
+  step("09", "A deal with no partner, given one once");
   // ═══════════════════════════════════════════════════════════════════════
 
-  const paymentId = randomUUID();
+  const plainAccount = randomUUID();
   await ok(
-    finance.client.from("payment").insert({
-      id: paymentId, paymentNumber: `L2CY-${run}`, accountId: customerAccountId,
-      paymentDate: today(), amount: DEAL, unallocatedAmount: 0, currencyCode: "PKR",
-      paymentMethod: "BANK", referenceNumber: `L2C-${run}`,
-      status: "CLEARED", clearedAt: now(), updatedAt: now(),
+    admin.from("account").insert({
+      id: plainAccount, accountNumber: `L2CA-${run}`, name: `L2C Direct customer ${run}`,
+      accountType: "PROSPECT", ownerUserId: sales.id, updatedAt: now(),
     }),
-    "Record the payment",
+    "Create a customer we found ourselves",
   );
-  ids.payments.push(paymentId);
-  await ok(
-    finance.client.from("payment_allocation").insert({
-      id: randomUUID(), paymentId, invoiceId, allocatedAmount: DEAL,
-      allocatedAt: now(), allocatedById: finance.id,
-    }),
-    "Allocate it to the invoice",
-  );
-  pass(`Payment of ${fmt(DEAL)} recorded as CLEARED and allocated`);
-
-  // The engine reaches a deal from an invoice through the invoice's project or
-  // contract, so the route is checked rather than assumed.
-  const route = await ok(
-    admin.from("invoice").select("projectId, contractId").eq("id", invoiceId).single(),
-    "Check how the invoice reaches the deal",
-  );
-  assert.ok(
-    route.projectId || route.contractId,
-    "The invoice must name a project or a contract, or commission can never reach the deal",
-  );
-  pass("The invoice names its project — the route commission travels back along");
-
-  // ------------------------------------------------------------------
-  // The row below is WRITTEN BY THIS SCRIPT, not by the engine.
-  //
-  // accrueForPayment() is a Next.js server action: it resolves the signed-in
-  // user from request cookies, which a plain node script has no way to supply.
-  // So this walkthrough asserts the SHAPE of the result - status, basis, rate,
-  // withholding, and everything downstream of it - while the arithmetic that
-  // produced the numbers is covered separately, and for real, by
-  // test/commission-rate-resolution.test.ts.
-  //
-  // Worth being blunt about, because a green tick here would otherwise read as
-  // proof the engine calculated this, and it did not.
-  // ------------------------------------------------------------------
-  note("The next row is written by this script, not the engine — see the comment above");
-
-  const commissionId = randomUUID();
-  await ok(
-    admin.from("commission_record").insert({
-      id: commissionId, commissionNumber: `L2CC-${run}`, partnerId,
-      opportunityId, status: "ACCRUED", basis: "COLLECTED_AMOUNT",
-      basisAmount: DEAL, ratePercent: RATE,
-      commissionAmount: expectedCommission,
-      withholdingTaxAmount: expectedWithheld,
-      netPayableAmount: expectedNet,
-      currencyCode: "PKR", earnedDate: today(),
-      calculationNotes: `Partner default rate ${RATE}.00% (no plan assigned); Withholding tax ${WITHHOLDING}.00%`,
-      updatedAt: now(),
-    }),
-    "Accrue the commission",
-  );
-  ids.commissions.push(commissionId);
-
-  const accrued = await ok(
-    admin.from("commission_record")
-      .select("basisAmount, ratePercent, commissionAmount, withholdingTaxAmount, netPayableAmount, status")
-      .eq("id", commissionId).single(),
-    "Read the commission back",
-  );
-
-  assert.equal(await commissionCount(), 1, "Commission should now exist");
-  assert.equal(money(accrued.basisAmount), DEAL, "Basis is the collected amount");
-  assert.equal(money(accrued.ratePercent), RATE, `Rate must be the agreed ${RATE}%`);
-  assert.equal(money(accrued.commissionAmount), expectedCommission, "Commission must be rate x basis");
-  assert.equal(money(accrued.withholdingTaxAmount), expectedWithheld, "Withholding must be applied");
-  assert.equal(money(accrued.netPayableAmount), expectedNet, "Net is commission less withholding");
-
-  console.log("");
-  console.log(`        Deal value            ${fmt(DEAL).padStart(12)}`);
-  console.log(`        Commission at ${RATE}%     ${fmt(accrued.commissionAmount).padStart(12)}`);
-  console.log(`        Less withholding ${WITHHOLDING}%  ${("-" + fmt(accrued.withholdingTaxAmount)).padStart(12)}`);
-  console.log(`        ${"─".repeat(34)}`);
-  console.log(`        Net payable           ${fmt(accrued.netPayableAmount).padStart(12)}`);
-  console.log("");
-  pass(`Commission correct: ${RATE}% of ${fmt(DEAL)} = ${fmt(expectedCommission)}, net ${fmt(expectedNet)}`);
-
-  // ═══════════════════════════════════════════════════════════════════════
-  step("08", "A per-deal rate would override the default");
-  // ═══════════════════════════════════════════════════════════════════════
-
-  const OVERRIDE = 30;
-  await ok(
-    admin.from("opportunity_partner")
-      .update({ commissionPercentOverride: OVERRIDE, updatedAt: now() })
-      .eq("opportunityId", opportunityId),
-    "Agree a different rate for this deal",
-  );
-  const afterOverride = await ok(
-    admin.from("opportunity_partner")
-      .select("commissionPercentOverride").eq("opportunityId", opportunityId).single(),
-    "Re-read the link",
-  );
-  assert.equal(money(afterOverride.commissionPercentOverride), OVERRIDE, "The override must be stored");
-  note(`Override set to ${OVERRIDE}%. Future accruals on this deal use it; the`);
-  note(`${fmt(expectedCommission)} already earned is untouched, which is why adjustments exist.`);
-  pass("A per-deal override beats the partner default for anything earned after it");
-
-  // Put it back, so the payout figures below match what was accrued.
-  await ok(
-    admin.from("opportunity_partner")
-      .update({ commissionPercentOverride: null, updatedAt: now() })
-      .eq("opportunityId", opportunityId),
-    "Clear the override",
-  );
-
-  // ═══════════════════════════════════════════════════════════════════════
-  step("09", "Approving, batching and paying");
-  // ═══════════════════════════════════════════════════════════════════════
-
-  await ok(
-    admin.from("commission_record")
-      .update({ status: "APPROVED", approvedById: finance.id, approvedAt: now(), updatedAt: now() })
-      .eq("id", commissionId),
-    "Approve the commission",
-  );
-  pass("Commission APPROVED");
-
-  const payoutId = randomUUID();
-  await ok(
-    admin.from("commission_payout").insert({
-      id: payoutId, payoutNumber: `L2CO-${run}`, partnerId, status: "APPROVED",
-      periodStart: today(), periodEnd: today(),
-      grossAmount: expectedCommission, withholdingTaxAmount: expectedWithheld,
-      netAmount: expectedNet, currencyCode: "PKR",
-      approvedById: finance.id, approvedAt: now(), updatedAt: now(),
-    }),
-    "Create the payout",
-  );
-  ids.payouts.push(payoutId);
-  await ok(
-    admin.from("commission_record")
-      .update({ payoutId, status: "PAYABLE", updatedAt: now() }).eq("id", commissionId),
-    "Put the commission in the payout",
-  );
-  pass(`Payout ${`L2CO-${run}`} created and approved for ${fmt(expectedNet)} net`);
-
-  const bank = await ok(
-    admin.from("bank_account").select("id").limit(1).maybeSingle(),
-    "Find a bank account",
-  );
-
-  const paidRaw = await ok(
-    admin.rpc("mark_payout_paid", {
-      p_payout_id: payoutId, p_payment_date: today(), p_payment_method: "BANK",
-      p_bank_account_id: bank?.id ?? null, p_reference: `L2C-${run}`,
-      p_actor_id: finance.id,
-    }),
-    "Mark the payout paid",
-  );
-  assert.ok(parse(paidRaw)?.payoutNumber, "The payout should report itself paid");
-  pass("Payout marked PAID");
-
-  // ═══════════════════════════════════════════════════════════════════════
-  step("10", "What it left behind in Finance");
-  // ═══════════════════════════════════════════════════════════════════════
-
-  const finalRecord = await ok(
-    admin.from("commission_record").select("status, paidAt").eq("id", commissionId).single(),
-    "Re-read the commission",
-  );
-  assert.equal(finalRecord.status, "PAID", "The commission must be paid with its payout");
-  pass("The commission record moved to PAID with the payout, in the same transaction");
-
-  const txn = await ok(
-    admin.from("financial_transaction")
-      .select("transactionNumber, transactionType, direction, amount, status, description")
-      .eq("sourceEntityId", payoutId).maybeSingle(),
-    "Find the financial transaction",
-  );
-  
-
-  assert.ok(txn, "A financial transaction must be posted");
-  assert.equal(txn.transactionType, "COMMISSION_PAYOUT", "Typed as a commission payout");
-  assert.equal(txn.direction, "OUTGOING", "Money leaving");
-  assert.equal(txn.status, "POSTED", "Posted, not pending");
-  assert.equal(money(txn.amount), expectedNet, "For the NET, not the gross");
-  pass(`${txn.transactionNumber}: OUTGOING ${fmt(txn.amount)} POSTED — the net, not the gross`);
-  note(`"${txn.description}"`);
-
-  // ═══════════════════════════════════════════════════════════════════════
-  step("10b", "A plan that sets the timing but not the rate");
-  // ═══════════════════════════════════════════════════════════════════════
-  //
-  // Every partner negotiates their own percentage, so the standard plan carries
-  // no rate of its own - it only says WHEN commission is earned. A plan like
-  // that used to pay zero: the engine read flatPercent as null and treated it
-  // as 0%, silently overruling the rate on the partner record. This checks the
-  // partner's own rate survives being put on a plan.
-
-  const stdPlan = await ok(
-    admin.from("commission_plan")
-      .select("id, name, trigger, flatPercent")
-      .eq("name", "Standard - on payment received").maybeSingle(),
-    "Find the standard plan",
-  );
-  assert.ok(stdPlan, "The standard commission plan must exist");
-  assert.equal(stdPlan.flatPercent, null, "It must carry no rate of its own");
-  assert.equal(stdPlan.trigger, "ON_PAYMENT_RECEIVED", "And pay when the money clears");
-  pass(`Plan "${stdPlan.name}" exists, rate-less, paying on cleared payment`);
-
-
-  // ═══════════════════════════════════════════════════════════════════════
-  step("11", "A lead referred by the partner, converted by US");
-  // ═══════════════════════════════════════════════════════════════════════
-  //
-  // Everything above went through the portal, where the partner stamps their own
-  // credit as they go. This is the other door: a lead that names the partner,
-  // converted by an internal salesperson, and a deal raised on the CRM screen by
-  // someone who has never heard of the partner. It has to end up in the same
-  // place, or commission depends on which door the work came through.
-
-  const refLeadId = randomUUID();
-  await ok(
-    sales.client.from("lead").insert({
-      id: refLeadId, leadNumber: `L2CR-${run}`, firstName: "Imran", lastName: `Qadir ${run}`,
-      companyName: `L2C Referred Foods ${run}`, email: `imran.${run}@example.com`,
-      status: "NEW", leadType: "SALES", ownerUserId: sales.id,
-      referredByPartnerId: partnerId, updatedAt: now(),
-    }),
-    "Create a lead referred by the partner",
-  );
-  ids.leads.push(refLeadId);
-  pass("Lead created with Referred by partner set");
-
-  const refRaw = await ok(
-    admin.rpc("convert_lead", {
-      p_lead_id: refLeadId, p_actor_id: sales.id, p_account_id: null,
-      p_create_opportunity: false, p_opportunity_name: null, p_amount: null,
-      p_expected_close: null, p_registered_at: null, p_expires_at: null,
-      p_protection_days: null,
-    }),
-    "Convert the referred lead",
-  );
-  const ref = parse(refRaw);
-  ids.accounts.push(ref.accountId);
-
-  const refAccount = await ok(
-    admin.from("account").select("name, sourcePartnerId").eq("id", ref.accountId).single(),
-    "Read the converted account",
-  );
-  assert.equal(
-    refAccount.sourcePartnerId, partnerId,
-    "Converting must carry the referral onto the account, or it is forgotten here",
-  );
-  pass(`Account "${refAccount.name}" carries the partner from the lead`);
-
-  // The salesperson raises the deal. Nothing in this insert mentions a partner.
-  const crmDealId = randomUUID();
+  ids.accounts.push(plainAccount);
+  const directDeal = randomUUID();
   await ok(
     sales.client.from("opportunity").insert({
-      id: crmDealId, opportunityNumber: `L2CD-${run}`, name: `L2C Second rollout ${run}`,
-      accountId: ref.accountId, ownerUserId: sales.id, stage: "DISCOVERY",
-      amount: 400000, currencyCode: "PKR", probabilityPercent: 20,
-      expectedCloseDate: inDays(45), opportunityType: "NEW", updatedAt: now(),
+      id: directDeal, opportunityNumber: `L2CO-${run}`, name: `L2C Direct deal ${run}`,
+      accountId: plainAccount, ownerUserId: sales.id, amount: 100000, currencyCode: "PKR",
+      expectedCloseDate: inDays(30), stage: "DISCOVERY", updatedAt: now(),
     }),
-    "Raise a deal on it from the CRM",
+    "Raise a deal with no partner",
   );
-  ids.opportunities.push(crmDealId);
+  ids.opportunities.push(directDeal);
+  let direct = await ok(admin.from("partner_commission").select("id").eq("opportunityId", directDeal), "Look for a record");
+  assert.equal(direct.length, 0, "Our own deal has no commission");
+  pass("A deal of our own has no commission record");
 
-  const crmLink = await ok(
-    admin.from("opportunity_partner")
-      .select("partnerId, role, revenueSharePercent, registrationExpiresAt")
-      .eq("opportunityId", crmDealId).maybeSingle(),
-    "Look for a commission link nobody asked for",
+  await ok(
+    sales.client.rpc("set_opportunity_partner", { p_opportunity: directDeal, p_partner: partnerId }),
+    "Give it the partner",
   );
-  assert.ok(crmLink, "The account's partner must be attached to a deal raised in the CRM");
-  assert.equal(crmLink.partnerId, partnerId, "And it must be the right partner");
-  assert.equal(crmLink.role, "SOURCED", "As SOURCED");
-  assert.equal(money(crmLink.revenueSharePercent), 100, "For the whole deal");
-  assert.ok(crmLink.registrationExpiresAt, "With a registration window, as the portal stamps");
-  pass("Commission link created automatically - the salesperson never mentioned a partner");
-
-  const crmAttrib = await ok(
-    admin.from("opportunity").select("sourcePartnerId").eq("id", crmDealId).single(),
-    "Read the deal's attribution",
+  direct = await ok(admin.from("partner_commission").select("commissionPercent").eq("opportunityId", directDeal), "Look again");
+  assert.equal(direct.length, 1, "Setting the partner creates the record");
+  await refused(
+    sales.client.rpc("set_opportunity_partner", { p_opportunity: directDeal, p_partner: partnerId }),
+    /already has a partner/i, "Setting it a second time",
   );
-  assert.equal(crmAttrib.sourcePartnerId, partnerId, "The deal records who brought it");
-  pass("The deal itself is attributed to the partner");
+  pass("Given a partner once, which creates the record; it cannot be given another");
 
   // ═══════════════════════════════════════════════════════════════════════
-  console.log(`\n${"═".repeat(64)}`);
-  console.log(`${passed.length} checks passed.`);
-  console.log(`${"═".repeat(64)}\n`);
-  console.log("  Lead (type Partner)");
-  console.log("    → Account type PARTNER + contact");
-  console.log("      → Partner record, 25% commission, portal login");
-  console.log("        → Partner brings a customer, raises an 800,000 deal");
-  console.log("          → WON      no commission");
-  console.log("          → INVOICED no commission");
-  console.log("          → PAID     commission 200,000, net 180,000");
-  console.log("            → approved → batched → paid");
-  console.log("              → POSTED outgoing transaction for 180,000\n");
+  step("10", "A lead the partner referred carries them to the deal");
+  // ═══════════════════════════════════════════════════════════════════════
+
+  const referredLead = randomUUID();
+  await ok(
+    sales.client.from("lead").insert({
+      id: referredLead, leadNumber: `L2CR-${run}`, firstName: "Ayesha", lastName: `Malik ${run}`,
+      companyName: `L2C Referred Co ${run}`, email: `l2c-ayesha-${run.toLowerCase()}@example.com`,
+      leadType: "SALES", status: "QUALIFIED", referredByPartnerId: partnerId,
+      ownerUserId: sales.id, updatedAt: now(),
+    }),
+    "Create the referred lead",
+  );
+  ids.leads.push(referredLead);
+  const conv = parse(await ok(
+    sales.client.rpc("convert_lead", {
+      p_lead_id: referredLead, p_actor_id: sales.id, p_account_id: null,
+      p_create_opportunity: true, p_opportunity_name: `L2C Referred deal ${run}`,
+      p_amount: 300000, p_expected_close: inDays(45),
+      p_registered_at: null, p_expires_at: null, p_protection_days: null,
+    }),
+    "Convert the referred lead",
+  ));
+  ids.accounts.push(conv.accountId);
+  ids.opportunities.push(conv.opportunityId);
+  const referredDeal = await ok(
+    admin.from("opportunity").select("sourcePartnerId").eq("id", conv.opportunityId).single(),
+    "Read the converted deal",
+  );
+  assert.equal(referredDeal.sourcePartnerId, partnerId, "The deal is credited to the referring partner");
+  const referredCommission = await ok(
+    admin.from("partner_commission").select("baseAmount, partnerId").eq("opportunityId", conv.opportunityId).single(),
+    "Read its commission",
+  );
+  assert.equal(money(referredCommission.baseAmount), 300000);
+  pass("Converted with a deal: credited to the partner, with its commission record");
+
+  // ═══════════════════════════════════════════════════════════════════════
+  step("11", "A partner never sees another partner's commission");
+  // ═══════════════════════════════════════════════════════════════════════
+
+  const rivalAccount = randomUUID();
+  await ok(
+    admin.from("account").insert({
+      id: rivalAccount, accountNumber: `L2CRA-${run}`, name: `L2C Rival partner ${run}`,
+      accountType: "PARTNER", ownerUserId: sales.id, updatedAt: now(),
+    }),
+    "Create a rival partner company",
+  );
+  ids.accounts.push(rivalAccount);
+  const rivalId = randomUUID();
+  await ok(
+    admin.from("partner").insert({
+      id: rivalId, partnerNumber: `L2CRP-${run}`, displayName: `L2C Rival ${run}`, kind: "COMPANY",
+      accountId: rivalAccount, partnerType: "REFERRAL", tier: "SILVER", status: "ACTIVE",
+      defaultCommissionPercent: 15, updatedAt: now(),
+    }),
+    "Create the rival partner",
+  );
+  ids.partners.push(rivalId);
+  const rivalCustomer = randomUUID();
+  await ok(
+    admin.from("account").insert({
+      id: rivalCustomer, accountNumber: `L2CRC-${run}`, name: `L2C Rival customer ${run}`,
+      accountType: "PROSPECT", ownerUserId: sales.id, sourcePartnerId: rivalId, updatedAt: now(),
+    }),
+    "Create the rival's customer",
+  );
+  ids.accounts.push(rivalCustomer);
+  const rivalDeal = randomUUID();
+  await ok(
+    admin.from("opportunity").insert({
+      id: rivalDeal, opportunityNumber: `L2CRO-${run}`, name: `L2C Rival deal ${run}`,
+      accountId: rivalCustomer, ownerUserId: sales.id, amount: 90000, currencyCode: "PKR",
+      expectedCloseDate: inDays(30), stage: "DISCOVERY", updatedAt: now(),
+    }),
+    "Raise the rival's deal",
+  );
+  ids.opportunities.push(rivalDeal);
+
+  const visible = await ok(partner.client.from("partner_commission").select("opportunityId"), "List as the partner");
+  assert.ok(!visible.some((r) => r.opportunityId === rivalDeal), "The rival's commission must be invisible");
+  const rivalRow = await ok(admin.from("partner_commission").select("id").eq("opportunityId", rivalDeal).single(), "Find the rival's record");
+  await refused(
+    partner.client.rpc("partner_commission_request_percent", { p_id: rivalRow.id, p_percent: 50, p_reason: "Mine now" }),
+    /not found/i, "Asking about the rival's commission",
+  );
+  const rivalDeals = await ok(partner.client.from("opportunity").select("id").eq("id", rivalDeal), "Look for the rival's deal");
+  assert.equal(rivalDeals.length, 0, "Nor their deal");
+  pass("The rival's deal and commission are invisible, and cannot be touched");
+
+  console.log(`\n${"═".repeat(64)}\n  ${passed.length} checks passed   ·   run ${run}\n${"═".repeat(64)}`);
+} catch (err) {
+  console.error(`\n  FAIL  ${err.message}\n`);
+  process.exitCode = 1;
 } finally {
-  // Order matters more than tidiness here, so the whole teardown is written
-  // out once rather than assembled from wherever each row was created.
-  cleanup.length = 0;
-  if (typeof ids !== "undefined") {
-    for (const undo of ids.teardown()) cleanup.push(undo);
-  }
-  // PostgREST RETURNS an error rather than throwing one, so a try/catch alone
-  // reports a clean teardown while rows quietly survive. Both are checked.
-  const failures = [];
-  // NOT reversed: teardown() already returns them in dependency order, and
-  // reversing it would put children after their parents again.
-  for (const undo of cleanup) {
-    try {
-      const r = await undo();
-      if (r && r.error) failures.push(r.error.message);
-    } catch (err) {
-      failures.push(err.message);
+  for (const task of ids.teardown()) {
+    const r = await task();
+    if (r?.error) {
+      console.error(`  Teardown: ${r.error.message}`);
+      process.exitCode = 1;
     }
   }
-  if (failures.length) {
-    console.log(`\nTeardown left ${failures.length} thing(s) behind:`);
-    for (const f of new Set(failures)) console.log(`  ${f}`);
-  }
-  console.log("Temporary data removed.\n");
+  console.log("  Cleaned up.");
 }

@@ -80,7 +80,6 @@ const AUDITED_FIELDS = new Set([
   "totalAmount",
   "contractValue",
   "commissionAmount",
-  "netPayableAmount",
   "ownerUserId",
   "assignedUserId",
   "projectManagerId",
@@ -94,8 +93,10 @@ const AUDITED_FIELDS = new Set([
   "accountType",
   "partnerType",
   "tier",
-  "revenueSharePercent",
-  "commissionPercentOverride",
+  // What a partner is paid: their rate and the tax withheld from it.
+  "defaultCommissionPercent",
+  "withholdingTaxPercent",
+  "sourcePartnerId",
 
   // What a record is and what it says. `description` is the field most often
   // corrected after the fact, and that correction used to leave no trace.

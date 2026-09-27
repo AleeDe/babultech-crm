@@ -56,7 +56,8 @@ describe("holdsAny", () => {
 
 /**
  * The permission sets each seeded role holds after
- * 20260830000000_expense_permissions_split.sql. Kept as literals rather than
+ * 20260830000000_expense_permissions_split.sql, less the payout permission
+ * that 20260928000000_partner_commission.sql retired. Kept as literals rather than
  * read from the database so this stays a unit test — the database-backed
  * equivalents live in authz-scope.test.ts.
  */
@@ -66,7 +67,7 @@ const CONSULTANT = [
 ];
 const FINANCE = [
   "invoice:*", "payment:*", "expense:*", "commission:read",
-  "commission:approve", "payout:approve", "account:read", "opportunity:read",
+  "commission:approve", "account:read", "opportunity:read",
 ];
 
 describe("what a Consultant's sidebar shows", () => {

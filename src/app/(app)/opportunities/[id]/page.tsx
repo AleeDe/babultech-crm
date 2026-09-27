@@ -12,10 +12,11 @@ import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { getAuditTrail } from "@/lib/audit";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
-  Table, THead, TBody, TR, TH, TD, EmptyState, StatTile, Button, Forbidden
+  StatTile, Button, Forbidden
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize, serialize } from "@/lib/utils";
-import { PartnerPanel, StageControl } from "./partner-panel";
+import { DealPartnerPanel, StageControl } from "./partner-panel";
+import { getCommissionForOpportunity } from "@/server/partner-commissions";
 import { OpportunityProductServices } from "./product-services";
 import { getOpportunityPricing } from "@/server/opportunity-lines";
 
@@ -31,7 +32,8 @@ export default async function OpportunityDetailPage({
 
   // One wave: none of these needs a result from another, and each extra wave
   // costs a full round trip against a database ~400ms away.
-  const [notes, documents, opp, availablePartners, audit, pricing] = await Promise.all([
+  const canSeeCommission = can(_me, PERMISSIONS.COMMISSION_READ);
+  const [notes, documents, opp, availablePartners, audit, pricing, commission] = await Promise.all([
     listNotes("Opportunity", id),
     listDocuments("Opportunity", id),
     getOpportunity(id),
@@ -39,7 +41,7 @@ export default async function OpportunityDetailPage({
       const db = await supabaseServer();
       const { data } = await db
         .from("partner")
-        .select("id, displayName, partnerNumber, kind")
+        .select("id, displayName, partnerNumber")
         .is("deletedAt", null)
         .eq("status", "ACTIVE")
         .order("displayName");
@@ -47,6 +49,7 @@ export default async function OpportunityDetailPage({
     })(),
     getAuditTrail("Opportunity", id, 15),
     getOpportunityPricing(id),
+    canSeeCommission ? getCommissionForOpportunity(id) : Promise.resolve(null),
   ]);
   if (!opp) notFound();
   const acceptedQuote = opp.quotations.find((q: Record<string, any>) => q.status === "ACCEPTED");
@@ -76,15 +79,20 @@ export default async function OpportunityDetailPage({
           tone="info"
         />
         <StatTile label="Expected close" value={formatDate(opp.expectedCloseDate)} sublabel={humanize(opp.opportunityType)} />
-        <StatTile
-          label="Commission accrued"
-          value={formatMoney(
-            opp.commissionRecords.reduce((s: any, r: Record<string, any>) => s + Number(r.commissionAmount), 0),
-            opp.currencyCode,
-          )}
-          sublabel={`${opp.commissionRecords.length} record(s)`}
-          tone={opp.commissionRecords.length > 0 ? "warning" : "neutral"}
-        />
+        {commission ? (
+          <StatTile
+            label="Partner commission"
+            value={formatMoney(commission.partnerAmount, commission.currencyCode)}
+            sublabel={`${formatPercent(commission.commissionPercent, 2)} · ${humanize(commission.status)}`}
+            tone={commission.status === "PAID" ? "success" : commission.status === "REJECTED" ? "neutral" : "warning"}
+          />
+        ) : (
+          <StatTile
+            label="Partner"
+            value={opp.sourcePartner?.displayName ?? "None"}
+            sublabel={opp.sourcePartner ? "Brought this customer" : "Sold by our own team"}
+          />
+        )}
       </div>
 
       {/* Tabbed for the same reason the project page was: seven panels in one
@@ -100,11 +108,12 @@ export default async function OpportunityDetailPage({
             label: "The deal",
             content: (
               <div className="space-y-6">
-          <PartnerPanel
+          <DealPartnerPanel
             opportunityId={opp.id}
-            amount={String(opp.amount)}
-            currencyCode={opp.currencyCode}
-            links={serialize(opp.partners) as never}
+            partner={opp.sourcePartner}
+            commission={commission ? (serialize(commission) as never) : null}
+            canSeeCommission={canSeeCommission}
+            canSetPartner={can(_me, PERMISSIONS.OPPORTUNITY_WRITE)}
             availablePartners={availablePartners}
           />
 
@@ -116,60 +125,6 @@ export default async function OpportunityDetailPage({
             />
           )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Commission records</CardTitle>
-            </CardHeader>
-            <CardContent className="px-0">
-              {opp.commissionRecords.length === 0 ? (
-                <div className="px-5">
-                  <EmptyState
-                    title="Nothing accrued yet"
-                    description="Commission is created when this deal reaches its plan's trigger point."
-                  />
-                </div>
-              ) : (
-                <Table>
-                  <THead>
-                    <TR>
-                      {/* The partner identifies the row better than the
-                          commission number does, so it leads on a phone. */}
-                      <TH>Partner</TH>
-                      <TH priority="tertiary">Number</TH>
-                      <TH priority="tertiary">Earned</TH>
-                      <TH priority="secondary" className="text-right">Gross</TH>
-                      <TH className="text-right">Net</TH>
-                      <TH priority="secondary">Status</TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {opp.commissionRecords.map((r: Record<string, any>) => (
-                      <TR key={r.id}>
-                        <TD className="text-sm">
-                          <Link href={`/partners/${r.partner?.id}`} className="font-medium hover:underline">
-                            {r.partner?.displayName}
-                          </Link>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 sm:hidden">
-                            <Badge tone={statusTone(r.status)}>{humanize(r.status)}</Badge>
-                            <span className="font-mono text-xs text-muted-foreground">{r.commissionNumber}</span>
-                          </div>
-                        </TD>
-                        <TD priority="tertiary" className="font-mono text-xs">{r.commissionNumber}</TD>
-                        <TD priority="tertiary" className="text-sm">{formatDate(r.earnedDate)}</TD>
-                        <TD priority="secondary" className="whitespace-nowrap text-right tabular">{formatMoney(r.commissionAmount, r.currencyCode)}</TD>
-                        <TD className="whitespace-nowrap text-right font-medium tabular">
-                          {formatMoney(r.netPayableAmount, r.currencyCode)}
-                        </TD>
-                        <TD priority="secondary">
-                          <Badge tone={statusTone(r.status)}>{humanize(r.status)}</Badge>
-                        </TD>
-                      </TR>
-                    ))}
-                  </TBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
               </div>
             ),
           },

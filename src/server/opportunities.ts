@@ -10,7 +10,6 @@ import { createRecord, updateRecord, applyScope, LIST_LIMIT } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission, scopedContext } from "@/lib/authz";
 import { auditChanges } from "@/lib/audit";
-import { accrueForWonOpportunity } from "./commission-engine";
 import type { ActionResult } from "./partners";
 
 /** Default win probability per stage. Users can still override it. */
@@ -104,7 +103,7 @@ export async function createOpportunity(
 }
 
 /** Stage is deliberately absent — it moves only through `changeStage`, which
- *  carries the §13 gates and fires commission accrual. */
+ *  carries the §13 gates. */
 const opportunityUpdateSchema = opportunitySchema.omit({ stage: true });
 
 /**
@@ -134,7 +133,7 @@ export async function updateOpportunity(
 
     const { data: before } = await db
       .from("opportunity")
-      .select("amount, probabilityPercent, pricedByLines, commissionRecords:commission_record ( id )")
+      .select("amount, probabilityPercent, pricedByLines")
       .eq("id", id)
       .maybeSingle();
 
@@ -143,18 +142,6 @@ export async function updateOpportunity(
     // Once a deal has lines, its amount is their total and nothing typed here
     // may replace it.
     const pricedByLines = Boolean(before.pricedByLines);
-    const nextAmount = pricedByLines ? before.amount : data.amount;
-
-    // Commission has already been calculated off this amount. Changing it now
-    // would silently desync the ledger — clawback is the correct path.
-    const accrued = ((before.commissionRecords ?? []) as unknown[]).length;
-    if (accrued > 0 && !toDecimal(before.amount).equals(toDecimal(nextAmount))) {
-      return {
-        ok: false,
-        error:
-          "Commission has already accrued on this deal, so its amount is locked. Claw the commission back first if the value was wrong.",
-      };
-    }
 
     await updateRecord(
       "opportunity",
@@ -201,11 +188,12 @@ const stageSchema = z.object({
  * Stage transitions carry the business rules from spec §13:
  *   - Closed Won needs an account, an amount, a close date and an accepted quote.
  *   - Closed Lost needs a loss reason.
- * Winning a deal is also what fires commission accrual for ON_CLOSE_WON plans.
+ * The partner commission record follows the stage on its own (a database
+ * trigger): winning sets its payment date, losing rejects it.
  */
 export async function changeStage(
   input: z.infer<typeof stageSchema>,
-): Promise<ActionResult<{ commissionsCreated: number; project: { id: string; projectNumber: string } | null; projectError: string | null }>> {
+): Promise<ActionResult<{ project: { id: string; projectNumber: string } | null; projectError: string | null }>> {
   const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
   const user = _auth.user;
@@ -237,10 +225,9 @@ export async function changeStage(
       if (toDecimal(before.amount).lessThanOrEqualTo(0)) {
         return { ok: false, error: "A won deal needs an amount greater than zero." };
       }
-      // The lines are what creates the delivery project and its tasks, and the
-      // project is how an invoice later finds its way back to this deal to pay
-      // partner commission. Winning with none breaks both, silently - so it is
-      // refused here rather than discovered a quarter later.
+      // The lines are what creates the delivery project and its tasks. Winning
+      // with none would leave the project empty, silently - so it is refused
+      // here rather than discovered a quarter later.
       if (((before.lines ?? []) as unknown[]).length === 0) {
         return {
           ok: false,
@@ -278,18 +265,10 @@ export async function changeStage(
       user.id,
     );
 
-    // Accrual runs in its own transaction so a commission-config problem can
-    // never roll back a legitimate stage change.
-    let commissionsCreated = 0;
-    if (data.stage === "CLOSED_WON") {
-      const records = await accrueForWonOpportunity(data.id, user.id);
-      commissionsCreated = records.length;
-    }
-
     // A won deal that sold a product gets its delivery project straight away.
-    // Separate from the stage change for the same reason as commission: a
-    // problem creating the project must not undo a legitimate win, so it is
-    // reported alongside the success rather than failing it.
+    // Separate from the stage change: a problem creating the project must not
+    // undo a legitimate win, so it is reported alongside the success rather
+    // than failing it.
     let project: { id: string; projectNumber: string } | null = null;
     let projectError: string | null = null;
     if (data.stage === "CLOSED_WON") {
@@ -304,7 +283,7 @@ export async function changeStage(
     revalidatePath("/opportunities");
     revalidatePath(`/opportunities/${data.id}`);
     revalidatePath("/commissions");
-    return { ok: true, data: { commissionsCreated, project, projectError } };
+    return { ok: true, data: { project, projectError } };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Could not change the stage." };
   }
@@ -322,9 +301,8 @@ export async function listOpportunities(filters?: { stage?: string; search?: str
        account ( id, name ),
        owner:app_user!opportunity_ownerUserId_fkey ( id, fullName ),
        primaryContact:contact ( firstName, lastName ),
-       partners:opportunity_partner ( *, partner ( id, displayName, kind ) ),
-       quotations:quotation ( count ),
-       commissionRecords:commission_record ( count )`,
+       sourcePartner:partner!opportunity_sourcePartnerId_fkey ( id, displayName, kind ),
+       quotations:quotation ( count )`,
     )
     .is("deletedAt", null)
     .order("expectedCloseDate", { ascending: true });
@@ -364,13 +342,9 @@ export async function listOpportunities(filters?: { stage?: string; search?: str
     account: one(row.account as never),
     owner: one(row.owner as never),
     primaryContact: one(row.primaryContact as never),
-    partners: ((row.partners ?? []) as Record<string, unknown>[]).map((p) => ({
-      ...p,
-      partner: one(p.partner as never),
-    })),
+    sourcePartner: one(row.sourcePartner as never) as { id: string; displayName: string; kind: string } | null,
     _count: {
       quotations: countOf(row.quotations),
-      commissionRecords: countOf(row.commissionRecords),
     },
   }));
 }
@@ -393,15 +367,9 @@ export async function getOpportunity(id: string) {
        quotations:quotation ( * ),
        contracts:contract ( * ),
        projects:project ( id, projectNumber, name, status ),
-       partners:opportunity_partner (
-         *,
-         partner (
-           id, partnerNumber, displayName, kind, partnerType,
-           defaultCommissionPercent,
-           commissionPlan:commission_plan ( name, flatPercent, rateType )
-         )
-       ),
-       commissionRecords:commission_record ( *, partner ( id, displayName ) )`,
+       sourcePartner:partner!opportunity_sourcePartnerId_fkey (
+         id, partnerNumber, displayName, kind, partnerType, status, defaultCommissionPercent
+       )`,
     )
     .eq("id", id)
     .maybeSingle();
@@ -430,19 +398,10 @@ export async function getOpportunity(id: string) {
     ),
     contracts: rows(data.contracts),
     projects: rows(data.projects),
-    partners: rows(data.partners).map((p) => {
-      const partner = one(p.partner as never) as Row | null;
-      return {
-        ...p,
-        partner: partner
-          ? { ...partner, commissionPlan: one(partner.commissionPlan as never) }
-          : null,
-      };
-    }),
-    commissionRecords: rows(data.commissionRecords)
-      .filter((r) => !r.deletedAt)
-      .map((r): Row => ({ ...r, partner: one(r.partner as never) }))
-      .sort((a, b) => String(b.earnedDate ?? "").localeCompare(String(a.earnedDate ?? ""))),
+    sourcePartner: one(data.sourcePartner as never) as {
+      id: string; partnerNumber: string; displayName: string; kind: string;
+      partnerType: string; status: string; defaultCommissionPercent: string | number | null;
+    } | null,
   };
 }
 

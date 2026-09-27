@@ -106,8 +106,9 @@ export function ConvertForm({
         {referredByPartnerName && (
           <>
             {" "}
-            <strong>{referredByPartnerName}</strong> referred this lead and will be attached to the
-            new deal as Sourced, so commission accrues automatically.
+            <strong>{referredByPartnerName}</strong> referred this lead, so a new deal is credited to
+            them and gets a commission record at their rate - unless it goes on an account another
+            partner brought us, which keeps that partner.
           </>
         )}
       </Alert>

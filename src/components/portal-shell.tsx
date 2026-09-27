@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
-  LayoutDashboard, Target, Coins, Banknote, Building2,
+  LayoutDashboard, Target, Coins, Building2,
   Menu, X, LogOut, MessageSquare,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
@@ -20,7 +20,6 @@ const NAV = [
   { href: "/portal/deals", label: "Opportunities", icon: Target },
   { href: "/portal/customers", label: "Accounts", icon: Building2 },
   { href: "/portal/commissions", label: "Commission", icon: Coins },
-  { href: "/portal/payouts", label: "Payouts", icon: Banknote },
   { href: "/portal/activities", label: "Activities", icon: MessageSquare },
 ];
 

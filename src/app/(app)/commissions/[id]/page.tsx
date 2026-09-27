@@ -1,188 +1,205 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getCommission } from "@/server/commissions";
+import { getPartnerCommission } from "@/server/partner-commissions";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   StatTile, DetailRow, Alert, Forbidden,
 } from "@/components/ui";
 import { formatMoney, formatDate, formatDateTime, formatPercent, humanize } from "@/lib/utils";
-import { AdjustPanel } from "./adjust-panel";
+import { CommissionActions, RateRequestDecision } from "./commission-actions";
 
-export default async function CommissionDetailPage({
+/** What each audited field is called on this page. */
+const FIELD_LABELS: Record<string, string> = {
+  status: "Status",
+  paymentDate: "Payment date",
+  commissionPercent: "Rate",
+  requestedPercent: "Partner asked for a rate",
+  requestStatus: "Rate request answered",
+};
+
+export default async function PartnerCommissionPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const me = await requireUser();
-  if (!can(me, PERMISSIONS.COMMISSION_READ)) return <Forbidden what="commission" />;
+  if (!can(me, PERMISSIONS.COMMISSION_READ)) return <Forbidden what="partner commission" />;
 
   const { id } = await params;
-  const commission = await getCommission(id);
-  if (!commission) notFound();
+  const c = await getPartnerCommission(id);
+  if (!c) notFound();
 
-  const gross = Number(commission.commissionAmount ?? 0);
-  const withheld = Number(commission.withholdingTaxAmount ?? 0);
-  const net = Number(commission.netPayableAmount ?? 0);
-  // Adjusting is deciding the plan was wrong, which is the approver's call
-  // rather than anyone who may record commission.
-  const canAdjust = can(me, PERMISSIONS.COMMISSION_APPROVE);
+  const canDecide = can(me, PERMISSIONS.COMMISSION_APPROVE);
+  const dealWon = c.opportunity?.stage === "CLOSED_WON";
+  const open = c.status === "IN_PROGRESS";
 
   return (
     <>
       <PageHeader
         backTo="/commissions"
-        backLabel="Back to commissions"
-        title={commission.commissionNumber}
-        description={`${commission.partner?.displayName ?? "Unknown partner"} · earned ${formatDate(commission.earnedDate)}`}
+        backLabel="Back to partner commission"
+        title={c.opportunity?.name ?? c.commissionNumber}
+        description={`${c.commissionNumber} · ${c.partner?.displayName ?? "Partner"}`}
       >
-        <Badge tone={statusTone(commission.status)}>{humanize(commission.status)}</Badge>
+        <Badge tone={statusTone(c.status)}>{humanize(c.status)}</Badge>
       </PageHeader>
-
-      {commission.status === "REJECTED" && commission.rejectionReason && (
-        <div className="mb-5">
-          <Alert tone="danger">
-            <p className="font-medium">Rejected</p>
-            <p className="mt-0.5 text-sm">{commission.rejectionReason}</p>
-          </Alert>
-        </div>
-      )}
-
-      {commission.reversesRecordId && (
-        <div className="mb-5">
-          <Alert tone="warning">
-            This is a clawback - it reverses an earlier commission record.
-          </Alert>
-        </div>
-      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
-          label="Basis"
-          value={formatMoney(commission.basisAmount, commission.currencyCode)}
-          sublabel={humanize(commission.basis)}
+          label="Deal amount"
+          value={formatMoney(c.baseAmount, c.currencyCode)}
+          sublabel={open ? "After discounts, tax included. Follows the deal." : "As it stood when closed"}
         />
         <StatTile
-          label="Rate"
-          value={commission.ratePercent ? formatPercent(commission.ratePercent, 2) : "—"}
-          sublabel={commission.plan?.name ?? undefined}
+          label="Commission"
+          value={formatMoney(c.commissionAmount, c.currencyCode)}
+          sublabel={`at ${formatPercent(c.commissionPercent, 2)}`}
+          tone="info"
         />
-        <StatTile label="Gross" value={formatMoney(gross, commission.currencyCode)} />
         <StatTile
-          label="Net payable"
-          value={formatMoney(net, commission.currencyCode)}
-          sublabel={withheld > 0 ? `after ${formatMoney(withheld, commission.currencyCode)} withheld` : undefined}
-          tone="success"
+          label="Withholding tax"
+          value={formatMoney(c.withholdingAmount, c.currencyCode)}
+          sublabel={`at ${formatPercent(c.withholdingTaxPercent, 2)}`}
+        />
+        <StatTile
+          label="Partner is paid"
+          value={formatMoney(c.partnerAmount, c.currencyCode)}
+          tone={c.status === "PAID" ? "success" : c.status === "REJECTED" ? "neutral" : "warning"}
         />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>What it was earned on</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <DetailRow label="Partner">
-              {commission.partner ? (
-                <Link href={`/partners/${commission.partner?.id}`} className="text-primary hover:underline">
-                  {commission.partner?.displayName}
-                </Link>
-              ) : (
-                "—"
-              )}
-            </DetailRow>
-            <DetailRow label="Deal">
-              {commission.opportunity ? (
-                <Link href={`/opportunities/${commission.opportunity?.id}`} className="text-primary hover:underline">
-                  {commission.opportunity?.name}
-                </Link>
-              ) : (
-                "—"
-              )}
-            </DetailRow>
-            <DetailRow label="Customer">{commission.opportunity?.account?.name ?? "—"}</DetailRow>
-            <DetailRow label="Invoice">
-              {commission.invoice ? (
-                <Link href={`/invoices/${commission.invoice?.id}`} className="text-primary hover:underline">
-                  {commission.invoice?.invoiceNumber}
-                </Link>
-              ) : (
-                "—"
-              )}
-            </DetailRow>
-            <DetailRow label="Payment">
-              {commission.payment ? (
-                <Link href={`/payments/${commission.payment?.id}`} className="text-primary hover:underline">
-                  {commission.payment?.paymentNumber}
-                </Link>
-              ) : (
-                "—"
-              )}
-            </DetailRow>
-          </CardContent>
-        </Card>
+      {c.status === "REJECTED" && (
+        <div className="mt-6">
+          <Alert tone="danger">
+            Rejected{c.closedBy ? ` by ${c.closedBy.fullName}` : ""}
+            {c.closedAt ? ` on ${formatDate(c.closedAt)}` : ""}: {c.rejectedReason}
+          </Alert>
+        </div>
+      )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>How it was calculated</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <DetailRow label="Plan">{commission.plan?.name ?? "Partner default rate"}</DetailRow>
-            <DetailRow label="Triggered by">
-              {commission.plan?.trigger ? humanize(commission.plan?.trigger) : "—"}
-            </DetailRow>
-            <DetailRow label="Basis amount">
-              {formatMoney(commission.basisAmount, commission.currencyCode)}
-            </DetailRow>
-            <DetailRow label="Withheld">
-              {withheld > 0 ? formatMoney(withheld, commission.currencyCode) : "None"}
-            </DetailRow>
-            <DetailRow label="Payable from">
-              {commission.payableFromDate ? formatDate(commission.payableFromDate) : "—"}
-            </DetailRow>
-            <DetailRow label="Approved by">
-              {commission.approvedBy?.fullName ?? "Not approved"}
-              {commission.approvedAt && (
-                <span className="block text-xs text-muted-foreground">
-                  {formatDateTime(commission.approvedAt)}
-                </span>
+      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Details</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 text-sm sm:grid-cols-2">
+              <DetailRow label="Partner">
+                {c.partner ? (
+                  <Link href={`/partners/${c.partner.id}`} className="text-primary hover:underline">
+                    {c.partner.displayName}
+                  </Link>
+                ) : "—"}
+              </DetailRow>
+              <DetailRow label="Deal">
+                {c.opportunity ? (
+                  <Link href={`/opportunities/${c.opportunity.id}`} className="text-primary hover:underline">
+                    {c.opportunity.opportunityNumber} · {c.opportunity.name}
+                  </Link>
+                ) : "—"}
+              </DetailRow>
+              <DetailRow label="Customer">{c.opportunity?.account?.name ?? "—"}</DetailRow>
+              <DetailRow label="Deal stage">
+                {c.opportunity ? (
+                  <Badge tone={statusTone(c.opportunity.stage)}>{humanize(c.opportunity.stage)}</Badge>
+                ) : "—"}
+              </DetailRow>
+              <DetailRow label="Won on">{c.opportunity?.actualCloseDate && dealWon ? formatDate(c.opportunity.actualCloseDate) : "Not won yet"}</DetailRow>
+              <DetailRow label="Payment date">
+                {c.paymentDate ? formatDate(c.paymentDate) : "Set when the deal is won"}
+              </DetailRow>
+              {c.status === "PAID" && (
+                <DetailRow label="Marked paid">
+                  {c.closedBy?.fullName ?? "—"}
+                  {c.closedAt ? `, ${formatDateTime(c.closedAt)}` : ""}
+                </DetailRow>
               )}
-            </DetailRow>
-            <DetailRow label="Payout">
-              {commission.payout ? (
-                <Link href="/commissions/payouts" className="text-primary hover:underline">
-                  {commission.payout?.payoutNumber}
-                </Link>
+            </CardContent>
+          </Card>
+
+          {c.requestStatus && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Rate request</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <p>
+                  {c.requestedBy?.fullName ?? "The partner"} asked for{" "}
+                  <strong>{formatPercent(c.requestedPercent, 2)}</strong> instead of{" "}
+                  {c.requestStatus === "APPROVED" ? "the rate before" : formatPercent(c.commissionPercent, 2)}
+                  {c.requestedAt ? ` on ${formatDate(c.requestedAt)}` : ""}.
+                </p>
+                <blockquote className="border-l-2 pl-3 text-muted-foreground">{c.requestReason}</blockquote>
+                {c.requestStatus === "PENDING" ? (
+                  canDecide ? (
+                    <RateRequestDecision id={c.id} requestedPercent={String(c.requestedPercent)} />
+                  ) : (
+                    <p className="text-muted-foreground">Waiting for somebody who decides commission.</p>
+                  )
+                ) : (
+                  <p>
+                    <Badge tone={statusTone(c.requestStatus === "APPROVED" ? "APPROVED" : "REJECTED")}>
+                      {c.requestStatus === "APPROVED" ? "Approved" : "Declined"}
+                    </Badge>{" "}
+                    {c.requestDecidedBy ? `by ${c.requestDecidedBy.fullName}` : ""}
+                    {c.requestDecidedAt ? ` on ${formatDate(c.requestDecidedAt)}` : ""}
+                    {c.requestDecisionReason ? `: ${c.requestDecisionReason}` : ""}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>History</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm">
+              {c.history.length === 0 ? (
+                <p className="text-muted-foreground">
+                  Nothing changed by hand yet. The amount has followed the deal on its own.
+                </p>
               ) : (
-                "Not in a payout yet"
+                <ul className="space-y-3">
+                  {c.history.map((h: Record<string, any>) => (
+                    <li key={h.id} className="border-b pb-2 last:border-0">
+                      <p className="font-medium">{FIELD_LABELS[h.fieldName] ?? humanize(h.fieldName)}</p>
+                      <p className="text-muted-foreground">
+                        {h.oldValue ? `${h.oldValue} → ` : ""}{h.newValue}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {h.changedBy?.fullName ?? "System"}
+                        {h.source === "portal" ? " (partner portal)" : ""} · {formatDateTime(h.changedAt)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
               )}
-            </DetailRow>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div>
+          {open && canDecide ? (
+            <CommissionActions
+              id={c.id}
+              dealWon={dealWon}
+              currentPercent={String(c.commissionPercent)}
+              paymentDate={c.paymentDate}
+              requestPending={c.requestStatus === "PENDING"}
+            />
+          ) : (
+            <Card>
+              <CardContent className="pt-5 text-sm text-muted-foreground">
+                {open
+                  ? "Only people who decide commission can change this record."
+                  : "This commission is closed and can no longer change."}
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
-
-      {canAdjust && commission.partnerId && commission.opportunityId && (
-        <AdjustPanel
-          partnerId={commission.partnerId}
-          opportunityId={commission.opportunityId}
-          recordId={commission.id}
-          currencyCode={commission.currencyCode ?? "PKR"}
-          partnerName={commission.partner?.displayName ?? "The partner"}
-        />
-      )}
-
-      {commission.calculationNotes && (
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle>Notes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="whitespace-pre-line text-sm text-muted-foreground">
-              {commission.calculationNotes}
-            </p>
-          </CardContent>
-        </Card>
-      )}
     </>
   );
 }

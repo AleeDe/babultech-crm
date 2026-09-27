@@ -542,7 +542,6 @@ const partners = await upsert(
       payoutCurrencyCode: "PKR",
       taxNumber: "5678901-2",
       withholdingTaxPercent: 10,
-      registrationProtectionDays: 90,
       email: "alliances@nexgensystems.pk",
       phone: "+92 42 3588 6600",
       website: "https://nexgensystems.pk",
@@ -553,7 +552,7 @@ const partners = await upsert(
       displayName: "Horizon Cloud Distributors",
       kind: "COMPANY",
       accountId: account["ACC-2026-00008"].id,
-      partnerType: "DISTRIBUTOR",
+      partnerType: "ACCOUNT_MANAGEMENT",
       tier: "PLATINUM",
       status: "ACTIVE",
       partnerManagerId: manager,
@@ -563,7 +562,6 @@ const partners = await upsert(
       defaultCommissionPercent: 15,
       payoutCurrencyCode: "USD",
       withholdingTaxPercent: 0,
-      registrationProtectionDays: 120,
       email: "channel@horizoncloud.ae",
       phone: "+971 4 553 8800",
       website: "https://horizoncloud.ae",
@@ -584,7 +582,6 @@ const partners = await upsert(
       defaultCommissionPercent: 7,
       payoutCurrencyCode: "PKR",
       withholdingTaxPercent: 10,
-      registrationProtectionDays: 60,
       email: "referrals@sindhadvisors.pk",
       phone: "+92 21 3577 8899",
       notes: "Referral-only. Introduced Karachi Logistics Group.",
@@ -595,8 +592,8 @@ const partners = await upsert(
       kind: "INDIVIDUAL",
       contactId: contact["rehan.aslam@outlook.com"].id,
       partnerType: "REFERRAL",
-      tier: "REGISTERED",
-      status: "PROSPECTIVE",
+      tier: "SILVER",
+      status: "INACTIVE",
       partnerManagerId: exec,
       territory: "Islamabad",
       startDate: day(-40),
@@ -612,8 +609,8 @@ const partners = await upsert(
       displayName: "Peshawar Tech Resellers",
       kind: "COMPANY",
       accountId: account["ACC-2026-00010"].id,
-      partnerType: "RESELLER",
-      tier: "REGISTERED",
+      partnerType: "ACCOUNT_MANAGEMENT",
+      tier: "SILVER",
       status: "INACTIVE",
       partnerManagerId: manager,
       territory: "KPK",
@@ -631,53 +628,32 @@ const partners = await upsert(
 const partner = Object.fromEntries(partners.map((p) => [p.partnerNumber, p]));
 console.log(`  ok partner             ${partners.length}`);
 
-// -------------------------------------------------- opportunity partners
-// revenueSharePercent defaults to 100 and a trigger caps the per-opportunity
-// total at 100, so every row states its share explicitly. Clearing the
-// opportunity's existing rows first keeps re-runs from tripping that cap.
-const oppPartnerRows = [
-  { opportunityId: opp["OPP-2026-00003"].id, partnerId: partner["PTR-2026-00003"].id, role: "SOURCED", revenueSharePercent: 100, commissionPercentOverride: 7, registeredAt: at(-70), registrationExpiresAt: at(-10), notes: "Introduced the account and stayed involved through discovery." },
-  { opportunityId: opp["OPP-2026-00001"].id, partnerId: partner["PTR-2026-00001"].id, role: "DELIVERED", revenueSharePercent: 100, commissionPercentOverride: 12, registeredAt: at(-45), registrationExpiresAt: at(45) },
-  { opportunityId: opp["OPP-2026-00004"].id, partnerId: partner["PTR-2026-00001"].id, role: "INFLUENCED", revenueSharePercent: 60, commissionPercentOverride: 12, registeredAt: at(-20), registrationExpiresAt: at(70) },
-  { opportunityId: opp["OPP-2026-00005"].id, partnerId: partner["PTR-2026-00002"].id, role: "RESOLD", revenueSharePercent: 100, commissionPercentOverride: 15, registeredAt: at(-15), registrationExpiresAt: at(105) },
+// ------------------------------------------------ deals credited to partners
+// A deal's partner is what pays commission. Setting it makes the database open
+// the deal's commission record at the partner's rate, and keep it in step with
+// the deal from then on - so there is nothing to seed for commission itself.
+// Setting the same partner again on a re-run is allowed and changes nothing.
+const creditedDeals = [
+  ["OPP-2026-00003", "PTR-2026-00003"], // won: the referral that brought Karachi Logistics
+  ["OPP-2026-00001", "PTR-2026-00001"],
+  ["OPP-2026-00004", "PTR-2026-00001"],
+  ["OPP-2026-00005", "PTR-2026-00002"],
 ];
-
-// commission_record references opportunity_partner, so its demo rows go first
-// or the delete below hits a foreign key.
-{
+for (const [oppNumber, partnerNumber] of creditedDeals) {
   const { error } = await db
-    .from("commission_record")
-    .delete()
-    .in("commissionNumber", ["COM-2026-00001", "COM-2026-00002"]);
-  fail("commission_record clear", error);
+    .from("opportunity")
+    .update({ sourcePartnerId: partner[partnerNumber].id })
+    .eq("id", opp[oppNumber].id);
+  fail(`credit ${oppNumber}`, error);
 }
-
-const oppPartners = [];
-for (const oppId of new Set(oppPartnerRows.map((r) => r.opportunityId))) {
-  const rows = oppPartnerRows.filter((r) => r.opportunityId === oppId);
-  oppPartners.push(...(await replaceChildren("opportunity_partner", "opportunityId", oppId, rows)));
+{
+  const { data, error } = await db
+    .from("partner_commission")
+    .select("id")
+    .in("opportunityId", creditedDeals.map(([oppNumber]) => opp[oppNumber].id));
+  fail("partner_commission read", error);
+  console.log(`  ok partner_commission  ${data.length}`);
 }
-console.log(`  ok opportunity_partner ${oppPartners.length}`);
-
-// ------------------------------------------------------ commission plan
-const plan = await ensureRow(
-  "commission_plan",
-  { name: "Standard Partner Plan 2026" },
-  {
-    name: "Standard Partner Plan 2026",
-    description: "Flat commission on collected amount, settled monthly.",
-    basis: "COLLECTED_AMOUNT",
-    trigger: "ON_PAYMENT_RECEIVED",
-    rateType: "FLAT_PERCENT",
-    flatPercent: 7,
-    minimumDealAmount: 250000,
-    payoutDelayDays: 15,
-    clawbackWindowDays: 90,
-    effectiveFrom: day(-365),
-    active: true,
-  },
-);
-console.log("  ok commission_plan     1");
 
 // ------------------------------------------------------------ quotations
 const quotations = await upsert(
@@ -803,60 +779,6 @@ console.log(`  ok payment             ${payments.length}`);
   fail("payment_allocation insert", error);
 }
 console.log("  ok payment_allocation  2");
-
-// ---------------------------------------------------- commission records
-const referrerLink = oppPartners.find(
-  (r) => r.opportunityId === opp["OPP-2026-00003"].id && r.partnerId === partner["PTR-2026-00003"].id,
-);
-
-const commissions = await upsert(
-  "commission_record",
-  [
-    {
-      commissionNumber: "COM-2026-00001",
-      partnerId: partner["PTR-2026-00003"].id,
-      opportunityId: opp["OPP-2026-00003"].id,
-      opportunityPartnerId: referrerLink.id,
-      planId: plan.id,
-      invoiceId: invoice["INV-2026-00001"].id,
-      paymentId: payment["PAY-2026-00001"].id,
-      basis: "COLLECTED_AMOUNT",
-      basisAmount: 1486800,
-      ratePercent: 7,
-      commissionAmount: 104076,
-      withholdingTaxAmount: 10408,
-      netPayableAmount: 93668,
-      currencyCode: "PKR",
-      status: "APPROVED",
-      earnedDate: day(-30),
-      payableFromDate: day(-15),
-      approvedById: finance,
-      approvedAt: at(-14),
-      calculationNotes: "Referral commission on the collected advance instalment.",
-    },
-    {
-      commissionNumber: "COM-2026-00002",
-      partnerId: partner["PTR-2026-00003"].id,
-      opportunityId: opp["OPP-2026-00003"].id,
-      opportunityPartnerId: referrerLink.id,
-      planId: plan.id,
-      invoiceId: invoice["INV-2026-00002"].id,
-      paymentId: payment["PAY-2026-00002"].id,
-      basis: "COLLECTED_AMOUNT",
-      basisAmount: 500000,
-      ratePercent: 7,
-      commissionAmount: 35000,
-      withholdingTaxAmount: 3500,
-      netPayableAmount: 31500,
-      currencyCode: "PKR",
-      status: "ACCRUED",
-      earnedDate: day(-4),
-      calculationNotes: "Accrued on the part payment against the UAT milestone.",
-    },
-  ],
-  "commissionNumber",
-);
-console.log(`  ok commission_record   ${commissions.length}`);
 
 // ------------------------------------------------------- service level data
 //
@@ -1371,7 +1293,6 @@ console.log(`  ok activity            ${activities.length}`);
     Project: projects.length,
     Campaign: campaigns.length,
     Contract: contracts.length,
-    CommissionRecord: commissions.length,
   };
 
   const { data: current, error: readErr } = await db
