@@ -128,7 +128,9 @@ export default async function PortalDealsPage({
               {deals.map((d) => (
                 <TR key={d.id}>
                   <TD>
-                    <span className="text-sm font-medium">{d.name}</span>
+                    <Link href={`/portal/deals/${d.id}`} className="text-sm font-medium hover:underline">
+                      {d.name}
+                    </Link>
                     <p className="text-xs text-muted-foreground">{d.opportunityNumber}</p>
                   </TD>
                   <TD priority="secondary" className="text-sm">

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AlertTriangle, Building2, Plus, Target, Users } from "lucide-react";
+import { AlertTriangle, Building2, Pencil, Plus, Target, Users } from "lucide-react";
 import { getMyCustomer } from "@/server/partner-customers";
+import { listPartnerActivities } from "@/server/partner-leads";
+import { PartnerActivityPanel } from "../../activity-panel";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, Button,
   Table, THead, TBody, TR, TH, TD, EmptyState, statusTone,
@@ -31,7 +33,7 @@ export default async function PortalAccountPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const account = await getMyCustomer(id);
+  const [account, activities] = await Promise.all([getMyCustomer(id), listPartnerActivities("Account", id)]);
 
   // RLS returns nothing for an account this partner did not source, so a
   // missing row and a forbidden one look the same here — which is what we want
@@ -61,6 +63,11 @@ export default async function PortalAccountPage({
             Contested
           </Badge>
         )}
+        <Button asChild size="sm" variant="outline">
+          <Link href={`/portal/customers/${account.id}/edit`}>
+            <Pencil className="h-4 w-4" /> Edit
+          </Link>
+        </Button>
         <Button asChild size="sm" variant="outline">
           <Link href={`/portal/customers/${account.id}/contact`}>
             <Plus className="h-4 w-4" /> Add employee
@@ -143,9 +150,12 @@ export default async function PortalAccountPage({
                   {account.contacts.map((contact) => (
                     <TR key={contact.id}>
                       <TD>
-                        <span className="text-sm font-medium">
+                        <Link
+                          href={`/portal/customers/${account.id}/contacts/${contact.id}`}
+                          className="text-sm font-medium hover:underline"
+                        >
                           {contact.firstName} {contact.lastName}
-                        </span>
+                        </Link>
                         {contact.isPrimary && (
                           <Badge tone="neutral" className="ml-2">Primary</Badge>
                         )}
@@ -196,7 +206,9 @@ export default async function PortalAccountPage({
                 {account.opportunities.map((deal) => (
                   <TR key={deal.id}>
                     <TD>
-                      <span className="text-sm font-medium">{deal.name}</span>
+                      <Link href={`/portal/deals/${deal.id}`} className="text-sm font-medium hover:underline">
+                        {deal.name}
+                      </Link>
                       <p className="text-xs text-muted-foreground">{deal.opportunityNumber}</p>
                     </TD>
                     <TD>
@@ -216,6 +228,10 @@ export default async function PortalAccountPage({
           )}
         </CardContent>
       </Card>
+
+      <div className="mt-6">
+        <PartnerActivityPanel entityType="Account" entityId={account.id} activities={activities} canLog />
+      </div>
     </>
   );
 }
