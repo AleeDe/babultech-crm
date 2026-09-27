@@ -9,6 +9,7 @@ import {
 import { formatMoney, formatCompactMoney, formatDate, humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { ExportButton } from "@/components/export-button";
+import { listPartnerOptions } from "@/server/partners";
 
 const STAGES = [
   "DISCOVERY", "QUALIFICATION", "REQUIREMENTS", "SOLUTION_PROPOSED",
@@ -19,15 +20,16 @@ const STAGES = [
 export default async function OpportunitiesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ stage?: string; search?: string }>;
+  searchParams: Promise<{ stage?: string; search?: string; partnerId?: string }>;
 }) {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="opportunities" />;
 
   const params = await searchParams;
-  const [deals, pipeline] = await Promise.all([
+  const [deals, pipeline, partners] = await Promise.all([
     listOpportunities(params),
     getPipelineByStage(),
+    listPartnerOptions(),
   ]);
 
   const open = pipeline.filter((p) => !["CLOSED_WON", "CLOSED_LOST"].includes(p.stage));
@@ -74,6 +76,14 @@ export default async function OpportunitiesPage({
               <option key={s} value={s}>{humanize(s)}</option>
             ))}
           </Select>
+          {partners.length > 0 && (
+            <Select name="partnerId" defaultValue={params.partnerId ?? ""} className="w-52" aria-label="Partner">
+              <option value="">All partners</option>
+              {partners.map((p) => (
+                <option key={p.id} value={p.id}>{p.displayName}</option>
+              ))}
+            </Select>
+          )}
           <Button type="submit" variant="secondary">Filter</Button>
         </form>
 

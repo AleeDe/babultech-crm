@@ -42,12 +42,14 @@ const EXPORTS: Record<string, ExportDefinition> = {
       listAccounts({
         search: p.get("search") ?? undefined,
         accountType: p.get("accountType") ?? undefined,
+        partnerId: p.get("partnerId") ?? undefined,
       }),
     columns: [
       { header: "Account number", value: (r) => r.accountNumber },
       { header: "Name", value: (r) => r.name },
       { header: "Type", value: (r) => r.accountType },
       { header: "Status", value: (r) => r.customerStatus },
+      { header: "Brought by", value: (r) => (r.sourcePartner as { displayName?: string } | null)?.displayName ?? "" },
       { header: "Owner", value: (r) => r.owner?.fullName },
       { header: "Industry", value: (r) => r.industry },
       { header: "Website", value: (r) => r.website },
@@ -87,6 +89,7 @@ const EXPORTS: Record<string, ExportDefinition> = {
         search: p.get("search") ?? undefined,
         status: p.get("status") ?? undefined,
         source: p.get("source") ?? undefined,
+        partnerId: p.get("partnerId") ?? undefined,
       }),
     columns: [
       { header: "Lead number", value: (r) => r.leadNumber },
@@ -112,6 +115,7 @@ const EXPORTS: Record<string, ExportDefinition> = {
       listOpportunities({
         search: p.get("search") ?? undefined,
         stage: p.get("stage") ?? undefined,
+        partnerId: p.get("partnerId") ?? undefined,
       }),
     columns: [
       { header: "Number", value: (r) => r.opportunityNumber },

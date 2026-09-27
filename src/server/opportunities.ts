@@ -289,7 +289,13 @@ export async function changeStage(
   }
 }
 
-export async function listOpportunities(filters?: { stage?: string; search?: string; ownerUserId?: string }) {
+export async function listOpportunities(filters?: {
+  stage?: string;
+  search?: string;
+  ownerUserId?: string;
+  /** The partner the deal is credited to. */
+  partnerId?: string;
+}) {
   const { where } = await scopedContext("ownerUserId");
 
   const db = await supabaseServer();
@@ -311,6 +317,7 @@ export async function listOpportunities(filters?: { stage?: string; search?: str
 
   if (filters?.stage) query = query.eq("stage", filters.stage);
   if (filters?.ownerUserId) query = query.eq("ownerUserId", filters.ownerUserId);
+  if (filters?.partnerId) query = query.eq("sourcePartnerId", filters.partnerId);
   if (filters?.search) {
     // Prisma's OR also matched the related account's name. PostgREST cannot OR
     // across an embedded table ("failed to parse logic tree"), so the matching

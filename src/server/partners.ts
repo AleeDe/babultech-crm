@@ -223,6 +223,21 @@ export async function updatePartner(
 // Queries
 // ---------------------------------------------------------------------------
 
+/**
+ * Every partner the viewer may read, by name - the choices for a "Partner"
+ * filter. Row-level security decides who that is; somebody who may not read
+ * partners gets none, and the filter is not shown.
+ */
+export async function listPartnerOptions(): Promise<{ id: string; displayName: string }[]> {
+  const db = await supabaseServer();
+  const { data } = await db
+    .from("partner")
+    .select("id, displayName")
+    .is("deletedAt", null)
+    .order("displayName");
+  return (data ?? []) as { id: string; displayName: string }[];
+}
+
 export async function listPartners(filters?: {
   search?: string;
   status?: string;

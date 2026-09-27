@@ -66,6 +66,18 @@ export default async function AccountDetailPage({
         </Button>
       </PageHeader>
 
+      {account.sourcePartner && (
+        <div className="mb-5">
+          <Alert tone="info">
+            Brought to us by{" "}
+            <Link href={`/partners/${account.sourcePartner.id}`} className="font-medium underline">
+              {account.sourcePartner.displayName}
+            </Link>
+            . Deals on this account are credited to them, and earn them commission at their rate.
+          </Alert>
+        </div>
+      )}
+
       {account.partner && (
         <div className="mb-5">
           <Alert tone="info">

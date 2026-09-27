@@ -10,6 +10,7 @@ import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { ExportButton } from "@/components/export-button";
 import { LeadsTable } from "./leads-table";
 import { getAssignableUsers } from "@/server/bulk";
+import { listPartnerOptions } from "@/server/partners";
 
 const STATUSES = [
   "NEW", "ASSIGNED", "ATTEMPTED_CONTACT", "CONTACTED", "DISCOVERY_SCHEDULED",
@@ -20,17 +21,18 @@ export default async function LeadsPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    search?: string; status?: string; source?: string; campaignId?: string;
+    search?: string; status?: string; source?: string; campaignId?: string; partnerId?: string;
   }>;
 }) {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.LEAD_READ)) return <Forbidden what="leads" />;
 
   const params = await searchParams;
-  const [leads, users, campaigns] = await Promise.all([
+  const [leads, users, campaigns, partners] = await Promise.all([
     listLeads(params),
     getAssignableUsers(),
     listCampaigns(),
+    listPartnerOptions(),
   ]);
 
   const open = leads.filter((l) => !["CONVERTED", "DISQUALIFIED"].includes(l.status));
@@ -52,7 +54,7 @@ export default async function LeadsPage({
         <Button asChild variant="outline"><Link href="/leads/calling">My calling queue</Link></Button>
         <Button asChild variant="outline"><Link href="/leads/handoffs">Sales handoffs</Link></Button>
         <Button asChild variant="outline"><Link href="/leads/research">Research quality</Link></Button>
-        <ExportButton entity="leads" params={{ search: params.search, status: params.status, source: params.source }} />
+        <ExportButton entity="leads" params={{ search: params.search, status: params.status, source: params.source, partnerId: params.partnerId }} />
         {can(_me, PERMISSIONS.LEAD_WRITE) && (
           <Button asChild variant="outline">
             <Link href="/leads/import">
@@ -93,6 +95,14 @@ export default async function LeadsPage({
             <option value="">All sources</option>
             <option value="partner">Partner registrations</option>
           </Select>
+          {partners.length > 0 && (
+            <Select name="partnerId" defaultValue={params.partnerId ?? ""} className="w-52" aria-label="Partner">
+              <option value="">All partners</option>
+              {partners.map((p) => (
+                <option key={p.id} value={p.id}>{p.displayName}</option>
+              ))}
+            </Select>
+          )}
           <Select name="status" defaultValue={params.status ?? ""} className="w-52">
             <option value="">All statuses</option>
             {STATUSES.map((s) => (

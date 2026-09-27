@@ -8,17 +8,18 @@ import {
 import { humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { ExportButton } from "@/components/export-button";
+import { listPartnerOptions } from "@/server/partners";
 
 export default async function AccountsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string; accountType?: string }>;
+  searchParams: Promise<{ search?: string; accountType?: string; partnerId?: string }>;
 }) {
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.ACCOUNT_READ)) return <Forbidden what="accounts" />;
 
   const params = await searchParams;
-  const accounts = await listAccounts(params);
+  const [accounts, partners] = await Promise.all([listAccounts(params), listPartnerOptions()]);
 
   return (
     <>
@@ -26,7 +27,7 @@ export default async function AccountsPage({
         title="Accounts"
         description="Customers, prospects, partners and vendors - one organisation record, many roles."
       >
-        <ExportButton entity="accounts" params={{ search: params.search, accountType: params.accountType }} />
+        <ExportButton entity="accounts" params={{ search: params.search, accountType: params.accountType, partnerId: params.partnerId }} />
         <Button asChild>
           <Link href="/accounts/new">
             <Plus className="h-4 w-4" /> New account
@@ -45,6 +46,14 @@ export default async function AccountsPage({
               <option key={t} value={t}>{humanize(t)}</option>
             ))}
           </Select>
+          {partners.length > 0 && (
+            <Select name="partnerId" defaultValue={params.partnerId ?? ""} className="w-52" aria-label="Brought by partner">
+              <option value="">All partners</option>
+              {partners.map((p) => (
+                <option key={p.id} value={p.id}>{p.displayName}</option>
+              ))}
+            </Select>
+          )}
           <Button type="submit" variant="secondary">Filter</Button>
         </form>
 
@@ -57,6 +66,7 @@ export default async function AccountsPage({
                 <TH>Account</TH>
                 <TH>Type</TH>
                 <TH priority="secondary">Owner</TH>
+                <TH priority="secondary">Brought by</TH>
                 <TH priority="tertiary">Industry</TH>
                 <TH className="text-right" priority="tertiary">Contacts</TH>
                 <TH className="text-right" priority="tertiary">Deals</TH>
@@ -84,6 +94,15 @@ export default async function AccountsPage({
                     )}
                   </TD>
                   <TD priority="secondary" className="text-sm text-muted-foreground">{a.owner?.fullName}</TD>
+                  <TD priority="secondary" className="text-sm">
+                    {a.sourcePartner ? (
+                      <Link href={`/partners/${a.sourcePartner.id}`} className="text-primary hover:underline">
+                        {a.sourcePartner.displayName}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TD>
                   <TD priority="tertiary" className="text-sm text-muted-foreground">{a.industry ?? "—"}</TD>
                   <TD priority="tertiary" className="text-right tabular">{a._count.contacts}</TD>
                   <TD priority="tertiary" className="text-right tabular">{a._count.opportunities}</TD>

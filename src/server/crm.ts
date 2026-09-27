@@ -99,7 +99,12 @@ export async function updateAccount(
   }
 }
 
-export async function listAccounts(filters?: { search?: string; accountType?: string }) {
+export async function listAccounts(filters?: {
+  search?: string;
+  accountType?: string;
+  /** The partner who brought the account to us. */
+  partnerId?: string;
+}) {
   const { where } = await scopedContext("ownerUserId");
 
   const db = await supabaseServer();
@@ -110,6 +115,7 @@ export async function listAccounts(filters?: { search?: string; accountType?: st
       `*,
        owner:app_user!account_ownerUserId_fkey ( id, fullName ),
        partner!partner_accountId_fkey ( id, partnerNumber, partnerType, tier ),
+       sourcePartner:partner!account_sourcePartnerId_fkey ( id, displayName ),
        contacts:contact ( count ),
        opportunities:opportunity ( count ),
        cases:support_case ( count ),
@@ -121,6 +127,7 @@ export async function listAccounts(filters?: { search?: string; accountType?: st
   query = applyScope(query, where);
 
   if (filters?.accountType) query = query.eq("accountType", filters.accountType);
+  if (filters?.partnerId) query = query.eq("sourcePartnerId", filters.partnerId);
   if (filters?.search) {
     // PostgREST's or() takes a comma-separated filter list; ilike with %
     // wildcards is Prisma's `contains` + `mode: "insensitive"`.
@@ -140,6 +147,7 @@ export async function listAccounts(filters?: { search?: string; accountType?: st
     ...row,
     owner: one(row.owner as never),
     partner: one(row.partner as never),
+    sourcePartner: one(row.sourcePartner as never) as { id: string; displayName: string } | null,
     _count: {
       contacts: countOf(row.contacts),
       opportunities: countOf(row.opportunities),
@@ -161,6 +169,7 @@ export async function getAccount(id: string) {
        owner:app_user!account_ownerUserId_fkey ( id, fullName, email ),
        parentAccount:parentAccountId ( id, name ),
        partner!partner_accountId_fkey ( * ),
+       sourcePartner:partner!account_sourcePartnerId_fkey ( id, displayName, partnerNumber ),
        contacts:contact ( * ),
        opportunities:opportunity ( id, opportunityNumber, name, stage, amount, currencyCode, expectedCloseDate, deletedAt ),
        contracts:contract ( *, deletedAt ),
@@ -820,6 +829,8 @@ export async function listLeads(filters?: {
   source?: string;
   /** The campaign that produced the lead - how a campaign's audience is found. */
   campaignId?: string;
+  /** The partner the lead is credited to. */
+  partnerId?: string;
 }) {
   const { where } = await scopedContext("ownerUserId");
 
@@ -842,6 +853,7 @@ export async function listLeads(filters?: {
   if (filters?.source === "partner") query = query.not("referredByPartnerId", "is", null);
   if (filters?.status) query = query.eq("status", filters.status);
   if (filters?.campaignId) query = query.eq("campaignId", filters.campaignId);
+  if (filters?.partnerId) query = query.eq("referredByPartnerId", filters.partnerId);
   if (filters?.search) {
     const s = filters.search.replace(/[,()]/g, "");
     query = query.or(
