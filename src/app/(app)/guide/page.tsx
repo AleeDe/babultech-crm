@@ -96,8 +96,8 @@ const FLOW: Step[] = [
     href: "/projects",
     needs: PERMISSIONS.PROJECT_READ,
     what: "Delivery of what was sold.",
-    how: "Projects › New project, against the account and the won opportunity.",
-    then: "Add phases, milestones and members. Time logged against tasks becomes billable.",
+    how: "Created for you when a deal is won: Project-<deal>, with a task for every service sold in hours. Projects › New project makes one by hand.",
+    then: "Add phases, milestones and members. Time logged against tasks becomes billable, at the rate sold on the deal.",
   },
   {
     icon: Receipt,

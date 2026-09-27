@@ -84,7 +84,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
       "A partner's deal carries their commission record, and winning one can start a project",
     ],
     watchOut:
-      "A deal cannot be marked Closed Won without an accepted quote, an amount and a close date. Partners close their own deals from the portal by the same rule.",
+      "A deal cannot be marked Closed Won without an amount, at least one product or service, and an accepted quote. Winning it starts its delivery project. Partners close their own deals from the portal by the same rule.",
   },
 
   "/quotations": {
