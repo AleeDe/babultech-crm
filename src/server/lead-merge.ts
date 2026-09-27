@@ -5,19 +5,22 @@ import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { MERGEABLE_FIELDS } from "@/lib/mergeable-fields";
+import { emailKey, phoneKey } from "@/lib/duplicates";
 import type { ActionResult } from "./partners";
 
 /**
  * Finding and merging duplicate leads.
  *
- * Duplicates are expected here rather than prevented. A campaign member belongs
- * to the campaign that produced them, so somebody at a webinar and a trade show
- * is two members and two leads - and keeping the fact that they came from both
- * places is worth more than a tidy list.
+ * New duplicates are refused where they are made: a lead whose email address,
+ * phone number or WhatsApp number is already on a lead or a contact cannot be
+ * created (20260928000001_duplicate_rule.sql), and a campaign member who is
+ * already a lead is linked to that lead on conversion rather than made into a
+ * second one. What this screen finds is what got in before that rule, on the
+ * same keys.
  *
  * The person who can tell whether two records are one human is the agent working
  * them, so merging is a deliberate act with a screen behind it rather than a
- * guess made at import time.
+ * guess.
  */
 
 
@@ -71,14 +74,14 @@ const completenessOf = (lead: Record<string, unknown>) =>
   }).length;
 
 /**
- * Leads that share an address or a phone number, grouped.
+ * Leads that share an address or a number, grouped.
  *
  * Grouping is done here rather than in SQL because the answer is a shape - a
- * list of groups - and PostgREST returns rows. The view supplies the match keys;
- * this assembles them.
+ * list of groups - and PostgREST returns rows.
  *
- * Phone matches on its last nine digits, the same rule the view and the partner
- * conflict check use, so +92 300 7654321 and 03007654321 are one number.
+ * The keys are the duplicate rule's: email, and phone and WhatsApp on their last
+ * nine digits, so +92 300 7654321 and 03007654321 are one number - and across
+ * the two fields, so one lead's WhatsApp matches another's phone.
  */
 export async function findDuplicateLeads(): Promise<DuplicateGroup[]> {
   await requirePermission(PERMISSIONS.LEAD_READ);
@@ -102,11 +105,6 @@ export async function findDuplicateLeads(): Promise<DuplicateGroup[]> {
     completeness: completenessOf(l as Record<string, unknown>),
   })) as unknown as DuplicateLead[];
 
-  const digits = (phone: string | null) => {
-    const only = (phone ?? "").replace(/\D/g, "");
-    return only.length >= 9 ? only.slice(-9) : null;
-  };
-
   // One bucket per key, then keys with more than one lead in them become groups.
   const byKey = new Map<string, { label: string; leads: DuplicateLead[] }>();
 
@@ -116,10 +114,16 @@ export async function findDuplicateLeads(): Promise<DuplicateGroup[]> {
   };
 
   for (const lead of leads) {
-    const email = lead.email?.toLowerCase().trim();
+    const email = emailKey(lead.email);
     if (email) add(`e:${email}`, email, lead);
-    const tail = digits(lead.phone);
-    if (tail) add(`p:${tail}`, lead.phone!, lead);
+    // Once per number: a lead whose phone and WhatsApp are the same number must
+    // not land in its own group twice.
+    const numbers = new Map<string, string>();
+    for (const raw of [lead.phone, lead.whatsapp]) {
+      const key = phoneKey(raw);
+      if (key && !numbers.has(key)) numbers.set(key, raw!);
+    }
+    for (const [key, raw] of numbers) add(`p:${key}`, raw, lead);
   }
 
   const groups: DuplicateGroup[] = [];

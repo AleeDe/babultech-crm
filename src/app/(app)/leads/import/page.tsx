@@ -16,7 +16,7 @@ export default async function ImportLeadsPage() {
         backTo="/leads"
         backLabel="Back to leads"
         title="Import leads"
-        description="Paste from a spreadsheet or upload a CSV, then say which column is which."
+        description="Paste from a spreadsheet or upload a CSV, then say which column is which. Anybody already on file, as a lead or a contact, is left out and listed."
       />
       <LeadImportForm
         users={serialize(options.users)}

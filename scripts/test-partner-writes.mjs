@@ -189,7 +189,7 @@ try {
   );
   pass("Cannot read a rival customer's contact row");
 
-  // --- 3. The conflict check tells, without telling too much ---------------
+  // --- 3. The conflict check says that, not who ----------------------------
 
   const clashRaw = await check(asPartner.rpc("partner_find_conflict", {
     p_account_name: `QA Rival Customer ${run}`, p_email: null, p_phone: null,
@@ -198,11 +198,16 @@ try {
 
   assert.equal(clash.conflict, true, "A name that already exists must be reported as a conflict");
   assert.equal(clash.mine, false, "A rival's customer must not be reported as the partner's own");
-  assert.equal(clash.broughtBy, `QA Rival ${run}`, "The partner holding the relationship must be named");
+  assert.equal(clash.matchedOn, "name", "And it should say the company name is what matched");
+  // A partner sees their own records and nobody else's: not the rival's name,
+  // not the customer's details, not its contact.
   const clashText = JSON.stringify(clash);
+  assert.ok(!clashText.includes(`QA Rival ${run}`), "A conflict must never name the partner holding it");
+  assert.equal(clash.accountName, undefined, "Nor describe a customer that is not theirs");
+  assert.equal(clash.city, undefined, "Not even where it is");
   assert.ok(!clashText.includes("qa-secret-"), "A conflict must never leak the existing contact's email");
   assert.ok(!clashText.includes("7654321"), "A conflict must never leak the existing contact's phone");
-  pass("A conflict names the partner who holds it, and leaks no contact details");
+  pass("A conflict says the customer is known - and nothing about whose it is or who they are");
 
   // The phone match ignores formatting, so a duplicate cannot be registered by
   // typing the same number a different way.
@@ -211,7 +216,24 @@ try {
   }), "Check a conflict by reformatted phone number");
   const byPhone = typeof byPhoneRaw === "string" ? JSON.parse(byPhoneRaw) : byPhoneRaw;
   assert.equal(byPhone.conflict, true, "A reformatted phone number must still match");
+  assert.equal(byPhone.matchedOn, "phone", "And say the number is what matched");
   pass("A reformatted phone number still finds the duplicate");
+
+  // The person is already a contact, so the duplicate rule refuses them outright
+  // - and the refusal is as tight-lipped as the check.
+  const refused = await asPartner.rpc("partner_create_customer", {
+    p_account_name: `Another Name Entirely ${run}`, p_first_name: "Secret", p_last_name: "Again",
+    p_email: `QA-SECRET-${run}@example.com`, p_phone: null, p_job_title: null, p_industry: null,
+    p_city: null, p_website: null, p_deal_name: null, p_deal_amount: null, p_deal_close: null,
+    p_deal_currency: "PKR", p_notes: null,
+  });
+  assert.ok(refused.error, "A customer whose contact is already on file must be refused");
+  assert.equal(refused.error.hint, "duplicate_person", "As a duplicate person");
+  assert.match(refused.error.message, /already in our records/i, "Saying the person is known");
+  assert.ok(!refused.error.message.includes(`Buyer ${run}`), "Without naming who they are");
+  assert.ok(!refused.error.message.includes("QA Rival"), "Or whose customer they are");
+  assert.deepEqual(JSON.parse(refused.error.details), { field: "email", hidden: true }, "The detail carries only what matched");
+  pass("A person already on file cannot be registered again, and the partner learns nothing about them");
 
   // --- 4. Reaching across is refused ---------------------------------------
 

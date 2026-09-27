@@ -20,21 +20,27 @@ import type { ActionResult } from "./partners";
  * to give a decent error message before a round trip, not to be the guard.
  */
 
-/** The shape partner_find_conflict returns. */
+/**
+ * The shape partner_find_conflict returns.
+ *
+ * A partner sees their own records and nobody else's, so a clash with a
+ * customer that is not theirs says only that it exists and what matched. The
+ * description of the customer comes back only when it is the partner's own.
+ */
 export interface RegistrationConflict {
   conflict: boolean;
   /** True when the existing customer is one this partner already brought. */
   mine?: boolean;
+  /**
+   * What matched. A contact's email or phone number means the person is already
+   * on file, and the duplicate rule will refuse them; a company name only flags.
+   */
+  matchedOn?: "email" | "phone" | "name";
   accountName?: string;
   city?: string | null;
   accountType?: string;
   customerStatus?: string | null;
   registeredOn?: string;
-  /**
-   * "you", the other partner's name, or null when the customer is simply ours.
-   * Contact details are deliberately never returned — see the migration.
-   */
-  broughtBy?: string | null;
 }
 
 async function requirePartnerId(): Promise<string> {

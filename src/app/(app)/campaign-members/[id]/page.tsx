@@ -51,7 +51,9 @@ export default async function CampaignMemberPage({
       >
         {member.businessType && <Badge tone="neutral">{humanize(member.businessType)}</Badge>}
         {member.companySize && <Badge tone="neutral">{humanize(member.companySize)}</Badge>}
-        {member.convertedAt && <Badge tone="success">Converted to lead</Badge>}
+        {member.convertedAt && (
+          <Badge tone="success">{member.leadId ? "Converted to lead" : "Linked to a contact"}</Badge>
+        )}
         {!member.active && <Badge tone="warning">Off the active list</Badge>}
         {canWrite && (
           <Button asChild variant="outline">
@@ -69,6 +71,18 @@ export default async function CampaignMemberPage({
             {formatDate(member.convertedAt)}.{" "}
             <Link href={`/leads/${member.leadId}`} className="font-medium underline">
               Open the lead <ArrowRight className="inline h-3.5 w-3.5" />
+            </Link>
+          </Alert>
+        </div>
+      )}
+
+      {member.convertedAt && !member.leadId && member.contactId && (
+        <div className="mb-5">
+          <Alert tone="success">
+            <span className="font-medium">This person is already a customer&apos;s contact.</span>{" "}
+            Linked {formatDate(member.convertedAt)}, so this campaign shows on their record.{" "}
+            <Link href={`/contacts/${member.contactId}`} className="font-medium underline">
+              Open the contact <ArrowRight className="inline h-3.5 w-3.5" />
             </Link>
           </Alert>
         </div>
@@ -99,6 +113,7 @@ export default async function CampaignMemberPage({
             name={name}
             optedOut={member.emailOptOut}
             convertedLeadId={member.leadId}
+            linkedContactId={member.convertedAt ? member.contactId : null}
           />
         </div>
       )}

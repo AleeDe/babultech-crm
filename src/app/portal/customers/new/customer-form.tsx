@@ -21,10 +21,13 @@ import {
  * every keystroke — a partner types a name once, and a check per character
  * would be both wasteful and a way to probe the customer list quickly.
  *
- * A conflict never blocks the form. The partner is told, shown who holds the
- * relationship, and left to decide whether to carry on; if they do, the record
- * is created and flagged for a human. Refusing outright would only mean the
- * clash goes unrecorded and gets discovered at invoicing instead.
+ * A company name that is already on our books does not block the form: the
+ * partner is told, and if they carry on the record is created and flagged for a
+ * human, because two firms can share a name. A person who is already on file -
+ * the same email address or phone number - is refused when the form is sent,
+ * under the duplicate rule, and the partner is told so now. Either way they
+ * learn only that the customer exists, never whose it is or anything about it,
+ * unless it is their own.
  */
 export function PartnerCustomerForm({ currencies }: { currencies: { code: string; name: string }[] }) {
   const router = useRouter();
@@ -88,21 +91,27 @@ export function PartnerCustomerForm({ currencies }: { currencies: { code: string
       {error && <Alert tone="danger">{error}</Alert>}
 
       {conflict && (
-        <Alert tone={conflict.mine ? "info" : "warning"}>
+        <Alert tone={conflict.mine ? "info" : conflict.matchedOn === "name" ? "warning" : "danger"}>
           <div className="space-y-2">
             <p className="flex items-center gap-2 font-medium">
               <AlertTriangle className="h-4 w-4" />
               {conflict.mine
                 ? "You have already registered this customer."
-                : "A customer like this already exists."}
+                : conflict.matchedOn === "email"
+                  ? "Someone with this email address is already in our records."
+                  : conflict.matchedOn === "phone"
+                    ? "Someone with this phone number is already in our records."
+                    : "A company with this name is already in our records."}
             </p>
             <p className="text-sm">
               {conflict.mine
                 ? "Adding them again would create a duplicate. Open your accounts to find them."
-                : "You can still register them, but the relationship may already belong to someone else. We will look into it and come back to you."}
+                : conflict.matchedOn === "name"
+                  ? "You can still register them, but the relationship may already belong to someone else. We will look into it and come back to you."
+                  : "They cannot be added again. If you believe this is your relationship, your partner manager can look into it."}
             </p>
 
-            {!revealed ? (
+            {!conflict.mine ? null : !revealed ? (
               <Button type="button" size="sm" variant="outline" onClick={() => setRevealed(true)}>
                 <Info className="h-4 w-4" /> Give me details
               </Button>
@@ -125,28 +134,10 @@ export function PartnerCustomerForm({ currencies }: { currencies: { code: string
                   {conflict.registeredOn && (
                     <div><dt className="inline font-medium">On our books since: </dt><dd className="inline">{conflict.registeredOn}</dd></div>
                   )}
-                  <div>
-                    <dt className="inline font-medium">Brought by: </dt>
-                    <dd className="inline">
-                      {conflict.broughtBy === "you"
-                        ? "you"
-                        : conflict.broughtBy
-                          ? conflict.broughtBy
-                          : "us directly"}
-                    </dd>
-                  </div>
                 </dl>
-                {!conflict.mine && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Contact details are not shown for a customer that is not yours. Speak to your
-                    partner manager if you believe this is your relationship.
-                  </p>
-                )}
-                {conflict.mine && (
-                  <Link href="/portal/customers" className="mt-2 inline-block text-xs underline">
-                    Open your accounts
-                  </Link>
-                )}
+                <Link href="/portal/customers" className="mt-2 inline-block text-xs underline">
+                  Open your accounts
+                </Link>
               </div>
             )}
           </div>

@@ -45,11 +45,11 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
       "Unqualified prospects. Nobody has agreed to anything yet, and no account or deal exists.",
     needs: ["Campaigns, if you want to attribute where a lead came from"],
     feeds: [
-      "Converting a lead creates an Account, a Contact and an Opportunity",
+      "Converting a lead creates an Account, a Contact and an Opportunity - or, when the person is already a contact, uses that contact and their account",
       "A referring partner carries through to commission on the resulting deal",
     ],
     watchOut:
-      "Importing leads creates no accounts. The company name is free text until you convert.",
+      "A lead whose email, phone or WhatsApp number is already on a lead or a contact is refused, and you are shown which one. Numbers match on their last nine digits, so +92 300 and 0300 are the same. An import skips those people and lists them.",
   },
 
   "/campaigns": {
@@ -71,6 +71,8 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
     purpose: "The people at those organisations.",
     needs: ["An account to belong to"],
     feeds: ["Quotations and cases are addressed to a contact"],
+    watchOut:
+      "A contact whose email, phone, mobile or WhatsApp number is already on another contact is refused, and you are shown which one. One mobile number in any of those boxes counts as the same number.",
   },
 
   "/opportunities": {

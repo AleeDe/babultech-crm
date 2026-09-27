@@ -11,13 +11,9 @@ import { formatDate, humanize } from "@/lib/utils";
 /**
  * Leads that look like the same person.
  *
- * Duplicates here are expected rather than a fault. A campaign member belongs to
- * the campaign that produced them, so somebody who came to a webinar and then a
- * trade show is two members and two leads - and that is worth keeping, because
- * both campaigns really did reach them.
- *
- * This is where it gets tidied up, by the only person who can actually tell:
- * whoever is working the leads.
+ * New duplicates are refused when they are created, so what shows here is what
+ * got in before that rule. It gets tidied up by the only person who can actually
+ * tell: whoever is working the leads.
  */
 export default async function DuplicateLeadsPage() {
   const me = await requireUser();
@@ -33,7 +29,7 @@ export default async function DuplicateLeadsPage() {
         backTo="/leads"
         backLabel="Back to leads"
         title="Possible duplicates"
-        description="Leads sharing an email address or a phone number. Matched on the last nine digits, so a country code does not hide a match."
+        description="Leads sharing an email address, a phone number or a WhatsApp number, from before new duplicates were refused. Numbers are matched on their last nine digits, across both fields, so a country code does not hide a match."
       />
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -50,7 +46,7 @@ export default async function DuplicateLeadsPage() {
           <div className="py-10">
             <EmptyState
               title="No duplicates found"
-              description="No two live leads share an email address or a phone number."
+              description="No two live leads share an email address, a phone number or a WhatsApp number."
             />
           </div>
         </Card>
@@ -91,7 +87,7 @@ export default async function DuplicateLeadsPage() {
                         <TH>Lead</TH>
                         <TH priority="secondary">Company</TH>
                         <TH>Email</TH>
-                        <TH priority="secondary">Phone</TH>
+                        <TH priority="secondary">Phone / WhatsApp</TH>
                         <TH priority="tertiary">Source</TH>
                         <TH>Created</TH>
                         <TH className="text-right">Fields filled</TH>
@@ -115,7 +111,12 @@ export default async function DuplicateLeadsPage() {
                             {lead.companyName ?? "—"}
                           </TD>
                           <TD className="text-sm">{lead.email ?? "—"}</TD>
-                          <TD className="text-sm" priority="secondary">{lead.phone ?? "—"}</TD>
+                          <TD className="text-sm" priority="secondary">
+                            {lead.phone ?? "—"}
+                            {lead.whatsapp && lead.whatsapp !== lead.phone && (
+                              <p className="text-xs text-muted-foreground">WhatsApp {lead.whatsapp}</p>
+                            )}
+                          </TD>
                           <TD className="text-sm" priority="tertiary">
                             {lead.leadSource ? humanize(lead.leadSource) : "—"}
                           </TD>

@@ -46,6 +46,24 @@ export function applySearch<Q extends { or: (filter: string) => Q }>(
  * through here.
  */
 
+/**
+ * A database refusal that keeps what PostgREST said about it.
+ *
+ * Plain Error kept only the message, so a caller could not tell a duplicate
+ * person (hint 'duplicate_person', the match in details) from any other failure.
+ */
+export class DbError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+    readonly details?: string,
+    readonly hint?: string,
+  ) {
+    super(message);
+    this.name = "DbError";
+  }
+}
+
 /** Insert a row, allocating its human-readable number in the same transaction. */
 export async function createRecord<T = Record<string, unknown>>(
   table: string,
@@ -61,7 +79,7 @@ export async function createRecord<T = Record<string, unknown>>(
     p_sequence: numbering?.sequence ?? null,
   });
 
-  if (error) throw new Error(error.message);
+  if (error) throw new DbError(error.message, error.code, error.details, error.hint);
   return data as T;
 }
 
@@ -88,7 +106,7 @@ export async function updateRecord<T = Record<string, unknown>>(
     p_actor_id: actorId,
   });
 
-  if (error) throw new Error(error.message);
+  if (error) throw new DbError(error.message, error.code, error.details, error.hint);
   return data as T;
 }
 

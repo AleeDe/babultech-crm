@@ -1,9 +1,12 @@
 /**
  * Campaign member to lead, duplicates and all.
  *
- * Walks the redesigned flow: a campaign produces members, a member becomes a
- * lead carrying every field, the same person arriving through two campaigns
- * produces two leads, and merging them keeps everything attached to either.
+ * Walks the flow: a campaign produces members, a member becomes a lead carrying
+ * every field, and the same person arriving through a second campaign is linked
+ * to the lead she already is rather than made into another - the duplicate rule
+ * (20260928000001) refuses a second lead with her address or number. A second
+ * lead the rule cannot see, under another address, is still merged by hand,
+ * and the merge keeps everything attached to either.
  *
  * Runs as a real signed-in user rather than the service role wherever the app
  * would, so the row-level policies and the security-definer functions are
@@ -265,29 +268,69 @@ try {
   pass("Converting twice returns the same lead rather than making another");
 
   // ═══════════════════════════════════════════════════════════════════════
-  step("03", "The second campaign produces a duplicate lead");
+  step("03", "The second campaign links to the lead she already is");
   // ═══════════════════════════════════════════════════════════════════════
 
   const converted2 = await ok(
     session.rpc("convert_member_to_lead", { p_member_id: tradeshowMemberId }),
     "Convert the trade-show member",
   );
-  const tradeshowLeadId = converted2.leadId;
-  ids.leads.push(tradeshowLeadId);
-  assert.notEqual(tradeshowLeadId, webinarLeadId, "It is a separate lead, by design");
-  pass("A second lead exists for the same person - accepted, then merged");
+  assert.equal(converted2.linked, true, "She is already a lead, so the member must be linked, not converted");
+  assert.equal(converted2.leadId, webinarLeadId, "To the lead she already is");
+  assert.equal(converted2.matchedOn, "email", "Matched on her address");
+  pass(`The trade-show member is linked to ${converted.leadNumber} - no second lead`);
 
-  const dupes = await ok(
-    session.from("lead_duplicate_group")
-      .select("id, duplicate_count")
-      .in("id", [webinarLeadId, tradeshowLeadId]),
-    "Ask which leads look duplicated",
+  const leadsForHer = await ok(
+    admin.from("lead").select("id").ilike("email", sharedEmail).is("deletedAt", null),
+    "Count the leads with her address",
   );
-  assert.equal(dupes.length, 2, "Both leads should be in the view");
-  for (const d of dupes) {
-    assert.ok(d.duplicate_count >= 1, "Each should see the other as a duplicate");
+  assert.equal(leadsForHer.length, 1, "There must still be exactly one lead for her");
+
+  const linkedMembers = await ok(
+    admin.from("campaign_member").select("id, leadId, convertedAt")
+      .in("id", [webinarMemberId, tradeshowMemberId]),
+    "Read both member rows",
+  );
+  for (const m of linkedMembers) {
+    assert.equal(m.leadId, webinarLeadId, "Both members must point at her one lead");
+    assert.ok(m.convertedAt, "And both are done with");
   }
-  pass("Both flagged as duplicates - matched on email, and on phone despite the country code");
+  pass("Both campaigns are credited on her one lead");
+
+  // Typing her in by hand is refused too, and says who she already is.
+  const typed = await session.rpc("create_record", {
+    p_table: "lead",
+    p_payload: {
+      firstName: "Zara", lastName: `Iqbal ${run}`, email: sharedEmail.toUpperCase(),
+      ownerUserId: staff.id, status: "NEW",
+    },
+    p_number_field: "leadNumber",
+    p_sequence: "Lead",
+  });
+  assert.ok(typed.error, "A second lead with her address must be refused");
+  assert.equal(typed.error.hint, "duplicate_person", "As a duplicate person");
+  assert.ok(typed.error.message.includes(converted.leadNumber), "Naming the lead she already is");
+  pass("Typing her in again is refused, naming the lead she already is");
+
+  // A lead under her personal address and no number is a different person as
+  // far as the rule can tell - which is what the merge screen is still for.
+  const personalEmail = `zara.personal.${run}@example.com`;
+  const second = await ok(
+    session.rpc("create_record", {
+      p_table: "lead",
+      p_payload: {
+        firstName: "Zara", lastName: `Iqbal ${run}`, email: personalEmail,
+        companyName: `Iqbal Textiles ${run}`, street: "14 Ferozepur Road", city: "Lahore",
+        country: "Pakistan", leadSource: "Referral", ownerUserId: staff.id, status: "NEW",
+      },
+      p_number_field: "leadNumber",
+      p_sequence: "Lead",
+    }),
+    "Add her under her personal address",
+  );
+  const tradeshowLeadId = second.id;
+  ids.leads.push(tradeshowLeadId);
+  pass("A second lead under another address is allowed - the rule knows addresses and numbers, not people");
 
   // ═══════════════════════════════════════════════════════════════════════
   step("04", "Something attached to the lead that is about to lose");
@@ -329,8 +372,10 @@ try {
   step("05", "Merging, choosing field by field");
   // ═══════════════════════════════════════════════════════════════════════
 
-  // The webinar record survives, but the trade-show record has the address -
-  // which is the whole reason the screen picks per field rather than per record.
+  // The webinar record survives, but the second record has the street address
+  // and the email she prefers - which is the whole reason the screen picks per
+  // field rather than per record. Taking the loser's address only works because
+  // the merge retires the loser before the survivor takes over its details.
   const merged = await ok(
     session.rpc("merge_leads", {
       p_survivor: webinarLeadId,
@@ -339,22 +384,24 @@ try {
         street: "14 Ferozepur Road",
         city: "Lahore",
         country: "Pakistan",
+        email: personalEmail,
       },
     }),
-    "Merge the trade-show lead into the webinar one",
+    "Merge the second lead into the webinar one",
   );
 
   assert.equal(merged.mergedCount, 1, "One lead should have been retired");
-  assert.ok(merged.recordsMoved >= 3, "The note, the activity and the member should all move");
+  assert.ok(merged.recordsMoved >= 2, "The note and the activity should both move");
   pass(`Merged - ${merged.recordsMoved} attached record(s) moved`);
 
   const survivor = await ok(
     admin.from("lead")
-      .select("street, city, country, jobTitle, campaignId, deletedAt, mergedIntoId")
+      .select("email, street, city, country, jobTitle, campaignId, deletedAt, mergedIntoId")
       .eq("id", webinarLeadId).single(),
     "Read the surviving lead",
   );
   assert.equal(survivor.city, "Lahore", "The chosen address must be applied");
+  assert.equal(survivor.email, personalEmail, "Including the email address the loser held");
   assert.equal(survivor.jobTitle, "Head of Operations", "What was not chosen must be left alone");
   assert.equal(survivor.deletedAt, null, "The survivor stays live");
   assert.equal(survivor.mergedIntoId, null, "And is not itself marked merged");
@@ -554,8 +601,8 @@ try {
   console.log(`${"═".repeat(64)}\n`);
   console.log("  Campaign  →  member (one row per campaign)");
   console.log("    → Convert to lead, every field carried");
-  console.log("      → Same person from a 2nd campaign = 2nd lead, flagged");
-  console.log("        → Merge, choosing field by field");
+  console.log("      → Same person from a 2nd campaign = linked to the same lead");
+  console.log("        → A 2nd lead under another address, merged field by field");
   console.log("          → notes, activities and BOTH members follow the survivor");
   console.log("            → one unsubscribe suppresses the address everywhere");
   console.log("              → the batch scorecard reads from the activities\n");

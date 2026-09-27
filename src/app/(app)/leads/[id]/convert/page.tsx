@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { getLead, getFormOptions } from "@/server/crm";
+import { getLead, getFormOptions, findLeadContactMatch } from "@/server/crm";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { PageHeader , Forbidden} from "@/components/ui";
 import { serialize } from "@/lib/utils";
@@ -13,7 +13,9 @@ export default async function ConvertLeadPage({
   const { id } = await params;
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.LEAD_WRITE)) return <Forbidden what="leads" />;
-  const [lead, options] = await Promise.all([getLead(id), getFormOptions()]);
+  const [lead, options, existingContact] = await Promise.all([
+    getLead(id), getFormOptions(), findLeadContactMatch(id),
+  ]);
   if (!lead) notFound();
 
   if (lead.status === "CONVERTED") {
@@ -37,6 +39,7 @@ export default async function ConvertLeadPage({
         suggestedAmount={lead.estimatedValue ? String(lead.estimatedValue) : null}
         referredByPartnerName={lead.referredByPartner?.displayName ?? null}
         options={serialize({ accounts: options.accounts })}
+        existingContact={existingContact}
       />
     </div>
   );

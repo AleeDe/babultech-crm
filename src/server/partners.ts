@@ -8,6 +8,7 @@ import { supabaseServer } from "@/lib/supabase";
 import { updateRecord, LIST_LIMIT } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
+import type { DuplicateRef } from "@/lib/duplicates";
 
 /**
  * Partner management.
@@ -94,7 +95,13 @@ export type PartnerInput = z.infer<typeof partnerSchema>;
 
 export type ActionResult<T = void> =
   | { ok: true; data: T }
-  | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
+  | {
+      ok: false;
+      error: string;
+      fieldErrors?: Record<string, string[]>;
+      /** The record that already exists, when a save was refused as a duplicate person. */
+      duplicate?: DuplicateRef;
+    };
 
 export async function createPartner(input: PartnerInput): Promise<ActionResult<{ id: string }>> {
   const _auth = await authorize(PERMISSIONS.PARTNER_WRITE);

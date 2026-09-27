@@ -120,28 +120,53 @@ try {
   });
   ids.members.push(memberId);
 
-  // Two leads that look like one person, for the merge screen.
+  // Adeel, and Adeel again under his home address, for the merge screen.
+  //
+  // The duplicate rule refuses a second lead with his number however it is
+  // written, so that is tried first and must fail. The second lead exists only
+  // because it shares nothing the rule can see - which is the case the merge
+  // screen is still for. His number is random per run: the rule matches on the
+  // last nine digits, and a fixed one would meet the last run's leftovers.
+  const adeelNumber = String(Math.floor(Math.random() * 9e8) + 1e8);
   const leadIds = [randomUUID(), randomUUID()];
-  for (const [i, id] of leadIds.entries()) {
-    await db.from("lead").insert({
-      id,
-      leadNumber: `CFQL-${run}-${i}`,
-      firstName: "Adeel",
-      lastName: `Raza ${run}`,
-      companyName: `Raza Traders ${run}`,
-      // Same number, written two ways - which is what the matcher must see through.
-      phone: i === 0 ? "+92 300 9876543" : "03009876543",
-      email: `adeel.${run}@example.com`,
-      jobTitle: i === 0 ? "Owner" : null,
-      city: i === 0 ? null : "Lahore",
-      status: "NEW",
-      leadType: "SALES",
-      ownerUserId: ids.user,
-      campaignId,
-      updatedAt: now(),
-    });
-    ids.leads.push(id);
-  }
+  const adeel = (i, fields) => ({
+    id: leadIds[i],
+    leadNumber: `CFQL-${run}-${i}`,
+    firstName: "Adeel",
+    lastName: `Raza ${run}`,
+    companyName: `Raza Traders ${run}`,
+    status: "NEW",
+    leadType: "SALES",
+    ownerUserId: ids.user,
+    campaignId,
+    updatedAt: now(),
+    ...fields,
+  });
+
+  const firstLead = await db.from("lead").insert(adeel(0, {
+    email: `adeel.${run}@example.com`,
+    phone: `+92 ${adeelNumber.slice(0, 3)} ${adeelNumber.slice(3)}`,
+    jobTitle: "Owner",
+  }));
+  if (firstLead.error) throw new Error(`Create the first lead: ${firstLead.error.message}`);
+  ids.leads.push(leadIds[0]);
+
+  // The same number written the local way. Kept for step 03 to assert on; if
+  // it wrongly succeeds, the row is still cleaned up.
+  const refusedId = randomUUID();
+  const sameNumber = await db.from("lead").insert({
+    ...adeel(1, { phone: `0${adeelNumber}` }),
+    id: refusedId,
+    leadNumber: `CFQL-${run}-X`,
+  });
+  if (!sameNumber.error) ids.leads.push(refusedId);
+
+  const secondLead = await db.from("lead").insert(adeel(1, {
+    email: `adeel.home.${run}@example.com`,
+    city: "Lahore",
+  }));
+  if (secondLead.error) throw new Error(`Create the second lead: ${secondLead.error.message}`);
+  ids.leads.push(leadIds[1]);
 
   // A send with its activities, so the scorecard has something to show.
   const batchId = randomUUID();
@@ -167,7 +192,7 @@ try {
       relatedEntityType: "Lead",
       relatedEntityId: leadId,
       batchId,
-      toAddress: `adeel.${run}@example.com`,
+      toAddress: i === 0 ? `adeel.${run}@example.com` : `adeel.home.${run}@example.com`,
       sentAt: now(),
       deliveredAt: now(),
       openedAt: i === 0 ? now() : null,
@@ -197,7 +222,7 @@ try {
   });
   ids.activities.push(logId);
 
-  console.log(`  ·     Campaign, member, two duplicate leads, one send`);
+  console.log(`  ·     Campaign, member, two leads for one person, one send`);
 
   // ─────────────────────────────────────────────────────────────────────
   step("01", "Signing in");
@@ -247,13 +272,18 @@ try {
   pass("The edit form is on its own route");
 
   // ─────────────────────────────────────────────────────────────────────
-  step("03", "Duplicates, found on a number written two ways");
+  step("03", "A second lead for the same number is refused where it is made");
   // ─────────────────────────────────────────────────────────────────────
 
+  assert.ok(sameNumber.error, "A lead with the same number written another way must be refused");
+  assert.equal(sameNumber.error.hint, "duplicate_person", "By the duplicate rule");
+  assert.ok(sameNumber.error.message.includes(`CFQL-${run}-0`), "Naming the lead he already is");
+  pass("0300 … against +92 300 … is caught when the lead is made, naming the lead");
+
   body = await open("/leads/duplicates");
-  assert.match(body, new RegExp(`Raza ${run}`), "The duplicate pair should be listed");
-  assert.match(body, /Merge these/i, "With a way to merge them");
-  pass("Both leads flagged - matched despite +92 300 … against 0300 …");
+  assert.match(body, /from before new duplicates were refused/i, "The screen should say what it is for now");
+  assert.ok(!body.includes(`Raza ${run}`), "Two leads sharing nothing the rule knows are not flagged");
+  pass("The Duplicates screen covers what predates the rule, and does not flag these two");
 
   // ─────────────────────────────────────────────────────────────────────
   step("04", "The merge screen");
@@ -262,12 +292,12 @@ try {
   body = await open(`/leads/merge?ids=${leadIds.join(",")}`);
   assert.match(body, /Which record do you want to keep/i, "It should ask which survives");
   assert.match(body, /Most complete/i, "And suggest one");
-  // The two records hold the same number written differently, so phone is the
-  // one real decision. Job title and city are held by only ONE record each,
-  // which is not a disagreement - the filled value is simply taken - so they
-  // belong in the settled list rather than as a choice.
+  // The two records hold different addresses, so email is the one real
+  // decision. Job title, phone and city are held by only ONE record each, which
+  // is not a disagreement - the filled value is simply taken - so they belong in
+  // the settled list rather than as a choice.
   assert.match(body, /1 field disagrees/, "Exactly one field genuinely disagrees");
-  assert.match(body, /PHONE/i, "And it is the phone number");
+  assert.match(body, /EMAIL/i, "And it is the email address");
   assert.match(
     body, /with nothing to choose/i,
     "The rest must be described as settled, not as agreement - a blank is not agreement",
@@ -279,15 +309,8 @@ try {
   // ─────────────────────────────────────────────────────────────────────
 
   body = await open(`/leads/email?ids=${leadIds.join(",")}`);
-  assert.match(body, /Going to 1 person/i, "The duplicate address must collapse to one recipient");
-  assert.match(body, /will be left out/i, "And it must say somebody is being left out");
-  pass("Compose collapses the duplicate address and says so before anything is typed");
-
-  await page.locator("button", { hasText: "See who" }).click();
-  await page.waitForTimeout(400);
-  body = await page.locator("body").innerText();
-  assert.match(body, /Duplicate of another selected lead/i, "The reason should be named");
-  pass("The audience list names why each person is in or out");
+  assert.match(body, /Going to 2 people/i, "Two different addresses are two recipients");
+  pass("Compose counts each address it will send to before anything is typed");
 
   // ─────────────────────────────────────────────────────────────────────
   step("06", "The scorecards");

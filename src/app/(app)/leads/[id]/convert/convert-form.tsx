@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { convertLead } from "@/server/crm";
 import {
@@ -8,6 +9,7 @@ import {
   Select, Alert,
 } from "@/components/ui";
 import { findAccountMatches } from "@/lib/match-account";
+import { DUPLICATE_FIELD_LABEL, type DuplicateMatch } from "@/lib/duplicates";
 
 interface Options {
   accounts: { id: string; name: string }[];
@@ -20,6 +22,7 @@ export function ConvertForm({
   suggestedAmount,
   referredByPartnerName,
   options,
+  existingContact,
 }: {
   leadId: string;
   leadLabel: string;
@@ -27,6 +30,12 @@ export function ConvertForm({
   suggestedAmount: string | null;
   referredByPartnerName: string | null;
   options: Options;
+  /**
+   * The contact this lead's person already is. Conversion uses them, on their
+   * account, rather than making a second contact - so the account is not a
+   * choice any more.
+   */
+  existingContact?: DuplicateMatch | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -49,11 +58,16 @@ export function ConvertForm({
     [suggestedName, options.accounts],
   );
 
+  const contactAccountId = existingContact?.accountId ?? null;
+  // Already a contact, but on no account - an individual partner. There is
+  // nothing sensible to convert them into, and the database refuses it.
+  const cannotConvert = Boolean(existingContact) && !contactAccountId;
+
   // Pre-selected when there is a likely match, because the safe default flips
   // once we have reason to think the company already exists.
-  const [useExisting, setUseExisting] = useState(matches.length > 0);
+  const [useExisting, setUseExisting] = useState(Boolean(contactAccountId) || matches.length > 0);
   const [accountId, setAccountId] = useState(
-    matches.length > 0 ? matches[0].account.id : "",
+    contactAccountId ?? (matches.length > 0 ? matches[0].account.id : ""),
   );
 
   // A submit HANDLER rather than <form action={...}>. React resets a form after
@@ -100,9 +114,32 @@ export function ConvertForm({
     <form onSubmit={onSubmit} className="space-y-6">
       {error && <Alert tone="danger">{error}</Alert>}
 
+      {existingContact && (
+        contactAccountId ? (
+          <Alert tone="warning">
+            <span className="font-medium">{existingContact.name ?? "This person"} is already a contact</span>
+            {existingContact.company ? ` at ${existingContact.company}` : ""}, with the same{" "}
+            {DUPLICATE_FIELD_LABEL[existingContact.field]}. Converting uses that contact and their
+            account rather than making new ones.{" "}
+            {existingContact.id && (
+              <Link href={`/contacts/${existingContact.id}`} className="font-medium underline">
+                Open the contact
+              </Link>
+            )}
+          </Alert>
+        ) : (
+          <Alert tone="danger">
+            {existingContact.name ?? "This person"} is already a contact with the same{" "}
+            {DUPLICATE_FIELD_LABEL[existingContact.field]}, and is not on any account, so this lead
+            cannot be converted into a second one.
+          </Alert>
+        )
+      )}
+
       <Alert tone="info">
-        Converting {leadLabel} creates a contact, an account and (optionally) a deal, then locks
-        the lead as read-only.
+        {contactAccountId
+          ? `Converting ${leadLabel} attaches it to that contact and (optionally) opens a deal, then locks the lead as read-only.`
+          : `Converting ${leadLabel} creates a contact, an account and (optionally) a deal, then locks the lead as read-only.`}
         {referredByPartnerName && (
           <>
             {" "}
@@ -118,71 +155,83 @@ export function ConvertForm({
           <CardTitle>Account</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={useExisting}
-              onChange={(e) => setUseExisting(e.target.checked)}
-              className="h-4 w-4 rounded border-input"
-            />
-            This company already exists - attach to an existing account instead of creating one
-          </label>
-
-          {matches.length > 0 && (
-            <Alert tone="warning">
-              <p className="font-medium">
-                {matches.length === 1
-                  ? "This company may already be an account"
-                  : `${matches.length} accounts look like this company`}
+          {contactAccountId ? (
+            <>
+              <input type="hidden" name="accountId" value={contactAccountId} />
+              <p className="text-sm">
+                It goes on <strong>{existingContact?.company ?? "their account"}</strong>, where{" "}
+                {existingContact?.name ?? "this person"} is already a contact.
               </p>
-              <p className="mt-1 text-sm">
-                {matches
-                  .slice(0, 3)
-                  .map((m) => m.account.name)
-                  .join(", ")}
-                {", attach to it rather than creating a second record. "}
-                Two accounts for one customer split their deals, invoices and
-                cases, and merging them afterwards is difficult.
-              </p>
-            </Alert>
-          )}
-
-          {useExisting ? (
-            <Field label="Existing account" required
-            help="Link to a company already in the system instead of creating a duplicate. Check here first - duplicate accounts are hard to merge later.">
-              <Select
-                name="accountId"
-                required
-                value={accountId}
-                onChange={(e) => setAccountId(e.target.value)}
-              >
-                <option value="">Select an account…</option>
-                {/* Likely matches first and labelled, so the one to pick is the
-                    one at the top rather than somewhere in an alphabetical list
-                    of every account in the system. */}
-                {matches.length > 0 && (
-                  <optgroup label="Looks like the same company">
-                    {matches.map((m) => (
-                      <option key={m.account.id} value={m.account.id}>
-                        {m.account.name}
-                        {m.confidence === "close" ? " (similar name)" : ""}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                <optgroup label={matches.length > 0 ? "All accounts" : "Accounts"}>
-                  {options.accounts
-                    .filter((a) => !matches.some((m) => m.account.id === a.id))
-                    .map((a) => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
-                </optgroup>
-              </Select>
-            </Field>
+            </>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              A new prospect account will be created as <strong>{suggestedName}</strong>.
-            </p>
+            <>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={useExisting}
+                  onChange={(e) => setUseExisting(e.target.checked)}
+                  className="h-4 w-4 rounded border-input"
+                />
+                This company already exists - attach to an existing account instead of creating one
+              </label>
+
+              {matches.length > 0 && (
+                <Alert tone="warning">
+                  <p className="font-medium">
+                    {matches.length === 1
+                      ? "This company may already be an account"
+                      : `${matches.length} accounts look like this company`}
+                  </p>
+                  <p className="mt-1 text-sm">
+                    {matches
+                      .slice(0, 3)
+                      .map((m) => m.account.name)
+                      .join(", ")}
+                    {", attach to it rather than creating a second record. "}
+                    Two accounts for one customer split their deals, invoices and
+                    cases, and merging them afterwards is difficult.
+                  </p>
+                </Alert>
+              )}
+
+              {useExisting ? (
+                <Field label="Existing account" required
+                help="Link to a company already in the system instead of creating a duplicate. Check here first - duplicate accounts are hard to merge later.">
+                  <Select
+                    name="accountId"
+                    required
+                    value={accountId}
+                    onChange={(e) => setAccountId(e.target.value)}
+                  >
+                    <option value="">Select an account…</option>
+                    {/* Likely matches first and labelled, so the one to pick is the
+                        one at the top rather than somewhere in an alphabetical list
+                        of every account in the system. */}
+                    {matches.length > 0 && (
+                      <optgroup label="Looks like the same company">
+                        {matches.map((m) => (
+                          <option key={m.account.id} value={m.account.id}>
+                            {m.account.name}
+                            {m.confidence === "close" ? " (similar name)" : ""}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <optgroup label={matches.length > 0 ? "All accounts" : "Accounts"}>
+                      {options.accounts
+                        .filter((a) => !matches.some((m) => m.account.id === a.id))
+                        .map((a) => (
+                          <option key={a.id} value={a.id}>{a.name}</option>
+                        ))}
+                    </optgroup>
+                  </Select>
+                </Field>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  A new prospect account will be created as <strong>{suggestedName}</strong>.
+                </p>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -231,7 +280,7 @@ export function ConvertForm({
         <Button type="button" variant="outline" onClick={() => router.back()} disabled={pending}>
           Cancel
         </Button>
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending || cannotConvert}>
           {pending ? "Converting…" : "Convert lead"}
         </Button>
       </div>

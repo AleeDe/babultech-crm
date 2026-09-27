@@ -8,7 +8,7 @@ import {
   Textarea, Table, THead, TBody, TR, TH, TD, Badge,
 } from "@/components/ui";
 import { parseDelimited, guessMapping } from "@/lib/parse-delimited";
-import { createLeadsBulk } from "@/server/crm";
+import { createLeadsBulk, type LeadImportSkip } from "@/server/crm";
 
 type Option = { id: string; name?: string; fullName?: string; displayName?: string };
 
@@ -118,6 +118,9 @@ export function LeadImportForm({
 
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // What the last import did, when it left anybody out. An import that skipped
+  // nobody goes straight to the leads; one that skipped people stays to say who.
+  const [outcome, setOutcome] = useState<{ created: number; skipped: LeadImportSkip[] } | null>(null);
 
   const parsed = useMemo(() => parseDelimited(text), [text]);
 
@@ -209,13 +212,23 @@ export function LeadImportForm({
 
   function submit() {
     setError(null);
+    setOutcome(null);
     start(async () => {
       const result = await createLeadsBulk(rows.map((r) => r.lead) as never);
       if (!result.ok) {
         setError(result.error);
         return;
       }
-      router.push("/leads");
+      if (result.data.skipped.length === 0) {
+        router.push("/leads");
+        router.refresh();
+        return;
+      }
+      // The file is done with: importing it again would only skip everybody,
+      // including the people it has just added.
+      setOutcome(result.data);
+      setText("");
+      setFileName(null);
       router.refresh();
     });
   }
@@ -432,6 +445,36 @@ export function LeadImportForm({
       {error && (
         <Alert tone="danger">
           <span className="whitespace-pre-line">{error}</span>
+        </Alert>
+      )}
+
+      {outcome && (
+        <Alert tone={outcome.created > 0 ? "success" : "warning"}>
+          <div className="space-y-2">
+            <p className="font-medium">
+              {outcome.created > 0
+                ? `Imported ${outcome.created} lead${outcome.created === 1 ? "" : "s"}.`
+                : "Nothing was imported."}{" "}
+              {outcome.skipped.length} row{outcome.skipped.length === 1 ? " was" : "s were"} left
+              out, because the person is already on file.
+            </p>
+            <ul className="space-y-1 text-sm">
+              {outcome.skipped.map((skip) => (
+                <li key={skip.row}>
+                  Row {skip.row}, {skip.name}: {skip.reason}
+                  {skip.duplicate && (
+                    <>
+                      {" · "}
+                      <a href={skip.duplicate.href} className="font-medium underline">Open</a>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <Button asChild size="sm" variant="outline">
+              <a href="/leads">Go to leads</a>
+            </Button>
+          </div>
         </Alert>
       )}
 

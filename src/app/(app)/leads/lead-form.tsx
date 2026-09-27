@@ -2,10 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { SaveError } from "@/components/save-error";
+import type { DuplicateRef } from "@/lib/duplicates";
 import { createLead, updateLead } from "@/server/crm";
 import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
-  Select, Textarea, Alert,
+  Select, Textarea,
 } from "@/components/ui";
 import { RecordLookup } from "@/components/record-lookup";
 import { PicklistOptions } from "@/components/picklist";
@@ -79,6 +81,8 @@ export function LeadForm({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  // The lead this one would duplicate, when that is why the save was refused.
+  const [duplicate, setDuplicate] = useState<DuplicateRef | undefined>();
   const [status, setStatus] = useState(defaults?.status ?? "NEW");
 
   const editing = Boolean(defaults);
@@ -93,6 +97,7 @@ export function LeadForm({
 
     setError(null);
     setFieldErrors({});
+    setDuplicate(undefined);
 
     const get = (k: string) => {
       const v = formData.get(k);
@@ -141,13 +146,14 @@ export function LeadForm({
       } else {
         setError(result.error);
         setFieldErrors(result.fieldErrors ?? {});
+        setDuplicate(result.duplicate);
       }
     });
   }
 
   return (
     <form onSubmit={onSubmit} className="space-y-6">
-      {error && <Alert tone="danger">{error}</Alert>}
+      <SaveError error={error} duplicate={duplicate} />
 
       <Card>
         <CardHeader>

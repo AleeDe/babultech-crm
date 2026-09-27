@@ -14,6 +14,10 @@ import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission, requireUser, scopedContext, can } from "@/lib/authz";
 import { MESSAGE_CHANNELS } from "@/lib/types";
 import type { ActionResult } from "./partners";
+import {
+  DUPLICATE_FIELD_LABEL, describeDuplicate, duplicateFailure, duplicateFromError, duplicateRef,
+  emailKey, phoneKey, type DuplicateField, type DuplicateMatch, type DuplicateRef,
+} from "@/lib/duplicates";
 
 /** Accounts, Contacts, Leads, Campaigns and Products — the Phase 1 core. */
 
@@ -258,7 +262,7 @@ export async function createContact(
     const { data: contact, error } = await db.rpc("create_contact", {
       p_payload: { ...data, accountId: data.accountId ?? null, email: data.email || null },
     });
-    if (error) throw new Error(error.message);
+    if (error) return duplicateFailure(error) ?? { ok: false, error: error.message };
 
     revalidatePath("/contacts");
     if (data.accountId) revalidatePath(`/accounts/${data.accountId}`);
@@ -336,7 +340,7 @@ export async function updateContact(
       p_payload: { ...data, accountId: data.accountId ?? null, email: data.email || null },
       p_actor_id: user.id,
     });
-    if (error) throw new Error(error.message);
+    if (error) return duplicateFailure(error) ?? { ok: false, error: error.message };
 
     revalidatePath("/contacts");
     if (data.accountId) revalidatePath(`/accounts/${data.accountId}`);
@@ -420,6 +424,15 @@ const leadSchema = z.object({
   nextFollowUpAt: z.coerce.date().optional().nullable(),
 });
 
+/** A row the import left out, and why - shown to the person who imported it. */
+export interface LeadImportSkip {
+  /** 1-based, as the rows are numbered on the import screen. */
+  row: number;
+  name: string;
+  reason: string;
+  duplicate?: DuplicateRef;
+}
+
 /**
  * Imports many leads at once, from a mapped spreadsheet.
  *
@@ -428,10 +441,15 @@ const leadSchema = z.object({
  * validate every row before writing any of them: a half-finished import leaves
  * someone reconciling which prospects already exist, which is worse than a
  * rejected paste they can fix and retry.
+ *
+ * People already in the CRM - as a lead or a contact - and people repeated
+ * further down the same file are skipped, not refused. The duplicate rule would
+ * stop each of them anyway, and stopping the whole file for them would mean a
+ * list could never be imported twice. What was skipped comes back, row by row.
  */
 export async function createLeadsBulk(
   rows: z.infer<typeof leadSchema>[],
-): Promise<ActionResult<{ created: number }>> {
+): Promise<ActionResult<{ created: number; skipped: LeadImportSkip[] }>> {
   const _auth = await authorize(PERMISSIONS.LEAD_WRITE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
@@ -459,11 +477,63 @@ export async function createLeadsBulk(
     return { ok: false, error: rowErrors.slice(0, 10).join("\n") };
   }
 
+  // Every row checked in one call. validated lines up with rows, because any
+  // invalid row has already stopped the import.
+  const db = await supabaseServer();
+  const { data: hits, error: checkError } = await db.rpc("find_duplicate_people", {
+    p_scope: "lead",
+    p_rows: validated.map((d) => ({
+      email: d.email || null,
+      phone: d.phone || null,
+      whatsapp: d.whatsapp || null,
+    })),
+  });
+  if (checkError) {
+    return { ok: false, error: `Could not check for people already on file: ${checkError.message}` };
+  }
+  const onFile = new Map(((hits ?? []) as DuplicateMatch[]).map((h) => [h.row, h]));
+
+  const skipped: LeadImportSkip[] = [];
+  const toCreate: { row: number; lead: z.infer<typeof leadSchema> }[] = [];
+  // The first row of this file to carry each address or number. Numbers share
+  // one key space, so a WhatsApp number repeats an earlier row's phone number.
+  const firstRowWith = new Map<string, number>();
+
+  validated.forEach((d, i) => {
+    const row = i + 1;
+    const name = `${d.firstName} ${d.lastName}`.trim();
+
+    const match = onFile.get(i);
+    if (match) {
+      skipped.push({ row, name, reason: describeDuplicate(match), duplicate: duplicateRef(match) });
+      return;
+    }
+
+    const email = emailKey(d.email);
+    const phone = phoneKey(d.phone);
+    const whatsapp = phoneKey(d.whatsapp);
+    const keys: { field: DuplicateField; key: string }[] = [];
+    if (email) keys.push({ field: "email", key: `e:${email}` });
+    if (phone) keys.push({ field: "phone", key: `p:${phone}` });
+    if (whatsapp) keys.push({ field: "whatsapp", key: `p:${whatsapp}` });
+
+    const repeat = keys.find((k) => firstRowWith.has(k.key));
+    if (repeat) {
+      skipped.push({
+        row, name,
+        reason: `Same ${DUPLICATE_FIELD_LABEL[repeat.field]} as row ${firstRowWith.get(repeat.key)} of this file`,
+      });
+      return;
+    }
+    for (const k of keys) firstRowWith.set(k.key, row);
+    toCreate.push({ row, lead: d });
+  });
+
   let created = 0;
-  try {
-    // Sequential, because leadNumber comes from a sequence that hands out one
-    // number at a time.
-    for (const d of validated) {
+  // Sequential, because leadNumber comes from a sequence that hands out one
+  // number at a time.
+  for (const { row, lead: d } of toCreate) {
+    try {
       await createRecord(
         "lead",
         {
@@ -488,18 +558,28 @@ export async function createLeadsBulk(
         { field: "leadNumber", sequence: SEQUENCES.LEAD },
       );
       created += 1;
+    } catch (err) {
+      // Somebody added the same person while the file was being imported.
+      const match = duplicateFromError(err);
+      if (match) {
+        skipped.push({
+          row, name: `${d.firstName} ${d.lastName}`.trim(),
+          reason: describeDuplicate(match), duplicate: duplicateRef(match),
+        });
+        continue;
+      }
+      return {
+        ok: false,
+        error:
+          `${created} of ${toCreate.length} rows were created before this failed: ` +
+          (err instanceof Error ? err.message : "unknown error"),
+      };
     }
-  } catch (err) {
-    return {
-      ok: false,
-      error:
-        `${created} of ${validated.length} rows were created before this failed: ` +
-        (err instanceof Error ? err.message : "unknown error"),
-    };
   }
 
-  revalidatePath("/leads");
-  return { ok: true, data: { created } };
+  if (created > 0) revalidatePath("/leads");
+  skipped.sort((a, b) => a.row - b.row);
+  return { ok: true, data: { created, skipped } };
 }
 
 export async function createLead(
@@ -523,7 +603,8 @@ export async function createLead(
     revalidatePath("/leads");
     return { ok: true, data: { id: lead.id } };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Could not create the lead." };
+    return duplicateFailure(err)
+      ?? { ok: false, error: err instanceof Error ? err.message : "Could not create the lead." };
   }
 }
 
@@ -619,7 +700,7 @@ export async function updateLead(
       p_entity_type: "Lead",
       p_actor_id: user.id,
     });
-    if (error) throw new Error(error.message);
+    if (error) return duplicateFailure(error) ?? { ok: false, error: error.message };
 
     revalidatePath("/leads");
     revalidatePath(`/leads/${id}`);
@@ -647,7 +728,13 @@ const convertSchema = z.object({
  */
 export async function convertLead(
   input: z.infer<typeof convertSchema>,
-): Promise<ActionResult<{ accountId: string; contactId: string; opportunityId: string | null }>> {
+): Promise<ActionResult<{
+  accountId: string;
+  contactId: string;
+  opportunityId: string | null;
+  /** The person was already a contact, and conversion used them rather than making another. */
+  reusedContact: boolean;
+}>> {
   const _auth = await authorize(PERMISSIONS.LEAD_WRITE);
   if (!_auth.ok) return { ok: false, error: _auth.error };
   const user = _auth.user;
@@ -699,6 +786,32 @@ export async function convertLead(
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Could not convert the lead." };
   }
+}
+
+/**
+ * The contact a lead's person already is, if any.
+ *
+ * Converting such a lead uses that contact, on that contact's account, rather
+ * than making a second one - so the convert screen asks first, and says so
+ * before anything is written.
+ */
+export async function findLeadContactMatch(leadId: string): Promise<DuplicateMatch | null> {
+  await requirePermission(PERMISSIONS.LEAD_WRITE);
+  const db = await supabaseServer();
+
+  const { data: lead } = await db
+    .from("lead")
+    .select("email, phone, whatsapp")
+    .eq("id", leadId)
+    .maybeSingle();
+  if (!lead) return null;
+
+  const { data, error } = await db.rpc("find_duplicate_people", {
+    p_scope: "contact",
+    p_rows: [{ email: lead.email, phone: lead.phone, whatsapp: lead.whatsapp }],
+  });
+  if (error) throw new Error(`Could not look for an existing contact: ${error.message}`);
+  return ((data ?? []) as DuplicateMatch[])[0] ?? null;
 }
 
 export async function listLeads(filters?: {

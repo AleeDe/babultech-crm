@@ -8,6 +8,7 @@ import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { LIST_LIMIT } from "@/lib/db";
 import { picklistCode } from "@/lib/picklists";
 import type { ActionResult } from "./partners";
+import type { DuplicateField } from "@/lib/duplicates";
 
 /**
  * Campaign members: the people marketing talks to.
@@ -15,8 +16,9 @@ import type { ActionResult } from "./partners";
  * A member belongs to the campaign that produced them - the webinar they came
  * to, the form they filled in - so one person on two lists is two rows. That is
  * deliberate: it keeps the fact that they came from both places, which a single
- * global record would lose. The duplicate is resolved later, by the agent who
- * merges the leads, because they are the one who can tell.
+ * global record would lose. They meet again at conversion: a member who is
+ * already a lead is linked to that lead rather than made into a second one, so
+ * the one lead is credited to both campaigns.
  *
  * Consent does not wait for that merge. It is keyed on the address, in
  * email_suppression, so one unsubscribe stops mail to every copy at once.
@@ -32,6 +34,8 @@ export interface CampaignMember {
   campaign?: { id: string; name: string } | null;
   jobTitle: string | null;
   leadId: string | null;
+  /** Set when conversion found the person already a customer's contact, and linked them. */
+  contactId: string | null;
   convertedAt: string | null;
   firstName: string;
   lastName: string | null;
@@ -61,7 +65,7 @@ export interface CampaignMember {
 }
 
 const SELECT = `
-  id, campaignId, jobTitle, leadId, convertedAt,
+  id, campaignId, jobTitle, leadId, contactId, convertedAt,
   firstName, lastName, email, phone, whatsapp, companyName, website,
   businessType, companySize, street, city, state, postalCode, country,
   lastCampaignRunAt, lastCampaignId, campaignCount, emailOptOut, emailBounced,
@@ -403,6 +407,22 @@ export async function getCampaignMemberTotals() {
   };
 }
 
+/** What converting a member did. */
+export interface MemberConversion {
+  /** The lead the member is now, whether made just now or found. */
+  leadId?: string | null;
+  leadNumber?: string | null;
+  /** The contact the member was linked to, when they were already a customer's contact. */
+  contactId?: string | null;
+  alreadyConverted: boolean;
+  /** True when the person was already on file and the member was linked rather than converted. */
+  linked?: boolean;
+  name?: string | null;
+  company?: string | null;
+  /** Which of the member's details matched the record they were linked to. */
+  matchedOn?: DuplicateField | null;
+}
+
 /**
  * Turn a campaign member into a lead.
  *
@@ -411,13 +431,17 @@ export async function getCampaignMemberTotals() {
  * act - split across calls, a failure between them burns a number or leaves a
  * member pointing at a lead that does not exist.
  *
+ * Somebody already on file is not made into a second lead: the member is linked
+ * to the lead they already are, or to their contact if they are a customer, and
+ * the caller is told so.
+ *
  * Idempotent: the function returns the existing lead rather than making a second
  * one, so a double-click is harmless and the caller is told which happened.
  */
 export async function convertMemberToLead(
   memberId: string,
   ownerUserId?: string,
-): Promise<ActionResult<{ leadId: string; leadNumber?: string; alreadyConverted: boolean }>> {
+): Promise<ActionResult<MemberConversion>> {
   const auth = await authorize(PERMISSIONS.LEAD_WRITE);
   if (!auth.ok) return { ok: false, error: auth.error };
 
@@ -429,10 +453,12 @@ export async function convertMemberToLead(
 
   if (error) return { ok: false, error: error.message };
 
-  const result = data as { leadId: string; leadNumber?: string; alreadyConverted: boolean };
+  const result = data as MemberConversion;
 
   revalidatePath("/campaign-members");
   revalidatePath(`/campaign-members/${memberId}`);
   revalidatePath("/leads");
+  if (result.leadId) revalidatePath(`/leads/${result.leadId}`);
+  if (result.contactId) revalidatePath(`/contacts/${result.contactId}`);
   return { ok: true, data: result };
 }
