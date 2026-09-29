@@ -324,20 +324,20 @@ Added 29 September 2026, migrations `20260929000006` to `20260929000009`.
 
 ### Communication: templates, senders, mass email to anyone, consent, timeline
 
-Added 29 September 2026, migration .
+Added 29 September 2026, migration `20260929000010`.
 
-- **One compose screen** () for leads, contacts and campaign
+- **One compose screen** (`/email/compose`) for leads, contacts and campaign
   members, reached from the lead list's selection, "Email these" on the contact
   and member lists (which pass the list's filters, not ids), and Email on a lead
-  or contact.  redirects there. Sending is the same background
+  or contact. `/leads/email` redirects there. Sending is the same background
   job as before.
-- **Templates** (, Marketing › Email templates) with
-  .
-- **Sender addresses** (, Administration › Sender addresses).
+- **Templates** (`email_template`, Marketing › Email templates) with
+  `{{firstName}}`, `{{lastName}}`, `{{companyName}}` and `{{senderName}}`.
+- **Sender addresses** (`email_sender`, Administration › Sender addresses).
   Sales and Support are created on first use; every address must be on the
   EMAIL_FROM domain, checked when saved and again when sent.
 - **Consent.** Contacts default to only those who agreed to marketing
-  ();  is set from the contact page
+  (`communicationConsent`); `contact.emailOptOut` is set from the contact page
   or by unsubscribing, which now marks every contact and member at the address.
   Opting back in lifts an unsubscribe, never a bounce or complaint.
 - **Test addresses** (example.com and other reserved domains) are never sent
