@@ -256,6 +256,37 @@ to a company that is already somebody else's is saved but flagged
 `registrationContested` for a person to decide. Nothing is resolved
 automatically.
 
+### Platform: jobs, notifications, sign-ins, View as, views, recycle bin
+
+Added 29 September 2026, migrations `20260929000000` to `20260929000005`.
+
+- **Background jobs.** A job is a row in `job`; `lib/jobs.ts` runs the queue
+  after the response that queued it (`after()`), and Supabase's scheduler
+  (`pg_cron` + `pg_net`, enabled by `20260929000000`) calls `/api/jobs/run`
+  every minute there is work. The call carries a key from the Supabase vault,
+  checked by `jobs_key_matches()`. The scheduler needs the site's public
+  address, set on Administration › Background jobs; until then it does
+  nothing. Mass email to leads is the first job: recipients are chosen while
+  the sender waits, the messages go out in the background.
+- **Notifications.** Written by database triggers on the records, so every path
+  that assigns or changes one is covered; the bell reads them. Emails for the
+  kinds a person takes by email go as one digest per person per run, never to
+  example.com-style test addresses. Daily due/overdue reminders run at 08:00
+  Karachi.
+- **Following.** Owners follow automatically; anyone can follow a record they
+  can see.
+- **Sign-in history and View as.** See `docs/roles-and-access.md`.
+- **Saved views.** A name for a list's filters; one default per list per person;
+  administrators can share. On ten lists.
+- **Recent records.** The last thirty opened, in the ⌘K box and on My work.
+- **Recycle bin.** Soft delete with `deletedById`; `recycle_blocker()` decides
+  what may not be deleted; `recycle_purge()` erases after 90 days at 03:30
+  Karachi.
+
+Scheduled database jobs: `babultech-jobs-tick` (every minute),
+`babultech-due-reminders` (03:00 UTC), `babultech-jobs-housekeeping` (22:15 UTC),
+`babultech-recycle-purge` (22:30 UTC).
+
 ---
 
 ## 4. Bugs found and fixed during testing

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { SavedViewsControl } from "@/components/saved-views";
+import { applyDefaultView } from "@/server/saved-views";
 import { Plus } from "lucide-react";
 import { listCampaigns, getCampaignPerformance } from "@/server/crm";
 import { ListFilters, optionsFrom } from "@/components/list-filters";
@@ -19,6 +21,7 @@ export default async function CampaignsPage({
   if (!can(_me, PERMISSIONS.LEAD_READ)) return <Forbidden what="campaigns" />;
 
   const params = await searchParams;
+  await applyDefaultView("campaigns", params);
   const campaigns = await listCampaigns(params);
 
   // The ROI view only exists once supabase/schema-sql/02_views.sql has been applied.
@@ -55,6 +58,7 @@ export default async function CampaignsPage({
             </Link>
           </Button>
         )}
+        <SavedViewsControl entity="campaigns" />
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

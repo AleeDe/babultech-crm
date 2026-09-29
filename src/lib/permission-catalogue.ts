@@ -36,10 +36,14 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
     permissions: [
       { value: "lead:read", label: "See leads", help: "Open the lead list and any lead their data scope allows." },
       { value: "lead:write", label: "Work on leads", help: "Create and edit leads, and convert them." },
+      { value: "lead:delete", label: "Delete leads", help: "Move leads they can see to the recycle bin, and restore them. Converted leads are kept." },
+      { value: "campaign:delete", label: "Delete campaigns", help: "Move campaigns with no results yet to the recycle bin, and restore them." },
       { value: "account:read", label: "See customers", help: "Open accounts and contacts." },
       { value: "account:write", label: "Edit customers", help: "Create and change accounts and contacts, and give a contact portal access." },
+      { value: "account:delete", label: "Delete customers", help: "Move accounts and contacts to the recycle bin, and restore them. Accounts with billing, deals or projects are kept." },
       { value: "opportunity:read", label: "See deals", help: "Open the pipeline and deal pages." },
       { value: "opportunity:write", label: "Work on deals", help: "Create and edit deals, move stages, and price them." },
+      { value: "opportunity:delete", label: "Delete deals", help: "Move open or lost deals to the recycle bin, and restore them. Won deals and deals with commission are kept." },
       { value: "quotation:approve", label: "Approve quotations", help: "Approve a quote so it can be sent to the customer." },
       { value: "contract:write", label: "Work on contracts", help: "Create and edit contracts and their renewal terms." },
     ],
@@ -66,6 +70,7 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
       { value: "content:review", label: "Review content", help: "Review and approve content items on content projects." },
       { value: "case:read", label: "See support cases", help: "Open the case list and case pages." },
       { value: "case:write", label: "Work on cases", help: "Create cases, reply to customers and close them." },
+      { value: "case:delete", label: "Delete cases", help: "Move cases to the recycle bin, and restore them." },
     ],
   },
   {

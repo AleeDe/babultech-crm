@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { SavedViewsControl } from "@/components/saved-views";
+import { applyDefaultView } from "@/server/saved-views";
 import { Plus } from "lucide-react";
 import { listAccounts } from "@/server/crm";
 import {
@@ -19,6 +21,7 @@ export default async function AccountsPage({
   if (!can(_me, PERMISSIONS.ACCOUNT_READ)) return <Forbidden what="accounts" />;
 
   const params = await searchParams;
+  await applyDefaultView("accounts", params);
   const [accounts, partners] = await Promise.all([listAccounts(params), listPartnerOptions()]);
 
   return (
@@ -33,6 +36,7 @@ export default async function AccountsPage({
             <Plus className="h-4 w-4" /> New account
           </Link>
         </Button>
+        <SavedViewsControl entity="accounts" />
       </PageHeader>
 
       <Card>

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { SavedViewsControl } from "@/components/saved-views";
+import { applyDefaultView } from "@/server/saved-views";
 import { Plus, Upload } from "lucide-react";
 import { listLeads, listCampaigns } from "@/server/crm";
 import {
@@ -28,6 +30,7 @@ export default async function LeadsPage({
   if (!can(_me, PERMISSIONS.LEAD_READ)) return <Forbidden what="leads" />;
 
   const params = await searchParams;
+  await applyDefaultView("leads", params);
   const [leads, users, campaigns, partners] = await Promise.all([
     listLeads(params),
     getAssignableUsers(),
@@ -67,6 +70,7 @@ export default async function LeadsPage({
             <Plus className="h-4 w-4" /> New lead
           </Link>
         </Button>
+        <SavedViewsControl entity="leads" />
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

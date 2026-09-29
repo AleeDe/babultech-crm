@@ -243,6 +243,38 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
       "The lists the rest of the app chooses from - categories, tax rates, currencies, numbering and SLA policies.",
     feeds: ["Almost every dropdown in the system reads from here"],
   },
+  "/notifications": {
+    purpose:
+      "Everything that came your way: work assigned to you, approvals, customers' replies, and changes to records you follow. Kept for 90 days.",
+    needs: ["Records assigned to you, or records you follow"],
+    feeds: ["The record each notification is about - click one to open it"],
+    watchOut: "You are never told about something you did yourself.",
+  },
+  "/notifications/settings": {
+    purpose: "Choose, for each kind of notification, whether it shows under the bell and whether it also comes by email.",
+    feeds: ["The bell, and the one-digest emails the scheduler sends"],
+    watchOut:
+      "Emails only go out once an administrator has set the site's public address on the Background jobs page.",
+  },
+  "/jobs": {
+    purpose: "Work that runs in the background - mass emails, and later imports - with its progress and any errors.",
+    needs: ["For administrators: the site's public address, so the scheduler can call it"],
+    feeds: ["The send's page for a mass email, and a notification when a job finishes"],
+    watchOut: "A job you stop keeps whatever it already did: emails already sent stay sent.",
+  },
+  "/recycle-bin": {
+    purpose:
+      "Deleted leads, accounts, contacts, deals, cases and campaigns, restorable for 90 days before they are erased for good.",
+    needs: ["A delete permission for that kind of record"],
+    feeds: ["The record, back where it was, when restored"],
+    watchOut:
+      "Some records cannot be deleted at all - a converted lead, a won deal, an account with invoices. The Delete button says why on hover.",
+  },
+  "/users/security": {
+    purpose: "Every sign-in, failed sign-in and sign-out, and every View as session with its reason.",
+    feeds: ["Nothing - this is a record for checking"],
+    watchOut: "A run of failed sign-ins for one address is worth asking that person about.",
+  },
 };
 
 /**

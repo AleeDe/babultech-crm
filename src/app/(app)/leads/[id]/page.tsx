@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { DeleteControl } from "@/components/delete-control";
+import { RecentMark } from "@/components/recent-mark";
 import { FollowControl } from "@/components/follow-control";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
@@ -106,6 +108,8 @@ export default async function LeadDetailPage({
         )}
         {can(me, PERMISSIONS.LEAD_WRITE) && !converted && !disqualified && !pendingHandoff && <Button asChild><Link href={`/leads/${lead.id}/convert`}>Convert lead</Link></Button>}
         <FollowControl entityType="Lead" entityId={id} />
+        <RecentMark entityType="Lead" entityId={id} label={`${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim()} />
+        <DeleteControl type="Lead" id={id} name={`${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim()} />
       </PageHeader>
 
       {converted && (

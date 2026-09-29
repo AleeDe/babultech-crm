@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { SavedViewsControl } from "@/components/saved-views";
+import { applyDefaultView } from "@/server/saved-views";
 import { Plus } from "lucide-react";
 import { listProjects } from "@/server/projects";
 import {
@@ -20,6 +22,7 @@ export default async function ProjectsPage({
   if (!can(_me, PERMISSIONS.PROJECT_READ)) return <Forbidden what="projects" />;
 
   const params = await searchParams;
+  await applyDefaultView("projects", params);
   const projects = await listProjects(params);
 
   const active = projects.filter((p) => p.status === "ACTIVE");
@@ -44,6 +47,7 @@ export default async function ProjectsPage({
             <Plus className="h-4 w-4" /> New project
           </Link>
         </Button>}
+        <SavedViewsControl entity="projects" />
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RecentMark } from "@/components/recent-mark";
 import { FollowControl } from "@/components/follow-control";
 import { SyncFromDeal } from "./sync-from-deal";
 import { notFound } from "next/navigation";
@@ -106,6 +107,7 @@ export default async function ProjectWorkspacePage({
         {canManage && <DeleteProjectButton projectId={project.id} name={`${project.projectNumber} ${project.name}`} />}
         <Button asChild variant="outline"><Link href={`/projects/${id}/content`}>Content calendar</Link></Button>
         <FollowControl entityType="Project" entityId={id} />
+        <RecentMark entityType="Project" entityId={id} label={String(project.name ?? "")} />
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

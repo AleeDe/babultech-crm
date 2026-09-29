@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { SavedViewsControl } from "@/components/saved-views";
+import { applyDefaultView } from "@/server/saved-views";
 import { Plus } from "lucide-react";
 import { listContacts } from "@/server/crm";
 import {
@@ -18,6 +20,7 @@ export default async function ContactsPage({
   if (!can(_me, PERMISSIONS.ACCOUNT_READ)) return <Forbidden what="contacts" />;
 
   const params = await searchParams;
+  await applyDefaultView("contacts", params);
   const contacts = await listContacts({
     search: params.search,
     unaffiliatedOnly: params.filter === "unaffiliated",
@@ -35,6 +38,7 @@ export default async function ContactsPage({
             <Plus className="h-4 w-4" /> New contact
           </Link>
         </Button>
+        <SavedViewsControl entity="contacts" />
       </PageHeader>
 
       <Card>

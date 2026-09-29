@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { SavedViewsControl } from "@/components/saved-views";
+import { applyDefaultView } from "@/server/saved-views";
 import { Plus } from "lucide-react";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
@@ -18,6 +20,7 @@ export default async function ActivitiesPage({
 }) {
   const user = await requireUser();
   const params = await searchParams;
+  await applyDefaultView("activities", params);
 
   const db = await supabaseServer();
 
@@ -69,6 +72,7 @@ export default async function ActivitiesPage({
             <Plus className="h-4 w-4" /> New activity
           </Link>
         </Button>
+        <SavedViewsControl entity="activities" />
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { DeleteControl } from "@/components/delete-control";
+import { RecentMark } from "@/components/recent-mark";
 import { FollowControl } from "@/components/follow-control";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
@@ -52,6 +54,8 @@ export default async function CaseDetailPage({
           <Link href={`/cases/${c.id}/edit`}>Edit</Link>
         </Button>
         <FollowControl entityType="SupportCase" entityId={id} />
+        <RecentMark entityType="SupportCase" entityId={id} label={`${c.caseNumber ?? ""} ${c.subject ?? ""}`.trim()} />
+        <DeleteControl type="SupportCase" id={id} name={`${c.caseNumber ?? ""} ${c.subject ?? ""}`.trim()} />
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { DeleteControl } from "@/components/delete-control";
+import { RecentMark } from "@/components/recent-mark";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
@@ -96,6 +98,8 @@ export default async function CampaignDetailPage({
             <Link href={`/campaigns/${campaign.id}/edit`}>Edit</Link>
           </Button>
         )}
+        <RecentMark entityType="Campaign" entityId={id} label={String(campaign.name ?? "")} />
+        <DeleteControl type="Campaign" id={id} name={String(campaign.name ?? "")} />
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

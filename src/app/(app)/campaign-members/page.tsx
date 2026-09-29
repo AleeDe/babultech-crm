@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { SavedViewsControl } from "@/components/saved-views";
+import { applyDefaultView } from "@/server/saved-views";
 import { BanIcon, MailX, Plus, Upload } from "lucide-react";
 import { listCampaignMembers, getCampaignMemberTotals } from "@/server/campaign-members";
 import { getPicklistMap } from "@/server/picklists";
@@ -28,6 +30,7 @@ export default async function CampaignMembersPage({
   if (!can(me, PERMISSIONS.LEAD_READ)) return <Forbidden what="campaign members" />;
 
   const params = await searchParams;
+  await applyDefaultView("campaign-members", params);
   const [members, totals, picklists] = await Promise.all([
     listCampaignMembers(params),
     getCampaignMemberTotals(),
@@ -57,6 +60,7 @@ export default async function CampaignMembersPage({
             </Button>
           </>
         )}
+        <SavedViewsControl entity="campaign-members" />
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

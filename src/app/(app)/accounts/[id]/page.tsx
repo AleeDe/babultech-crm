@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { DeleteControl } from "@/components/delete-control";
+import { RecentMark } from "@/components/recent-mark";
 import { FollowControl } from "@/components/follow-control";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
@@ -66,6 +68,8 @@ export default async function AccountDetailPage({
           <Link href={`/accounts/${account.id}/edit`}>Edit</Link>
         </Button>
         <FollowControl entityType="Account" entityId={id} />
+        <RecentMark entityType="Account" entityId={id} label={String(account.name ?? "")} />
+        <DeleteControl type="Account" id={id} name={String(account.name ?? "")} />
       </PageHeader>
 
       {account.sourcePartner && (

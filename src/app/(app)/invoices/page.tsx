@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { SavedViewsControl } from "@/components/saved-views";
+import { applyDefaultView } from "@/server/saved-views";
 import { Plus } from "lucide-react";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
@@ -23,6 +25,7 @@ export default async function InvoicesPage({
   if (!can(_me, PERMISSIONS.INVOICE_READ)) return <Forbidden what="invoices" />;
 
   const params = await searchParams;
+  await applyDefaultView("invoices", params);
   const db = await supabaseServer();
 
   let query = db
@@ -81,6 +84,7 @@ export default async function InvoicesPage({
             <Plus className="h-4 w-4" /> New invoice
           </Link>
         </Button>
+        <SavedViewsControl entity="invoices" />
       </PageHeader>
 
       <div className="mb-6">

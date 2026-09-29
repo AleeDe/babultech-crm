@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { DeleteControl } from "@/components/delete-control";
+import { RecentMark } from "@/components/recent-mark";
 import { FollowControl } from "@/components/follow-control";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
@@ -60,6 +62,8 @@ export default async function ContactDetailPage({
           </Button>
         )}
         <FollowControl entityType="Contact" entityId={id} />
+        <RecentMark entityType="Contact" entityId={id} label={`${contact.firstName ?? ""} ${contact.lastName ?? ""}`.trim()} />
+        <DeleteControl type="Contact" id={id} name={`${contact.firstName ?? ""} ${contact.lastName ?? ""}`.trim()} />
       </PageHeader>
 
       <div className="grid gap-6 lg:grid-cols-2">

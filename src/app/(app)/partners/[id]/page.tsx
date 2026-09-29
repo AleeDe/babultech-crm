@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RecentMark } from "@/components/recent-mark";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
@@ -56,6 +57,7 @@ export default async function PartnerDetailPage({
         description={`${partner.partnerNumber} · ${humanize(partner.partnerType)} partner · ${humanize(partner.tier)} tier`}
       >
         <Badge tone={statusTone(partner.status)}>{humanize(partner.status)}</Badge>
+        <RecentMark entityType="Partner" entityId={id} label={String(partner.displayName ?? "")} />
       </PageHeader>
 
       {agreementExpired && (

@@ -7,6 +7,7 @@ import {
 } from "@/components/ui";
 import { formatDate, formatDateTime, formatPercent, humanize } from "@/lib/utils";
 import { TaskProgress } from "./task-progress";
+import { listRecent } from "@/server/recent";
 
 /**
  * One screen for "what am I supposed to be doing".
@@ -16,7 +17,7 @@ import { TaskProgress } from "./task-progress";
  * data indexed by assignee.
  */
 export default async function MyWorkPage() {
-  const { me, tasks, projects, cases, activities, summary } = await getMyWork();
+  const [{ me, tasks, projects, cases, activities, summary }, recent] = await Promise.all([getMyWork(), listRecent(8)]);
 
   const nothingAssigned =
     tasks.length === 0 && projects.length === 0 && cases.length === 0 && activities.length === 0;
@@ -31,6 +32,26 @@ export default async function MyWorkPage() {
           <Link href="/timesheets">Log time</Link>
         </Button>
       </PageHeader>
+
+      {recent.length > 0 && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Recently opened</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {recent.map((r) => (
+              <Link
+                key={r.href}
+                href={r.href}
+                className="inline-flex max-w-full items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm hover:bg-accent"
+              >
+                <span className="text-xs text-muted-foreground">{r.type}</span>
+                <span className="truncate">{r.label}</span>
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {nothingAssigned ? (
         <EmptyState

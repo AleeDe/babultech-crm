@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { SavedViewsControl } from "@/components/saved-views";
+import { applyDefaultView } from "@/server/saved-views";
 import { toDecimal } from "@/lib/decimal";
 import { Handshake, Plus } from "lucide-react";
 import { listOpportunities, getPipelineByStage } from "@/server/opportunities";
@@ -26,6 +28,7 @@ export default async function OpportunitiesPage({
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="opportunities" />;
 
   const params = await searchParams;
+  await applyDefaultView("opportunities", params);
   const [deals, pipeline, partners] = await Promise.all([
     listOpportunities(params),
     getPipelineByStage(),
@@ -52,6 +55,7 @@ export default async function OpportunitiesPage({
             <Plus className="h-4 w-4" /> New opportunity
           </Link>
         </Button>
+        <SavedViewsControl entity="opportunities" />
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

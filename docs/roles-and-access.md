@@ -2,6 +2,30 @@
 
 How access is decided in this system, and the rules to follow when changing it.
 
+## 29 September 2026: View as, and deleting records
+
+**View as** (`user:view_as`) opens the CRM or a portal as another person sees
+it: their permissions, their data scope, their records. It needs a reason,
+ends after 30 minutes, never works on an administrator or someone inactive,
+and cannot be started from inside another view. It is read-only twice over:
+the app refuses every server action while a view is open, and the database
+refuses any insert, update or delete made on the view's token, on every table
+(`20260929000002`; `scripts/check-view-as-guard.sql` lists any table that lacks
+the guard). Start, end and reason are in Users › Security history. Only people
+who can open the Users screen can use it, so in practice it is administrators'.
+
+**Delete permissions** - `lead:delete`, `account:delete` (accounts and contacts),
+`opportunity:delete`, `case:delete` and `campaign:delete` - move a record the
+person can see to the recycle bin and restore it. Erasing for good is
+`admin:*` only. A role holding `lead:*` and the like already has these: today
+that is the Manager role and Super Admin. Finance records, expenses and users
+cannot be deleted this way.
+
+**Notifications and follows** are each person's own: row security returns only
+your notifications, preferences, follows, saved views and recent records.
+Following a record needs you to be able to see it, so nobody is told the name
+of a record they could not open.
+
 ## 28 September 2026: partners' records, and partners as sellers
 
 Two rules were added, both enforced in the database by

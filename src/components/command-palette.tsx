@@ -36,9 +36,26 @@ export interface PaletteItem {
  * Only pages the person may open are passed in, so the palette can never offer a
  * screen that would refuse them on arrival.
  */
-export function CommandPalette({ items }: { items: PaletteItem[] }) {
+export function CommandPalette({ items: screens }: { items: PaletteItem[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  // Recently opened records, fetched each time the palette opens so the list
+  // is never stale. Listed above the screens, and searched with them.
+  const [recent, setRecent] = useState<PaletteItem[]>([]);
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    fetch("/api/recent", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((data: { items?: { href: string; label: string; type: string }[] }) => {
+        if (live) setRecent((data.items ?? []).map((r) => ({ href: r.href, label: r.label, group: `Recent ${r.type.toLowerCase()}` })));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [open]);
+  const items = useMemo(() => [...recent, ...screens.filter((s) => !recent.some((r) => r.href === s.href))], [recent, screens]);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
@@ -133,7 +150,7 @@ export function CommandPalette({ items }: { items: PaletteItem[] }) {
               "overflow-hidden rounded-xl border bg-card shadow-2xl",
             )}
           >
-            <Dialog.Title className="sr-only">Go to a screen</Dialog.Title>
+            <Dialog.Title className="sr-only">Go to a screen or a recent record</Dialog.Title>
             <Dialog.Description className="sr-only">
               Type to filter, then press Enter to open.
             </Dialog.Description>
