@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DealAttribution } from "@/components/deal-attribution";
 import { DeleteControl } from "@/components/delete-control";
 import { RecentMark } from "@/components/recent-mark";
 import { FollowControl } from "@/components/follow-control";
@@ -111,6 +112,8 @@ export default async function OpportunityDetailPage({
 
           The header, badges and figures stay outside - they answer "is this deal
           healthy?", which is the question someone opens the page with. */}
+      <DealAttribution opportunityId={id} />
+      <div className="mt-6" />
       <RecordTabs
         tabs={[
           {

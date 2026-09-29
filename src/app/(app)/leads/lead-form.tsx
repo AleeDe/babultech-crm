@@ -16,7 +16,7 @@ import { humanize } from "@/lib/utils";
 
 /** CONVERTED is absent by design — a lead becomes converted only through conversion. */
 const STATUSES = [
-  "NEW", "ASSIGNED", "ATTEMPTED_CONTACT", "CONTACTED", "DISCOVERY_SCHEDULED",
+  "PROSPECT", "NEW", "ASSIGNED", "ATTEMPTED_CONTACT", "CONTACTED", "DISCOVERY_SCHEDULED",
   "QUALIFIED", "NURTURING", "DISQUALIFIED",
 ];
 const RATINGS = ["HOT", "WARM", "COLD"];

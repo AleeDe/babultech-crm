@@ -287,6 +287,36 @@ Scheduled database jobs: `babultech-jobs-tick` (every minute),
 `babultech-due-reminders` (03:00 UTC), `babultech-jobs-housekeeping` (22:15 UTC),
 `babultech-recycle-purge` (22:30 UTC).
 
+### Marketing: prospects, tracking, forms, attribution, scoring
+
+Added 29 September 2026, migrations `20260929000006` to `20260929000009`.
+
+- **Prospect** is the first lead status. Prospects stay out of the lead list,
+  the calling queue and the dashboard's counts until someone presses
+  *Qualify to lead*, or their score does. Converting a campaign member now
+  makes a prospect.
+- **Source tracking.** Leads carry a first touch (fixed once written) and a
+  latest touch - source, medium, campaign, landing page, referrer - and the
+  five UTM tags; contacts carry first and latest, copied at conversion.
+- **Campaign touches** (`campaign_interaction`): forms, email opens and clicks
+  (from the Resend webhook, once each), and touches logged by hand. Each moves
+  the person's latest fields and re-scores the lead.
+- **Website forms.** A form belongs to a campaign; its page gives the HTML and
+  a script (`/api/forms/script`) that remembers the visitor's first touch.
+  Posts go to `/api/forms/<key>` and `web_form_submit()`: a known person gets a
+  touch, a new one becomes a prospect. A hidden field and five-in-ten-minutes
+  per visitor keep robots out; allowed websites can be listed per form.
+- **Attribution.** `opportunity_campaign` records a deal's first,
+  lead-creation and latest campaigns at conversion; the primary campaign is
+  the deal's own field. The campaign page and the marketing dashboard report
+  revenue under any of the four.
+- **Referrals.** A lead can name a referring contact; Leads › Referrals counts
+  them with partner registrations.
+- **Lead scoring.** Rules and threshold on Campaigns › Lead scoring
+  (administrators edit). Recalculated on every touch and change and nightly
+  (`babultech-lead-rescore`, 23:00 UTC). Crossing the threshold notifies the
+  owner and can move a prospect to New.
+
 ---
 
 ## 4. Bugs found and fixed during testing

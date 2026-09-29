@@ -50,6 +50,9 @@ export default async function CampaignsPage({
         title="Campaigns"
         description="Marketing spend against leads generated, pipeline created and revenue won."
       >
+        <Button asChild variant="outline"><Link href="/campaigns/dashboard">Marketing dashboard</Link></Button>
+        <Button asChild variant="outline"><Link href="/campaigns/forms">Website forms</Link></Button>
+        <Button asChild variant="outline"><Link href="/campaigns/scoring">Lead scoring</Link></Button>
         <ExportButton entity="campaigns" params={{ search: params.search, status: params.status }} />
         {can(_me, PERMISSIONS.LEAD_WRITE) && (
           <Button asChild>

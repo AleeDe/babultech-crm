@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { MarketingPanel } from "@/components/marketing-panel";
+import { QualifyProspectButton } from "@/components/qualify-prospect-button";
 import { DeleteControl } from "@/components/delete-control";
 import { RecentMark } from "@/components/recent-mark";
 import { FollowControl } from "@/components/follow-control";
@@ -107,6 +109,7 @@ export default async function LeadDetailPage({
           </Button>
         )}
         {can(me, PERMISSIONS.LEAD_WRITE) && !converted && !disqualified && !pendingHandoff && <Button asChild><Link href={`/leads/${lead.id}/convert`}>Convert lead</Link></Button>}
+        {lead.status === "PROSPECT" && can(me, PERMISSIONS.LEAD_WRITE) && <QualifyProspectButton leadId={lead.id} />}
         <FollowControl entityType="Lead" entityId={id} />
         <RecentMark entityType="Lead" entityId={id} label={`${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim()} />
         <DeleteControl type="Lead" id={id} name={`${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim()} />
@@ -260,6 +263,13 @@ export default async function LeadDetailPage({
           canWrite={can(me, PERMISSIONS.LEAD_WRITE)}
         />
       </div>
+      <MarketingPanel
+        entity="Lead"
+        id={id}
+        canWrite={can(me, PERMISSIONS.LEAD_WRITE)}
+        defaultCampaignId={lead.campaign?.id ?? null}
+      />
+
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NotesSection entityType="Lead" entityId={id} notes={notes} />
         <DocumentsPanel entityType="Lead" entityId={id} documents={documents} />

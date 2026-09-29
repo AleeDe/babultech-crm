@@ -85,7 +85,7 @@ export async function POST(request: Request) {
   // rows in a campaign audience, so the match is on the activity.
   const { data: row } = await db
     .from("activity")
-    .select("id, toAddress, openCount, clickCount, openedAt, clickedAt")
+    .select("id, toAddress, openCount, clickCount, openedAt, clickedAt, relatedEntityType, relatedEntityId, campaignId, subject")
     .eq("providerMessageId", messageId)
     .maybeSingle();
 
@@ -109,6 +109,29 @@ export async function POST(request: Request) {
   }
 
   await db.from("activity").update(update).eq("id", row.id);
+
+  // The first open and the first click are campaign touches on the person, for
+  // their latest source, their score and the campaign's funnel. Once each: the
+  // key makes a repeat a no-op.
+  if ((column === "openedAt" || column === "clickedAt") && ["Lead", "Contact"].includes(row.relatedEntityType as string)) {
+    let campaignId = (row.campaignId as string | null) ?? null;
+    if (!campaignId && row.relatedEntityType === "Lead") {
+      const { data: lead } = await db.from("lead").select("campaignId").eq("id", row.relatedEntityId).maybeSingle();
+      campaignId = (lead?.campaignId as string | null) ?? null;
+    }
+    const kind = column === "openedAt" ? "EMAIL_OPEN" : "EMAIL_CLICK";
+    await db.rpc("record_campaign_interaction", {
+      p: {
+        [row.relatedEntityType === "Lead" ? "leadId" : "contactId"]: row.relatedEntityId,
+        campaignId,
+        interactionType: kind,
+        source: "Email",
+        medium: "email",
+        details: row.subject ? `Email: ${row.subject}` : null,
+        sourceKey: `email:${row.id}:${kind}`,
+      },
+    });
+  }
 
   // A hard bounce or a spam complaint is about the ADDRESS, not this one send.
   // Both must stop future mail reaching it, or the domain's sending reputation

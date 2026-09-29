@@ -13,9 +13,10 @@ import { ExportButton } from "@/components/export-button";
 import { LeadsTable } from "./leads-table";
 import { getAssignableUsers } from "@/server/bulk";
 import { listPartnerOptions } from "@/server/partners";
+import { countProspects } from "@/server/marketing";
 
 const STATUSES = [
-  "NEW", "ASSIGNED", "ATTEMPTED_CONTACT", "CONTACTED", "DISCOVERY_SCHEDULED",
+  "PROSPECT", "NEW", "ASSIGNED", "ATTEMPTED_CONTACT", "CONTACTED", "DISCOVERY_SCHEDULED",
   "QUALIFIED", "NURTURING", "DISQUALIFIED", "CONVERTED",
 ];
 
@@ -31,11 +32,12 @@ export default async function LeadsPage({
 
   const params = await searchParams;
   await applyDefaultView("leads", params);
-  const [leads, users, campaigns, partners] = await Promise.all([
+  const [leads, users, campaigns, partners, prospects] = await Promise.all([
     listLeads(params),
     getAssignableUsers(),
     listCampaigns(),
     listPartnerOptions(),
+    countProspects(),
   ]);
 
   const open = leads.filter((l) => !["CONVERTED", "DISQUALIFIED"].includes(l.status));
@@ -57,6 +59,7 @@ export default async function LeadsPage({
         <Button asChild variant="outline"><Link href="/leads/calling">My calling queue</Link></Button>
         <Button asChild variant="outline"><Link href="/leads/handoffs">Sales handoffs</Link></Button>
         <Button asChild variant="outline"><Link href="/leads/research">Research quality</Link></Button>
+        <Button asChild variant="outline"><Link href="/leads/referrals">Referrals</Link></Button>
         <ExportButton entity="leads" params={{ search: params.search, status: params.status, source: params.source, partnerId: params.partnerId }} />
         {can(_me, PERMISSIONS.LEAD_WRITE) && (
           <Button asChild variant="outline">
@@ -73,7 +76,13 @@ export default async function LeadsPage({
         <SavedViewsControl entity="leads" />
       </PageHeader>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <StatTile
+          label="Prospects"
+          value={String(prospects)}
+          sublabel="Marketing's, not yet in the list"
+          href="/leads?status=PROSPECT"
+        />
         <StatTile label="Open leads" value={String(open.length)} />
         <StatTile label="Estimated value" value={formatMoneyTotal(pipelineValue)} tone="info" />
         <StatTile

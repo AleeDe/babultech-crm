@@ -81,7 +81,7 @@ export function LeadsTable({
               label: "Set status",
               placeholder: "Choose a status…",
               options: [
-                "NEW", "ASSIGNED", "ATTEMPTED_CONTACT",
+                "PROSPECT", "NEW", "ASSIGNED", "ATTEMPTED_CONTACT",
                 "CONTACTED", "QUALIFIED", "NURTURING",
               ].map((s) => ({ value: s, label: humanize(s) })),
               run: (ids, value) => bulkSetLeadStatus(ids, value),

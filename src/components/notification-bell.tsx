@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-dropdown-menu";
 import { Bell, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { loadBell, markNotificationsRead, type NotificationItem } from "@/server/notifications";
+import { markNotificationsRead, type NotificationItem } from "@/server/notifications";
 
 /**
  * The bell: how many unread, and the latest few.
@@ -49,7 +49,9 @@ export function NotificationBell({ className }: { className?: string }) {
     if (busy.current) return;
     busy.current = true;
     try {
-      const next = await loadBell();
+      const res = await fetch("/api/notifications/bell", { cache: "no-store" });
+      if (!res.ok) return;
+      const next = (await res.json()) as { unread: number; items: NotificationItem[] };
       setUnread(next.unread);
       setItems(next.items);
     } catch {

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MarketingPanel } from "@/components/marketing-panel";
 import { DeleteControl } from "@/components/delete-control";
 import { RecentMark } from "@/components/recent-mark";
 import { FollowControl } from "@/components/follow-control";
@@ -169,6 +170,8 @@ export default async function ContactDetailPage({
           canWrite={can(me, PERMISSIONS.LEAD_WRITE)}
         />
       </div>
+      <MarketingPanel entity="Contact" id={id} canWrite={can(me, PERMISSIONS.ACCOUNT_WRITE)} />
+
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NotesSection entityType="Contact" entityId={id} notes={notes} />
         <DocumentsPanel entityType="Contact" entityId={id} documents={documents} />

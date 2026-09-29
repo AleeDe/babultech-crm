@@ -628,7 +628,7 @@ export async function getLead(id: string) {
     .select(
       `*,
        owner:app_user!lead_ownerUserId_fkey ( id, fullName ),
-       campaign ( id, name ),
+       campaign:campaign!lead_campaignId_fkey ( id, name ),
        referredByPartner:partner ( id, displayName ),
        convertedAccount:account ( id, name ),
        convertedOpportunity:opportunity ( id, name )`,
@@ -651,7 +651,7 @@ export async function getLead(id: string) {
 
 const leadUpdateSchema = leadSchema.extend({
   status: z.enum([
-    "NEW", "ASSIGNED", "ATTEMPTED_CONTACT", "CONTACTED", "DISCOVERY_SCHEDULED",
+    "PROSPECT", "NEW", "ASSIGNED", "ATTEMPTED_CONTACT", "CONTACTED", "DISCOVERY_SCHEDULED",
     "QUALIFIED", "NURTURING", "DISQUALIFIED",
   ]),
   disqualifiedReason: z.string().max(255).optional().nullable(),
@@ -842,7 +842,7 @@ export async function listLeads(filters?: {
     .select(
       `*,
        owner:app_user!lead_ownerUserId_fkey ( id, fullName ),
-       campaign ( id, name ),
+       campaign:campaign!lead_campaignId_fkey ( id, name ),
        referredByPartner:partner ( id, displayName )`,
     )
     .is("deletedAt", null)
@@ -853,7 +853,10 @@ export async function listLeads(filters?: {
 
   // Deals partners have registered through the portal, awaiting a decision.
   if (filters?.source === "partner") query = query.not("referredByPartnerId", "is", null);
+  // Prospects are marketing's until someone qualifies them, so the lead list
+  // leaves them out unless they are asked for.
   if (filters?.status) query = query.eq("status", filters.status);
+  else query = query.neq("status", "PROSPECT");
   if (filters?.campaignId) query = query.eq("campaignId", filters.campaignId);
   if (filters?.partnerId) query = query.eq("referredByPartnerId", filters.partnerId);
   if (filters?.search) {
@@ -890,7 +893,7 @@ export async function listCampaigns(filters?: { search?: string; status?: string
        campaignType:campaign_type ( * ),
        owner:app_user!campaign_ownerUserId_fkey ( fullName ),
        members:campaign_member!campaign_member_campaignId_fkey ( count ),
-       leads:lead ( count ),
+       leads:lead!lead_campaignId_fkey ( count ),
        opportunities:opportunity ( count )`,
     )
     .is("deletedAt", null)

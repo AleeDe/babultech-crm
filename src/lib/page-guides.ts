@@ -275,6 +275,29 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
     feeds: ["Nothing - this is a record for checking"],
     watchOut: "A run of failed sign-ins for one address is worth asking that person about.",
   },
+  "/campaigns/dashboard": {
+    purpose:
+      "Every campaign from first touch to won revenue - members, engaged, leads, qualified, won, spend and ROI - with child campaigns added into their parent.",
+    needs: ["Campaigns with spend recorded, and leads and deals that name them"],
+    feeds: ["The campaign pages, one click in"],
+    watchOut:
+      "Revenue depends on how a deal is credited. Primary uses the deal's own campaign; first, lead-creation and latest touch use the campaigns the lead came through.",
+  },
+  "/campaigns/forms": {
+    purpose: "The forms on your website that send sign-ups here as prospects, each belonging to a campaign.",
+    needs: ["A campaign: forms are added from its page"],
+    feeds: ["Prospects, with where they came from, and a touch on anyone already on file"],
+  },
+  "/campaigns/scoring": {
+    purpose: "The points a lead earns from what it does and who it is, and the score at which it counts as hot.",
+    feeds: ["Each lead's score, the hot-lead notification, and - if switched on - prospects moving to New by themselves"],
+    watchOut: "Changing a rule re-scores every open lead at once.",
+  },
+  "/leads/referrals": {
+    purpose: "Who sends us business: contacts named as a lead's referrer, and partners who registered leads.",
+    needs: ["Referred by set on the lead, or a partner registration"],
+    feeds: ["Nothing - a report"],
+  },
 };
 
 /**

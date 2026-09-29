@@ -12,6 +12,8 @@ import {
 import { formatMoney, formatDate, formatPercent, humanize, formatMoneyTotal } from "@/lib/utils";
 import { getCampaignEmailStats } from "@/server/activities";
 import { Megaphone, Plus } from "lucide-react";
+import { CampaignFunnel, CampaignTouches } from "@/components/campaign-funnel";
+import { WebFormsCard } from "@/components/web-forms-card";
 
 export default async function CampaignDetailPage({
   params,
@@ -34,7 +36,7 @@ export default async function CampaignDetailPage({
        campaignType:campaign_type ( * ),
        owner:app_user!campaign_ownerUserId_fkey ( id, fullName ),
        parentCampaign:parentCampaignId ( id, name ),
-       leads:lead ( id, leadNumber, firstName, lastName, companyName, status, estimatedValue, createdAt ),
+       leads:lead!lead_campaignId_fkey ( id, leadNumber, firstName, lastName, companyName, status, estimatedValue, createdAt ),
        opportunities:opportunity ( id, opportunityNumber, name, stage, amount, currencyCode, expectedCloseDate, account ( id, name ) ),
        members:campaign_member!campaign_member_campaignId_fkey ( count )`,
     )
@@ -122,6 +124,8 @@ export default async function CampaignDetailPage({
           tone={roi === null ? "neutral" : roi >= 0 ? "success" : "danger"}
         />
       </div>
+
+      <CampaignFunnel campaignId={id} />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
@@ -320,6 +324,11 @@ export default async function CampaignDetailPage({
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <CampaignTouches campaignId={id} />
+        <WebFormsCard campaignId={id} canWrite={can(_me, PERMISSIONS.LEAD_WRITE)} />
       </div>
     </>
   );

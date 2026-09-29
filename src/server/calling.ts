@@ -14,7 +14,7 @@ export async function getCallingQueue(filter: CallQueueFilter, page = 1) {
   let query = db.from("lead")
     .select("id,leadNumber,firstName,lastName,companyName,phone,status,rating,nextFollowUpAt", { count: "exact" })
     .eq("ownerUserId", user.id).is("deletedAt", null).is("convertedAt", null)
-    .not("status", "in", "(CONVERTED,DISQUALIFIED)");
+    .not("status", "in", "(CONVERTED,DISQUALIFIED,PROSPECT)");
   if (filter === "due") query = query.lte("nextFollowUpAt", now.toISOString());
   if (filter === "today") query = query.gt("nextFollowUpAt", now.toISOString()).lte("nextFollowUpAt", pakistanDayEnd(now));
   if (filter === "unscheduled") query = query.is("nextFollowUpAt", null);
