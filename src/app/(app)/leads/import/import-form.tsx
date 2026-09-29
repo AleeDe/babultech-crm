@@ -92,6 +92,9 @@ const SOURCES = [
  * someone working out which prospects already exist, which is worse than a
  * rejected file they can fix and paste again.
  */
+/** Rows sent per request. The server takes up to 500; 200 keeps each quick. */
+const BATCH = 200;
+
 export function LeadImportForm({
   users,
   campaigns,
@@ -121,6 +124,9 @@ export function LeadImportForm({
   // What the last import did, when it left anybody out. An import that skipped
   // nobody goes straight to the leads; one that skipped people stays to say who.
   const [outcome, setOutcome] = useState<{ created: number; skipped: LeadImportSkip[] } | null>(null);
+  // How far a large import has got: it goes in batches, so a file of
+  // thousands never has to fit in one request.
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   const parsed = useMemo(() => parseDelimited(text), [text]);
 
@@ -214,11 +220,30 @@ export function LeadImportForm({
     setError(null);
     setOutcome(null);
     start(async () => {
-      const result = await createLeadsBulk(rows.map((r) => r.lead) as never);
-      if (!result.ok) {
-        setError(result.error);
-        return;
+      const all = rows.map((r) => r.lead);
+      const created = { count: 0 };
+      const skipped: LeadImportSkip[] = [];
+      setProgress({ done: 0, total: all.length });
+      for (let i = 0; i < all.length; i += BATCH) {
+        const batch = await createLeadsBulk(all.slice(i, i + BATCH) as never);
+        if (!batch.ok) {
+          // Rows already sent stay imported; say how far it got.
+          setProgress(null);
+          setError(
+            i === 0
+              ? batch.error
+              : `${created.count} lead${created.count === 1 ? " was" : "s were"} imported before this stopped at row ${i + 1}: ${batch.error}`,
+          );
+          if (created.count > 0) setOutcome({ created: created.count, skipped });
+          return;
+        }
+        created.count += batch.data.created;
+        // Row numbers come back counted within the batch.
+        skipped.push(...batch.data.skipped.map((sk) => ({ ...sk, row: sk.row + i })));
+        setProgress({ done: Math.min(i + BATCH, all.length), total: all.length });
       }
+      setProgress(null);
+      const result = { ok: true as const, data: { created: created.count, skipped } };
       if (result.data.skipped.length === 0) {
         router.push("/leads");
         router.refresh();
@@ -490,7 +515,9 @@ export function LeadImportForm({
         <Button onClick={submit} disabled={!canImport}>
           <Upload className="h-4 w-4" />
           {pending
-            ? "Importing…"
+            ? progress
+              ? `Importing ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()}…`
+              : "Importing…"
             : rows.length > 0
               ? `Import ${rows.length} lead${rows.length === 1 ? "" : "s"}`
               : "Import"}

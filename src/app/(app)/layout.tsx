@@ -7,10 +7,13 @@ import { getPicklistMap } from "@/server/picklists";
 import { CurrencyContextProvider } from "@/components/currency-context-provider";
 import { ensureCurrencyContext } from "@/lib/currency-loader";
 import { ViewAsBanner } from "@/components/view-as-banner";
+import { rememberSchedulerAddress } from "@/lib/scheduler-address";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   try {
     const user = await requireUser();
+    // The scheduler learns where the live site is from its first visit.
+    await rememberSchedulerAddress();
 
     // External logins never see the internal app, whatever they type in the
     // address bar. Each portal's layout enforces the reverse, and the database

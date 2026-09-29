@@ -44,7 +44,9 @@ export function LogTouchButton({
       });
       if (!result.ok) return setError(result.error);
       // A full reload rather than router.refresh(): on the lead page the
-      // client router dropped the refresh, leaving the new touch unshown.
+      // client router intermittently dropped the refresh (in and out of a
+      // transition alike), leaving the new touch unshown. A reload is about a
+      // second and always shows it.
       window.location.reload();
     });
   }

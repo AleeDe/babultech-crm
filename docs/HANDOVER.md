@@ -265,8 +265,9 @@ Added 29 September 2026, migrations `20260929000000` to `20260929000005`.
   (`pg_cron` + `pg_net`, enabled by `20260929000000`) calls `/api/jobs/run`
   every minute there is work. The call carries a key from the Supabase vault,
   checked by `jobs_key_matches()`. The scheduler needs the site's public
-  address, set on Administration › Background jobs; until then it does
-  nothing. Mass email to leads is the first job: recipients are chosen while
+  address: the live site records it on its first visit
+  (`lib/scheduler-address.ts`, never a local or tunnel address), and an
+  administrator can change it on Administration › Background jobs. Mass email to leads is the first job: recipients are chosen while
   the sender waits, the messages go out in the background.
 - **Notifications.** Written by database triggers on the records, so every path
   that assigns or changes one is covered; the bell reads them. Emails for the
@@ -278,6 +279,10 @@ Added 29 September 2026, migrations `20260929000000` to `20260929000005`.
 - **Sign-in history and View as.** See `docs/roles-and-access.md`.
 - **Saved views.** A name for a list's filters; one default per list per person;
   administrators can share. On ten lists.
+- **Lead import** goes in batches of 200 from the import screen, each under the
+  importer's own permissions, so a file of thousands no longer hits the
+  500-row limit. It is not a background job on purpose: a job has no signed-in
+  user, and would skip the row security that decides whose leads one may add.
 - **Recent records.** The last thirty opened, in the ⌘K box and on My work.
 - **Recycle bin.** Soft delete with `deletedById`; `recycle_blocker()` decides
   what may not be deleted; `recycle_purge()` erases after 90 days at 03:30

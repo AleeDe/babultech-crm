@@ -11,7 +11,7 @@ import { supabaseServer } from "@/lib/supabase";
 import { createRecord, updateRecord, applyScopeWithPartners, applySearch, LIST_LIMIT } from "@/lib/db";
 import { one, toDecimal } from "@/lib/decimal";
 import { SEQUENCES } from "@/lib/numbering";
-import { PERMISSIONS, authorize, requirePermission, requireUser, scopedContext, can } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission, requireUser, scopedContext, can, canAny, AuthorizationError } from "@/lib/authz";
 import { MESSAGE_CHANNELS } from "@/lib/types";
 import type { ActionResult } from "./partners";
 import {
@@ -977,7 +977,14 @@ export async function listProducts(
 
 /** Option lists for form dropdowns. */
 export async function getFormOptions() {
-  await requirePermission(PERMISSIONS.ACCOUNT_READ);
+  // Shared by the lead, account, contact and deal forms, so any one of those
+  // read rights will do: requiring account:read here broke the lead form for
+  // someone who works leads but not customers. Row security still decides
+  // which accounts, contacts and partners each person is offered.
+  const me = await requireUser();
+  if (!canAny(me, PERMISSIONS.LEAD_READ, PERMISSIONS.ACCOUNT_READ, PERMISSIONS.OPPORTUNITY_READ)) {
+    throw new AuthorizationError("Missing permission: lead:read, account:read or opportunity:read");
+  }
 
   const db = await supabaseServer();
 
