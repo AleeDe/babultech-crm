@@ -98,6 +98,12 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
       { value: "secret:read", label: "Read stored credentials", help: "List and reveal the passwords and keys in the vault.", sensitive: true },
       { value: "secret:write", label: "Manage stored credentials", help: "Add, change and revoke vault entries.", sensitive: true },
       {
+        value: "user:view_as",
+        label: "View as another user",
+        help: "Open the CRM or a portal as someone else sees it, read-only, for up to 30 minutes. Needs a reason, is logged, and never works on an administrator.",
+        sensitive: true,
+      },
+      {
         value: "admin:*",
         label: "Administer the system",
         help: "Users, roles, settings and every reference list. Holding this is close to holding everything.",

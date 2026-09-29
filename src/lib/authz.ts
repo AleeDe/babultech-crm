@@ -1,6 +1,8 @@
 import { cache } from "react";
 import { ensureCurrencyContext } from "@/lib/currency-loader";
-import { supabaseServer, supabaseAdmin } from "./supabase";
+import { headers } from "next/headers";
+import { supabaseSession, supabaseAdmin } from "./supabase";
+import { getViewAs, ViewAsReadOnlyError } from "./view-as";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { holds } from "./nav-permissions";
 
@@ -84,7 +86,16 @@ export class AuthorizationError extends Error {
  * on their next navigation. The security properties are unchanged.
  */
 async function loadUser(): Promise<SessionUser> {
-  const db = await supabaseServer();
+  // View as: the app acts as the person being viewed, and changes nothing.
+  // Every change the app makes starts with a server action, so refusing them
+  // all here is what makes the view read-only; the database refuses writes on
+  // the view's token as well.
+  const viewAs = await getViewAs();
+  if (viewAs && (await headers()).get("next-action")) {
+    throw new ViewAsReadOnlyError(viewAs.targetName);
+  }
+
+  const db = await supabaseSession();
 
   // Supabase Auth is the only identity provider, and auth.users.id ===
   // app_user.id, so the verified user id keys the profile lookup directly.
@@ -99,9 +110,9 @@ async function loadUser(): Promise<SessionUser> {
   // rejected here, and `sub` on a validly signed token was put there by Supabase
   // Auth, not by the caller. The profile read below is still pinned to that id
   // and still decides whether the account may act at all.
-  const { data: claims } = await db.auth.getClaims();
+  const { data: claims } = viewAs ? { data: null } : await db.auth.getClaims();
 
-  const userId = claims?.claims?.sub ?? null;
+  const userId = viewAs ? viewAs.targetUserId : claims?.claims?.sub ?? null;
 
   if (!userId) throw new AuthorizationError("Not signed in.");
 
@@ -201,7 +212,8 @@ export async function authorizeAny(
   let user: SessionUser;
   try {
     user = await requireUser();
-  } catch {
+  } catch (err) {
+    if (err instanceof ViewAsReadOnlyError) return { ok: false, error: err.message };
     return { ok: false, error: "Your session has ended. Sign in again and retry." };
   }
   if (!canAny(user, ...permissions)) {
@@ -234,7 +246,8 @@ export async function authorize(
   let user: SessionUser;
   try {
     user = await requireUser();
-  } catch {
+  } catch (err) {
+    if (err instanceof ViewAsReadOnlyError) return { ok: false, error: err.message };
     return { ok: false, error: "Your session has ended. Sign in again and retry." };
   }
 

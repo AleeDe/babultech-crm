@@ -8,6 +8,7 @@ import {
   CardContent, Table, THead, TBody, TR, TH, TD, EmptyState,
 } from "@/components/ui";
 import { formatDateTime } from "@/lib/utils";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 /**
  * How one send performed.
@@ -24,12 +25,12 @@ export default async function SendPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ sent?: string }>;
+  searchParams: Promise<{ queued?: string }>;
 }) {
   const me = await requireUser();
   if (!can(me, PERMISSIONS.LEAD_READ)) return <Forbidden what="email sends" />;
 
-  const [{ id }, { sent: justSent }] = await Promise.all([params, searchParams]);
+  const [{ id }, { queued: justQueued }] = await Promise.all([params, searchParams]);
   const db = await supabaseServer();
 
   const { data: batch } = await db
@@ -72,6 +73,9 @@ export default async function SendPage({
   const bounced = count((a) => Boolean(a.bouncedAt));
   const unsubscribed = count((a) => Boolean(a.unsubscribedAt));
   const failed = count((a) => Boolean(a.failReason));
+  const sent = count((a) => Boolean(a.sentAt));
+  // Written when the send was made and sent from the background since.
+  const waiting = count((a) => !a.sentAt && !a.failReason);
 
   const rate = (n: number) =>
     activities.length === 0 ? "—" : `${Math.round((n / activities.length) * 100)}%`;
@@ -91,17 +95,25 @@ export default async function SendPage({
         }
       />
 
-      {justSent && (
+      {waiting > 0 ? (
+        <div className="mb-5">
+          <AutoRefresh />
+          <Alert tone="info">
+            <span className="font-medium">Sending: {sent} of {activities.length} gone, {waiting} still to go.</span>{" "}
+            The emails go out in the background, so you can leave this page.
+          </Alert>
+        </div>
+      ) : justQueued ? (
         <div className="mb-5">
           <Alert tone="success">
-            <span className="font-medium">Sent to {justSent} people.</span> Opens and clicks arrive
+            <span className="font-medium">Sent to {sent} {sent === 1 ? "person" : "people"}.</span> Opens and clicks arrive
             over the next minutes and hours, so this page fills in as they do.
           </Alert>
         </div>
-      )}
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <StatTile label="Sent" value={String(activities.length)} />
+        <StatTile label="Sent" value={String(sent)} sublabel={waiting > 0 ? `${waiting} still to go` : undefined} />
         <StatTile label="Delivered" value={String(delivered)} sublabel={rate(delivered)} tone="success" />
         {/* Clicks before opens, because clicks are the number that means something. */}
         <StatTile label="Clicked" value={String(clicked)} sublabel={rate(clicked)} tone="info" />
@@ -219,6 +231,8 @@ export default async function SendPage({
                           <Badge tone="info">Opened</Badge>
                         ) : a.deliveredAt ? (
                           <Badge tone="neutral">Delivered</Badge>
+                        ) : !a.sentAt ? (
+                          <Badge tone="neutral">Waiting</Badge>
                         ) : (
                           <Badge tone="neutral">Sent</Badge>
                         )}

@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { getViewAs, viewAsClient } from "./view-as";
 
 /**
  * Supabase clients.
@@ -31,13 +32,26 @@ function requireEnv(value: string | undefined, name: string): string {
 }
 
 /**
- * Request-scoped client bound to the caller's session cookie.
+ * Request-scoped client for whoever the app is acting as.
  *
  * Every query issued through this runs with the user's JWT, so the RLS policies
  * in supabase/functions-sql/ decide what rows come back. This is the default — reach for
  * anything else only with a reason.
+ *
+ * During View as (lib/view-as.ts) that is the person being viewed, on the
+ * read-only token issued for the view; otherwise it is the signed-in user.
  */
 export async function supabaseServer(): Promise<SupabaseClient> {
+  const viewAs = await getViewAs();
+  if (viewAs) return viewAsClient(viewAs);
+  return supabaseSession();
+}
+
+/**
+ * The signed-in person's own session, from their cookie, whatever View as is
+ * doing. Signing in, signing out and starting or ending a view use this.
+ */
+export async function supabaseSession(): Promise<SupabaseClient> {
   const cookieStore = await cookies();
 
   return createServerClient(requireEnv(url, "NEXT_PUBLIC_SUPABASE_URL"), requireEnv(anonKey, "NEXT_PUBLIC_SUPABASE_ANON_KEY"), {

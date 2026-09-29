@@ -83,7 +83,7 @@ export function EmailLeadsForm({
       if (result.ok) {
         // Straight to the scorecard: the next question after sending is always
         // how it did, and the answer starts arriving within seconds.
-        router.push(`/leads/email/sends/${result.data.batchId}?sent=${result.data.sent}`);
+        router.push(`/leads/email/sends/${result.data.batchId}?queued=${result.data.queued}`);
         router.refresh();
       } else setError(result.error);
     });

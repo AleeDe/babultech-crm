@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FollowControl } from "@/components/follow-control";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
@@ -64,6 +65,7 @@ export default async function AccountDetailPage({
         <Button asChild>
           <Link href={`/accounts/${account.id}/edit`}>Edit</Link>
         </Button>
+        <FollowControl entityType="Account" entityId={id} />
       </PageHeader>
 
       {account.sourcePartner && (

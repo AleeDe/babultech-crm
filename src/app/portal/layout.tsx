@@ -4,6 +4,7 @@ import { requireUser, AuthorizationError } from "@/lib/authz";
 import { getPartnerProfile } from "@/server/portal";
 import { CurrencyContextProvider } from "@/components/currency-context-provider";
 import { ensureCurrencyContext } from "@/lib/currency-loader";
+import { ViewAsBanner } from "@/components/view-as-banner";
 
 /**
  * The portal's front door, and half of the isolation between internal and
@@ -38,6 +39,7 @@ export default async function PortalLayout({ children }: { children: React.React
 
   return (
     <CurrencyContextProvider value={currencies}>
+      <ViewAsBanner />
       <PortalShell
         partner={{
           displayName: partner.displayName,

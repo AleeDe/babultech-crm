@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { signInWithCredentials } from "@/lib/auth";
-import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
+import { supabaseSession, supabaseAdmin } from "@/lib/supabase";
 import { Button, Card, Field, Input, Alert } from "@/components/ui";
 import { PasswordInput } from "@/components/password-input";
 
@@ -9,7 +9,7 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const db = await supabaseServer();
+  const db = await supabaseSession();
 
   // A signed-in visitor belongs inside the application, not on this page.
   //

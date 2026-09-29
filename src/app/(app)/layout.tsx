@@ -6,6 +6,7 @@ import { PicklistProvider } from "@/components/picklist";
 import { getPicklistMap } from "@/server/picklists";
 import { CurrencyContextProvider } from "@/components/currency-context-provider";
 import { ensureCurrencyContext } from "@/lib/currency-loader";
+import { ViewAsBanner } from "@/components/view-as-banner";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   try {
@@ -21,6 +22,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     const [picklists, currencies] = await Promise.all([getPicklistMap(), ensureCurrencyContext()]);
 
     return (
+      <>
+      <ViewAsBanner />
       <AppShell
         user={{ fullName: user.fullName, email: user.email, roleName: user.roleName }}
         isAdmin={can(user, PERMISSIONS.ADMIN)}
@@ -37,6 +40,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <PicklistProvider value={picklists}>{children}</PicklistProvider>
         </CurrencyContextProvider>
       </AppShell>
+      </>
     );
   } catch (err) {
     if (err instanceof AuthorizationError) redirect("/login");

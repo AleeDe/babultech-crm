@@ -8,7 +8,8 @@ import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { one } from "@/lib/decimal";
 import { ACTIVITY_ENTITIES, type ActivityEntity } from "@/lib/activity-entities";
 import type { ActionResult } from "./partners";
-import { deliverLeadEmails, type SendResult } from "@/lib/lead-mailer";
+import { prepareLeadEmails, type SendResult } from "@/lib/lead-mailer";
+import { queueJob } from "@/lib/jobs";
 
 /**
  * Activities: what we did, against whatever we did it to.
@@ -251,7 +252,7 @@ export async function sendLeadEmail(
     .is("deletedAt", null);
   if (leadError) return { ok: false, error: leadError.message };
 
-  const result = await deliverLeadEmails({
+  const result = await prepareLeadEmails({
     leads: leads ?? [],
     subject: d.subject,
     bodyText: d.bodyText,
@@ -259,10 +260,18 @@ export async function sendLeadEmail(
     replyTo: nullable(d.replyTo),
     sentById: auth.user.id,
     db,
-    admin: supabaseAdmin(),
   });
 
   if (result.ok) {
+    // The messages go out from the background, so a large send does not hold
+    // the page open; the send's page shows them leaving.
+    await queueJob({
+      jobType: "lead_email",
+      title: `Email: ${d.subject}`,
+      payload: { batchId: result.data.batchId },
+      progressTotal: result.data.queued,
+      createdById: auth.user.id,
+    });
     revalidatePath("/leads");
     revalidatePath("/activities");
   }

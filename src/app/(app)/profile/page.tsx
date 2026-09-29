@@ -6,6 +6,8 @@ import {
 } from "@/components/ui";
 import { formatDateTime, humanize } from "@/lib/utils";
 import { ChangePasswordForm } from "./profile-client";
+import { listLoginEvents } from "@/server/security";
+import { LoginHistory } from "@/components/login-history";
 
 const SCOPE_EXPLAINER: Record<string, string> = {
   OWN: "Only records you own",
@@ -38,6 +40,7 @@ export default async function ProfilePage() {
     .single();
 
   if (!row) throw new Error("Your account could not be loaded.");
+  const signIns = await listLoginEvents({ userId: session.id, limit: 10 });
 
   const me = {
     ...row,
@@ -105,6 +108,16 @@ export default async function ProfilePage() {
 
           <ChangePasswordForm />
         </div>
+      </div>
+
+      <div className="mt-6">
+        <LoginHistory
+          title="Your recent sign-ins"
+          events={signIns}
+        />
+        <p className="mt-2 text-xs text-muted-foreground">
+          If you see a sign-in you do not recognise, change your password and tell an administrator.
+        </p>
       </div>
     </div>
   );

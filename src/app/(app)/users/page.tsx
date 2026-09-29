@@ -35,6 +35,9 @@ export default async function UsersPage({
         title="Users"
         description="Everyone with access to this portal. The role decides what they can do; the data scope decides how much of it they see."
       >
+        <Button asChild variant="outline">
+          <Link href="/users/security">Security history</Link>
+        </Button>
         <Button asChild>
           <Link href="/users/new">
             <Plus className="h-4 w-4" /> New user

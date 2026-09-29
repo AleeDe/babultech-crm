@@ -10,6 +10,10 @@ import {
 } from "@/components/ui";
 import { formatMoney, formatDate, formatDateTime, humanize } from "@/lib/utils";
 import { PasswordPanel } from "./password-panel";
+import { ViewAsButton } from "./view-as-button";
+import { viewAsRefusal } from "@/server/view-as";
+import { listLoginEvents } from "@/server/security";
+import { LoginHistory } from "@/components/login-history";
 import { RecordTabs } from "@/components/record-tabs";
 import {
   TimePanel, DailyTrend, TaskPanel, UpcomingTasks, WhereHoursWent,
@@ -46,10 +50,18 @@ export default async function UserDetailPage({
   // cases of its own, so the delivery half does not merely come back empty for
   // them — it does not apply. Skipping it keeps the page honest and saves three
   // selects.
-  const [audit, workload] = await Promise.all([
+  const [audit, workload, signIns] = await Promise.all([
     getAuditTrail("User", id, 15),
     isPartner ? Promise.resolve(null) : getUserWorkload(id),
+    listLoginEvents({ userId: id, limit: 15 }),
   ]);
+  const canViewAs = can(me, "user:view_as");
+  const viewAsBlocked = canViewAs
+    ? await viewAsRefusal(
+        { id: user.id, status: user.status, deletedAt: user.deletedAt ?? null, permissions: user.role?.permissions ?? [] },
+        me.id,
+      )
+    : null;
 
   return (
     <>
@@ -64,6 +76,7 @@ export default async function UserDetailPage({
         </Badge>
         <Badge tone={isAdmin ? "danger" : isPartner ? "warning" : "neutral"}>{(user.role?.name ?? "—")}</Badge>
         <Badge tone={statusTone(user.status)}>{humanize(user.status)}</Badge>
+        {canViewAs && <ViewAsButton userId={user.id} name={user.fullName} refusal={viewAsBlocked} />}
         <Button asChild variant="outline"><Link href={`/users/${user.id}/teams`}>Manage teams</Link></Button>
         <Button asChild variant="outline">
           <Link href={`/users/${user.id}/edit`}>Edit</Link>
@@ -255,6 +268,8 @@ export default async function UserDetailPage({
               </CardContent>
             </Card>
           )}
+
+          <LoginHistory events={signIns} />
 
           <Card>
             <CardHeader>

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Resend } from "resend";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "./supabase";
 
 /**
  * Emailing a set of leads - shared by our team's mass email and a partner's.
@@ -14,9 +15,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * plus a List-Unsubscribe header so the mail client offers its own button.
  * Being easy to leave is what stops people reporting mail as spam instead.
  *
- * It sends in batches of 100, the provider's limit, and records the provider's
- * message id against each activity so the webhook can match opens and clicks
- * back to the right person later.
+ * It sends in the background. Choosing who gets the email - and who is left
+ * out and why - happens while the sender waits, and a row is written for every
+ * message. The sending itself is a background job (lib/jobs.ts) working
+ * through those rows a hundred at a time, the provider's limit, recording the
+ * provider's message id against each so the webhook can match opens and clicks
+ * back to the right person later. A send of thousands no longer holds the page
+ * open, and one cut off part way carries on where it stopped.
  *
  * Who may email which leads is the caller's business: this sends to exactly the
  * leads it is given. Our team's leads are read under their own permissions; a
@@ -33,8 +38,8 @@ export interface MailableLead {
 
 export interface SendResult {
   batchId: string;
-  sent: number;
-  failed: number;
+  /** Messages waiting to go out; the background job sends them. */
+  queued: number;
   skipped: number;
   skippedReasons: string[];
 }
@@ -77,7 +82,11 @@ function fill(
     .replace(/\{\{\s*companyName\s*\}\}/g, person.companyName ?? "there");
 }
 
-export async function deliverLeadEmails(opts: {
+/**
+ * Works out who a send goes to and records it; the messages go out from the
+ * background job the caller queues next.
+ */
+export async function prepareLeadEmails(opts: {
   leads: MailableLead[];
   subject: string;
   bodyText: string;
@@ -87,10 +96,8 @@ export async function deliverLeadEmails(opts: {
   sentById: string;
   /** Reads the suppression list and writes the batch and its activities. */
   db: SupabaseClient;
-  /** Records what the provider said about each message. */
-  admin: SupabaseClient;
 }): Promise<{ ok: true; data: SendResult } | { ok: false; error: string }> {
-  const { leads, subject, bodyText, fromName, replyTo, sentById, db, admin } = opts;
+  const { leads, subject, bodyText, fromName, replyTo, sentById, db } = opts;
 
   const key = process.env.RESEND_API_KEY;
   if (!key) return { ok: false, error: "No mail provider is configured, so nothing can be sent." };
@@ -184,66 +191,120 @@ export async function deliverLeadEmails(opts: {
   );
   if (insertError) return { ok: false, error: insertError.message };
 
+  return {
+    ok: true,
+    data: { batchId, queued: activities.length, skipped, skippedReasons: skippedReasons.slice(0, 20) },
+  };
+}
+
+/**
+ * Sends the next hundred unsent messages of a batch. Called by the background
+ * job the send queued, over and over until nothing is left.
+ *
+ * A message counts as done once it has a provider id (sent) or a fail reason,
+ * so a job cut off part way carries on with exactly the ones still owed.
+ */
+export async function sendNextLeadEmails(batchId: string): Promise<{ processed: number; remaining: number; sent: number; failed: number }> {
+  const admin = supabaseAdmin();
+  const key = process.env.RESEND_API_KEY;
+
+  const { data: batchRow, error: batchError } = await admin
+    .from("email_batch")
+    .select("id, subject, bodyText, fromName, replyTo")
+    .eq("id", batchId)
+    .maybeSingle();
+  if (batchError || !batchRow) throw new Error(`The send ${batchId} could not be found.`);
+
+  const { data: rows, error } = await admin
+    .from("activity")
+    .select("id, relatedEntityId, toAddress")
+    .eq("batchId", batchId)
+    .is("sentAt", null)
+    .is("failReason", null)
+    .order("id")
+    .limit(100);
+  if (error) throw new Error(error.message);
+  const batch = rows ?? [];
+  if (batch.length === 0) return { processed: 0, remaining: 0, sent: 0, failed: 0 };
+
+  if (!key) {
+    const at = new Date().toISOString();
+    await admin
+      .from("activity")
+      .update({ failReason: "No mail provider is configured.", updatedAt: at })
+      .in("id", batch.map((b) => b.id));
+    return { processed: batch.length, remaining: 0, sent: 0, failed: batch.length };
+  }
+
+  const { data: leads } = await admin
+    .from("lead")
+    .select("id, firstName, lastName, companyName")
+    .in("id", batch.map((b) => b.relatedEntityId as string));
+  const leadById = new Map((leads ?? []).map((l) => [l.id as string, l]));
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const from = process.env.EMAIL_FROM ?? "BabulTech <onboarding@resend.dev>";
+  const fromName = batchRow.fromName as string | null;
   const fromLine = fromName
     ? `${fromName} <${from.replace(/^.*</, "").replace(/>$/, "")}>`
     : from;
 
-  const resend = new Resend(key);
+  const payload = batch.map((row) => {
+    const lead = leadById.get(row.relatedEntityId as string) ?? { firstName: "there", lastName: null, companyName: null };
+    const unsubscribe = `${appUrl}/unsubscribe/${row.id}`;
+    const body = fill(batchRow.bodyText as string, lead as never);
+    const footer =
+      `<hr style="border:0;border-top:1px solid #e5e5e5;margin:28px 0 14px">` +
+      `<p style="font-family:system-ui,sans-serif;font-size:12px;color:#777;margin:0">` +
+      `You are receiving this because you are on our mailing list. ` +
+      `<a href="${unsubscribe}" style="color:#777">Unsubscribe</a>.</p>`;
+
+    return {
+      from: fromLine,
+      to: row.toAddress as string,
+      replyTo: (batchRow.replyTo as string | null) ?? undefined,
+      subject: fill(batchRow.subject as string, lead as never),
+      html: textToHtml(body) + footer,
+      text: `${body}
+
+---
+Unsubscribe: ${unsubscribe}`,
+      headers: {
+        "List-Unsubscribe": `<${unsubscribe}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
+    };
+  });
+
+  const result = await new Resend(key).batch.send(payload);
+  const at = new Date().toISOString();
   let sent = 0;
   let failed = 0;
 
-  for (let i = 0; i < activities.length; i += 100) {
-    const batch = activities.slice(i, i + 100);
-
-    const payload = batch.map(({ id, lead }) => {
-      const unsubscribe = `${appUrl}/unsubscribe/${id}`;
-      const body = fill(bodyText, lead);
-      const footer =
-        `<hr style="border:0;border-top:1px solid #e5e5e5;margin:28px 0 14px">` +
-        `<p style="font-family:system-ui,sans-serif;font-size:12px;color:#777;margin:0">` +
-        `You are receiving this because you are on our mailing list. ` +
-        `<a href="${unsubscribe}" style="color:#777">Unsubscribe</a>.</p>`;
-
-      return {
-        from: fromLine,
-        to: lead.email as string,
-        replyTo: replyTo ?? undefined,
-        subject: fill(subject, lead),
-        html: textToHtml(body) + footer,
-        text: `${body}\n\n---\nUnsubscribe: ${unsubscribe}`,
-        headers: {
-          "List-Unsubscribe": `<${unsubscribe}>`,
-          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        },
-      };
-    });
-
-    const result = await resend.batch.send(payload);
-    const at = new Date().toISOString();
-
-    if (result.error) {
-      failed += batch.length;
+  if (result.error) {
+    failed = batch.length;
+    await admin
+      .from("activity")
+      .update({ failReason: result.error.message.slice(0, 500), updatedAt: at })
+      .in("id", batch.map((b) => b.id));
+  } else {
+    const ids = (result.data?.data ?? []) as { id: string }[];
+    for (let j = 0; j < batch.length; j += 1) {
       await admin
         .from("activity")
-        .update({ failReason: result.error.message.slice(0, 500), updatedAt: at })
-        .in("id", batch.map((b) => b.id));
-    } else {
-      const ids = (result.data?.data ?? []) as { id: string }[];
-      for (let j = 0; j < batch.length; j += 1) {
-        await admin
-          .from("activity")
-          .update({ sentAt: at, providerMessageId: ids[j]?.id ?? null, updatedAt: at })
-          .eq("id", batch[j].id);
-      }
-      sent += batch.length;
+        .update({ sentAt: at, providerMessageId: ids[j]?.id ?? null, updatedAt: at })
+        .eq("id", batch[j].id);
     }
-
-    // A short pause between batches keeps within the provider's rate limit
-    // without needing a queue.
-    if (i + 100 < activities.length) await new Promise((r) => setTimeout(r, 600));
+    sent = batch.length;
   }
 
-  return { ok: true, data: { batchId, sent, failed, skipped, skippedReasons: skippedReasons.slice(0, 20) } };
+  const { count } = await admin
+    .from("activity")
+    .select("id", { count: "exact", head: true })
+    .eq("batchId", batchId)
+    .is("sentAt", null)
+    .is("failReason", null);
+
+  return { processed: batch.length, remaining: count ?? 0, sent, failed };
 }
+

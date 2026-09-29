@@ -5,7 +5,8 @@ import { z } from "zod";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { requireUser, AuthorizationError } from "@/lib/authz";
 import { one } from "@/lib/decimal";
-import { deliverLeadEmails, type SendResult } from "@/lib/lead-mailer";
+import { prepareLeadEmails, type SendResult } from "@/lib/lead-mailer";
+import { queueJob } from "@/lib/jobs";
 import { duplicateFailure } from "@/lib/duplicates";
 import type { ActionResult } from "./partners";
 
@@ -386,7 +387,7 @@ export async function sendPartnerLeadEmail(
     return { ok: false, error: "Only an active partnership can send email. Please speak to your partner manager." };
   }
 
-  const result = await deliverLeadEmails({
+  const result = await prepareLeadEmails({
     leads: leads ?? [],
     subject: d.subject,
     bodyText: d.bodyText,
@@ -394,10 +395,18 @@ export async function sendPartnerLeadEmail(
     replyTo: (partner.email as string | null) ?? user.email,
     sentById: user.id,
     db: supabaseAdmin(),
-    admin: supabaseAdmin(),
   });
 
-  if (result.ok) revalidatePath("/portal/leads");
+  if (result.ok) {
+    await queueJob({
+      jobType: "lead_email",
+      title: `Partner email: ${d.subject}`,
+      payload: { batchId: result.data.batchId },
+      progressTotal: result.data.queued,
+      createdById: user.id,
+    });
+    revalidatePath("/portal/leads");
+  }
   return result;
 }
 

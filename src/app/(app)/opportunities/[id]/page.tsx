@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FollowControl } from "@/components/follow-control";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
@@ -69,6 +70,7 @@ export default async function OpportunityDetailPage({
         <Button asChild variant="outline">
           <Link href={`/opportunities/${opp.id}/edit`}>Edit</Link>
         </Button>
+        <FollowControl entityType="Opportunity" entityId={id} />
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

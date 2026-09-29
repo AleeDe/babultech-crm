@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FollowControl } from "@/components/follow-control";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
@@ -104,6 +105,7 @@ export default async function LeadDetailPage({
           </Button>
         )}
         {can(me, PERMISSIONS.LEAD_WRITE) && !converted && !disqualified && !pendingHandoff && <Button asChild><Link href={`/leads/${lead.id}/convert`}>Convert lead</Link></Button>}
+        <FollowControl entityType="Lead" entityId={id} />
       </PageHeader>
 
       {converted && (

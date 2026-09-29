@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FollowControl } from "@/components/follow-control";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
@@ -58,6 +59,7 @@ export default async function ContactDetailPage({
             <Link href={`/contacts/${contact.id}/edit`}>Edit</Link>
           </Button>
         )}
+        <FollowControl entityType="Contact" entityId={id} />
       </PageHeader>
 
       <div className="grid gap-6 lg:grid-cols-2">

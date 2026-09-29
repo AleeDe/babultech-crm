@@ -15,6 +15,7 @@ import { holdsAny } from "@/lib/nav-permissions";
 import { signOutAction } from "@/lib/sign-out-action";
 import { MobileNav } from "./mobile-nav";
 import { CommandPalette } from "./command-palette";
+import { NotificationBell } from "./notification-bell";
 
 interface NavItem {
   href: string;
@@ -117,6 +118,7 @@ const NAV: NavGroup[] = [
     items: [
       { href: "/company", label: "Company information", icon: Landmark },
       { href: "/users", label: "Users", icon: ShieldCheck },
+      { href: "/jobs", label: "Background jobs", icon: RefreshCw },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
@@ -291,6 +293,10 @@ export function AppShell({
           <button className="lg:hidden" onClick={() => setOpen(false)} aria-label="Close menu">
             <X className="h-5 w-5" />
           </button>
+          {/* On a phone the bell sits in the top bar instead. */}
+          <div className={cn("hidden flex-1 justify-end pr-1 lg:flex", railed && "lg:hidden")}>
+            <NotificationBell />
+          </div>
           {/* Desktop only: the mobile sidebar closes with the X above. */}
           <button
             type="button"
@@ -318,6 +324,11 @@ export function AppShell({
           >
             <PanelLeftOpen className="h-4 w-4" />
           </button>
+        )}
+        {railed && (
+          <div className="hidden shrink-0 justify-center border-b py-1.5 lg:flex">
+            <NotificationBell />
+          </div>
         )}
 
         {/* Above the groups, because it is the fastest route to anything and
@@ -466,7 +477,8 @@ export function AppShell({
           <button onClick={() => setOpen(true)} aria-label="Open menu">
             <Menu className="h-5 w-5" />
           </button>
-          <span className="font-semibold">BabulTech CRM</span>
+          <span className="flex-1 font-semibold">BabulTech CRM</span>
+          <NotificationBell />
         </header>
         <main className="flex-1 p-5 pb-24 lg:p-8 lg:pb-8">
           <div className="mx-auto w-full max-w-[1600px] fade-in">{children}</div>

@@ -1,3 +1,4 @@
+import { ViewAsBanner } from "@/components/view-as-banner";
 import { redirect } from "next/navigation";
 import { SupportShell } from "@/components/support-shell";
 import { requireUser, AuthorizationError } from "@/lib/authz";
@@ -40,11 +41,14 @@ export default async function SupportLayout({ children }: { children: React.Reac
   const account = Array.isArray(contact?.account) ? contact?.account[0] : contact?.account;
 
   return (
-    <SupportShell
-      account={{ name: account?.name ?? "Your company" }}
-      user={{ fullName: user.fullName, email: user.email }}
-    >
-      {children}
-    </SupportShell>
+    <>
+      <ViewAsBanner />
+      <SupportShell
+        account={{ name: account?.name ?? "Your company" }}
+        user={{ fullName: user.fullName, email: user.email }}
+      >
+        {children}
+      </SupportShell>
+    </>
   );
 }

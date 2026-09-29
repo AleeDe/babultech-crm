@@ -39,10 +39,9 @@ export function PartnerEmailForm({
 
   if (sent) {
     return (
-      <Alert tone={sent.failed ? "warning" : "success"}>
+      <Alert tone="success">
         <p className="font-medium">
-          Sent to {sent.sent} {sent.sent === 1 ? "person" : "people"}
-          {sent.failed ? `; ${sent.failed} could not be sent` : ""}.
+          Going to {sent.queued} {sent.queued === 1 ? "person" : "people"}. The emails leave over the next minute or two.
         </p>
         {sent.skippedReasons.length > 0 && (
           <ul className="mt-2 space-y-1 text-sm">

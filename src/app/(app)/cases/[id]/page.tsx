@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FollowControl } from "@/components/follow-control";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
@@ -50,6 +51,7 @@ export default async function CaseDetailPage({
         <Button asChild variant="outline">
           <Link href={`/cases/${c.id}/edit`}>Edit</Link>
         </Button>
+        <FollowControl entityType="SupportCase" entityId={id} />
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
