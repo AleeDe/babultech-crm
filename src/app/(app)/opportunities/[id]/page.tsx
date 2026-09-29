@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Timeline } from "@/components/timeline";
 import { DealAttribution } from "@/components/deal-attribution";
 import { DeleteControl } from "@/components/delete-control";
 import { RecentMark } from "@/components/recent-mark";
@@ -147,6 +148,11 @@ export default async function OpportunityDetailPage({
 
               </div>
             ),
+          },
+          {
+            value: "timeline",
+            label: "Timeline",
+            content: <Timeline entityType="Opportunity" id={id} />,
           },
           {
             value: "details",

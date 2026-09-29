@@ -8,8 +8,7 @@ import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import { one } from "@/lib/decimal";
 import { ACTIVITY_ENTITIES, type ActivityEntity } from "@/lib/activity-entities";
 import type { ActionResult } from "./partners";
-import { prepareLeadEmails, type SendResult } from "@/lib/lead-mailer";
-import { queueJob } from "@/lib/jobs";
+import type { SendResult } from "@/lib/lead-mailer";
 
 /**
  * Activities: what we did, against whatever we did it to.
@@ -210,73 +209,8 @@ export async function deleteActivity(id: string): Promise<ActionResult> {
 
 export type { SendResult } from "@/lib/lead-mailer";
 
-const massEmailSchema = z.object({
-  leadIds: z.array(z.string().uuid()).min(1, "Choose at least one lead to email."),
-  subject: z.string().trim().min(1, "The email needs a subject.").max(300),
-  bodyText: z.string().trim().min(1, "The email needs a message.").max(20000),
-  fromName: z.string().trim().max(120).optional().or(z.literal("")),
-  replyTo: z.string().trim().max(255).optional().or(z.literal("")),
-});
-
-/**
- * Email a set of leads. The sending itself - suppression, one message per
- * address, unsubscribe links, batches, provider ids - is lib/lead-mailer,
- * shared with the partner portal.
- *
- * No campaign is named on the send. A batch may contain leads from several
- * campaigns, and each lead already records the campaign that produced it - so
- * campaign performance is derived by grouping the activities through the lead,
- * which stays right however mixed the audience was.
- */
-export async function sendLeadEmail(
-  input: z.infer<typeof massEmailSchema>,
-): Promise<ActionResult<SendResult>> {
-  const auth = await authorize(PERMISSIONS.LEAD_WRITE);
-  if (!auth.ok) return { ok: false, error: auth.error };
-
-  const parsed = massEmailSchema.safeParse(input);
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues[0]?.message ?? "Please correct the highlighted fields.",
-      fieldErrors: parsed.error.flatten().fieldErrors,
-    };
-  }
-  const d = parsed.data;
-
-  const db = await supabaseServer();
-  const { data: leads, error: leadError } = await db
-    .from("lead")
-    .select("id, firstName, lastName, companyName, email")
-    .in("id", d.leadIds)
-    .is("deletedAt", null);
-  if (leadError) return { ok: false, error: leadError.message };
-
-  const result = await prepareLeadEmails({
-    leads: leads ?? [],
-    subject: d.subject,
-    bodyText: d.bodyText,
-    fromName: nullable(d.fromName),
-    replyTo: nullable(d.replyTo),
-    sentById: auth.user.id,
-    db,
-  });
-
-  if (result.ok) {
-    // The messages go out from the background, so a large send does not hold
-    // the page open; the send's page shows them leaving.
-    await queueJob({
-      jobType: "lead_email",
-      title: `Email: ${d.subject}`,
-      payload: { batchId: result.data.batchId },
-      progressTotal: result.data.queued,
-      createdById: auth.user.id,
-    });
-    revalidatePath("/leads");
-    revalidatePath("/activities");
-  }
-  return result;
-}
+// The compose screen and its send are in server/communications.ts, shared
+// with contacts and campaign members.
 
 // ---------------------------------------------------------------------------
 // How a send performed

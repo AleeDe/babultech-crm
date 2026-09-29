@@ -61,6 +61,7 @@ const NAV: NavGroup[] = [
       { href: "/campaigns", label: "Campaigns", icon: Megaphone, permissions: ["lead:read"] },
       { href: "/campaign-members", label: "Campaign members", icon: ContactRound, permissions: ["lead:read"] },
       { href: "/leads", label: "Leads", icon: UserPlus, permissions: ["lead:read"] },
+      { href: "/email/templates", label: "Email templates", icon: FileText, permissions: ["lead:read", "account:read"] },
     ],
   },
   {
@@ -120,6 +121,7 @@ const NAV: NavGroup[] = [
       { href: "/company", label: "Company information", icon: Landmark },
       { href: "/users", label: "Users", icon: ShieldCheck },
       { href: "/jobs", label: "Background jobs", icon: RefreshCw },
+      { href: "/email/senders", label: "Sender addresses", icon: Megaphone },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },

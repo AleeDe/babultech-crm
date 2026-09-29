@@ -113,16 +113,28 @@ export async function POST(request: Request) {
   // The first open and the first click are campaign touches on the person, for
   // their latest source, their score and the campaign's funnel. Once each: the
   // key makes a repeat a no-op.
-  if ((column === "openedAt" || column === "clickedAt") && ["Lead", "Contact"].includes(row.relatedEntityType as string)) {
+  if ((column === "openedAt" || column === "clickedAt") && ["Lead", "Contact", "CampaignMember"].includes(row.relatedEntityType as string)) {
     let campaignId = (row.campaignId as string | null) ?? null;
-    if (!campaignId && row.relatedEntityType === "Lead") {
-      const { data: lead } = await db.from("lead").select("campaignId").eq("id", row.relatedEntityId).maybeSingle();
-      campaignId = (lead?.campaignId as string | null) ?? null;
+    let person: { leadId?: string; contactId?: string; campaignMemberId?: string } = {};
+    if (row.relatedEntityType === "Lead") {
+      person = { leadId: row.relatedEntityId as string };
+      if (!campaignId) {
+        const { data: lead } = await db.from("lead").select("campaignId").eq("id", row.relatedEntityId).maybeSingle();
+        campaignId = (lead?.campaignId as string | null) ?? null;
+      }
+    } else if (row.relatedEntityType === "Contact") {
+      person = { contactId: row.relatedEntityId as string };
+    } else {
+      // A campaign member counts through the lead or contact they became.
+      const { data: m } = await db.from("campaign_member").select("leadId, contactId, campaignId").eq("id", row.relatedEntityId).maybeSingle();
+      campaignId = campaignId ?? ((m?.campaignId as string | null) ?? null);
+      if (m?.leadId) person = { leadId: m.leadId as string, campaignMemberId: row.relatedEntityId as string };
+      else if (m?.contactId) person = { contactId: m.contactId as string, campaignMemberId: row.relatedEntityId as string };
     }
     const kind = column === "openedAt" ? "EMAIL_OPEN" : "EMAIL_CLICK";
-    await db.rpc("record_campaign_interaction", {
+    if (person.leadId || person.contactId) await db.rpc("record_campaign_interaction", {
       p: {
-        [row.relatedEntityType === "Lead" ? "leadId" : "contactId"]: row.relatedEntityId,
+        ...person,
         campaignId,
         interactionType: kind,
         source: "Email",

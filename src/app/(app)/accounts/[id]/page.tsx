@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Timeline } from "@/components/timeline";
 import { DeleteControl } from "@/components/delete-control";
 import { RecentMark } from "@/components/recent-mark";
 import { FollowControl } from "@/components/follow-control";
@@ -316,6 +317,8 @@ export default async function AccountDetailPage({
           canWrite={can(_me, PERMISSIONS.LEAD_WRITE)}
         />
       </div>
+      <Timeline entityType="Account" id={id} className="mt-6" />
+
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NotesSection entityType="Account" entityId={id} notes={notes} />
         <DocumentsPanel entityType="Account" entityId={id} documents={documents} />

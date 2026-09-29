@@ -33,6 +33,13 @@ export default async function ContactsPage({
         description="People. A contact may belong to an account, or stand alone - an individual partner has no company behind them."
       >
         <ExportButton entity="contacts" params={{ search: params.search }} />
+        {can(_me, PERMISSIONS.ACCOUNT_WRITE) && contacts.length > 0 && (
+          <Button asChild variant="outline">
+            <Link href={`/email/compose?${new URLSearchParams({ type: "Contact", from: "contacts", ...(params.search ? { search: params.search } : {}), ...(params.filter ? { filter: params.filter } : {}) })}`}>
+              Email these {contacts.length}
+            </Link>
+          </Button>
+        )}
         <Button asChild>
           <Link href="/contacts/new">
             <Plus className="h-4 w-4" /> New contact

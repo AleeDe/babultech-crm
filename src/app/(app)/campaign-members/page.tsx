@@ -48,6 +48,11 @@ export default async function CampaignMembersPage({
       >
         {canWrite && (
           <>
+            <Button asChild variant="outline">
+              <Link href={`/email/compose?${new URLSearchParams({ type: "CampaignMember", from: "campaign-members", ...Object.fromEntries(Object.entries(params).filter(([, v]) => v)) as Record<string, string> })}`}>
+                Email these
+              </Link>
+            </Button>
             <Button asChild variant="secondary">
               <Link href="/campaign-members/import">
                 <Upload className="h-4 w-4" /> Import a list

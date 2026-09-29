@@ -48,21 +48,30 @@ export default async function SendPage({
     .from("activity")
     .select(
       `id, toAddress, sentAt, deliveredAt, openedAt, clickedAt, bouncedAt,
-       unsubscribedAt, openCount, clickCount, failReason, relatedEntityId`,
+       unsubscribedAt, openCount, clickCount, failReason, relatedEntityType, relatedEntityId`,
     )
     .eq("batchId", id)
     .order("createdAt");
 
   const activities = rows ?? [];
 
-  // The lead names, so the list reads as people rather than addresses.
-  const leadIds = activities.map((a) => a.relatedEntityId as string).filter(Boolean);
-  const { data: leads } = await db
-    .from("lead")
-    .select("id, firstName, lastName, companyName")
-    .in("id", leadIds.length ? leadIds : ["00000000-0000-0000-0000-000000000000"]);
-
-  const leadById = new Map((leads ?? []).map((l) => [l.id as string, l]));
+  // The names, so the list reads as people rather than addresses. A send goes
+  // to leads, contacts or campaign members, so each is looked up where it lives.
+  const idsOf = (type: string) =>
+    activities.filter((a) => ((a.relatedEntityType as string) ?? "Lead") === type).map((a) => a.relatedEntityId as string);
+  const none = ["00000000-0000-0000-0000-000000000000"];
+  const [{ data: leads }, { data: contacts }, { data: members }] = await Promise.all([
+    db.from("lead").select("id, firstName, lastName, companyName").in("id", idsOf("Lead").length ? idsOf("Lead") : none),
+    db.from("contact").select("id, firstName, lastName, account ( name )").in("id", idsOf("Contact").length ? idsOf("Contact") : none),
+    db.from("campaign_member").select("id, firstName, lastName, companyName").in("id", idsOf("CampaignMember").length ? idsOf("CampaignMember") : none),
+  ]);
+  const leadById = new Map<string, { id: string; firstName: string; lastName: string | null; companyName: string | null; href: string }>();
+  for (const l of leads ?? []) leadById.set(l.id as string, { id: l.id as string, firstName: l.firstName as string, lastName: l.lastName as string | null, companyName: l.companyName as string | null, href: `/leads/${l.id}` });
+  for (const m of members ?? []) leadById.set(m.id as string, { id: m.id as string, firstName: m.firstName as string, lastName: m.lastName as string | null, companyName: m.companyName as string | null, href: `/campaign-members/${m.id}` });
+  for (const c of contacts ?? []) {
+    const account = (Array.isArray(c.account) ? c.account[0] : c.account) as { name?: string } | null;
+    leadById.set(c.id as string, { id: c.id as string, firstName: c.firstName as string, lastName: c.lastName as string | null, companyName: account?.name ?? null, href: `/contacts/${c.id}` });
+  }
 
   const count = (test: (a: (typeof activities)[number]) => boolean) =>
     activities.filter(test).length;
@@ -194,8 +203,8 @@ export default async function SendPage({
                     <TR key={a.id as string}>
                       <TD className="text-sm font-medium">
                         {lead ? (
-                          <Link href={`/leads/${lead.id}`} className="hover:underline">
-                            {lead.firstName} {lead.lastName ?? ""}
+                          <Link href={lead.href} className="hover:underline">
+                            {lead.firstName} {lead.lastName && lead.lastName !== "-" ? lead.lastName : ""}
                           </Link>
                         ) : (
                           "—"

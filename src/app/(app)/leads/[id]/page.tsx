@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Timeline } from "@/components/timeline";
 import { MarketingPanel } from "@/components/marketing-panel";
 import { QualifyProspectButton } from "@/components/qualify-prospect-button";
 import { DeleteControl } from "@/components/delete-control";
@@ -110,6 +111,9 @@ export default async function LeadDetailPage({
         )}
         {can(me, PERMISSIONS.LEAD_WRITE) && !converted && !disqualified && !pendingHandoff && <Button asChild><Link href={`/leads/${lead.id}/convert`}>Convert lead</Link></Button>}
         {lead.status === "PROSPECT" && can(me, PERMISSIONS.LEAD_WRITE) && <QualifyProspectButton leadId={lead.id} />}
+        {can(me, PERMISSIONS.LEAD_WRITE) && lead.email && (
+          <Button asChild variant="outline"><Link href={`/email/compose?type=Lead&ids=${lead.id}`}>Email</Link></Button>
+        )}
         <FollowControl entityType="Lead" entityId={id} />
         <RecentMark entityType="Lead" entityId={id} label={`${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim()} />
         <DeleteControl type="Lead" id={id} name={`${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim()} />
@@ -269,6 +273,8 @@ export default async function LeadDetailPage({
         canWrite={can(me, PERMISSIONS.LEAD_WRITE)}
         defaultCampaignId={lead.campaign?.id ?? null}
       />
+
+      <Timeline entityType="Lead" id={id} className="mt-6" />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NotesSection entityType="Lead" entityId={id} notes={notes} />

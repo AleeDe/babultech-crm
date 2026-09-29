@@ -322,6 +322,29 @@ Added 29 September 2026, migrations `20260929000006` to `20260929000009`.
   (`babultech-lead-rescore`, 23:00 UTC). Crossing the threshold notifies the
   owner and can move a prospect to New.
 
+### Communication: templates, senders, mass email to anyone, consent, timeline
+
+Added 29 September 2026, migration .
+
+- **One compose screen** () for leads, contacts and campaign
+  members, reached from the lead list's selection, "Email these" on the contact
+  and member lists (which pass the list's filters, not ids), and Email on a lead
+  or contact.  redirects there. Sending is the same background
+  job as before.
+- **Templates** (, Marketing › Email templates) with
+  .
+- **Sender addresses** (, Administration › Sender addresses).
+  Sales and Support are created on first use; every address must be on the
+  EMAIL_FROM domain, checked when saved and again when sent.
+- **Consent.** Contacts default to only those who agreed to marketing
+  ();  is set from the contact page
+  or by unsubscribing, which now marks every contact and member at the address.
+  Opting back in lifts an unsubscribe, never a bounce or complaint.
+- **Test addresses** (example.com and other reserved domains) are never sent
+  to by the mass mailer or the notification mailer.
+- **Timeline** on lead, contact and account pages and as a deal tab:
+  activities, emails, notes, campaign touches and key changes, newest first.
+
 ---
 
 ## 4. Bugs found and fixed during testing

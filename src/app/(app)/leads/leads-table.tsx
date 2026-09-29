@@ -33,7 +33,7 @@ export function LeadsTable({
   // Emailing is not a BulkBar action. Those take one value and run immediately;
   // an email needs a subject, a message and a chance to read it back before
   // anything leaves the building. So it hands the selection to a compose screen.
-  const emailHref = `/leads/email?ids=${selection.ids.join(",")}`;
+  const emailHref = `/email/compose?type=Lead&ids=${selection.ids.join(",")}`;
   const withEmail = leads.filter(
     (l) => selection.ids.includes(l.id) && l.email,
   ).length;

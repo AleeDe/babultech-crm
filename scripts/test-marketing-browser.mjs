@@ -201,7 +201,7 @@ try {
   await page.getByRole("dialog").locator('select[name="interactionType"]').selectOption("EVENT_ATTENDED");
   await page.getByRole("dialog").locator('textarea[name="details"]').fill(`QA expo ${run}`);
   await page.getByRole("button", { name: "Log touch" }).click();
-  await page.getByText(`QA expo ${run}`).waitFor({ timeout: 15000 }).catch(async (e) => {
+  await page.getByText(`QA expo ${run}`).first().waitFor({ timeout: 15000 }).catch(async (e) => {
     console.log("DIALOG:", await page.getByRole("dialog").innerText().catch(() => "closed"));
     console.log("TOUCHES:", JSON.stringify((await db.from("campaign_interaction").select("interactionType, details").eq("leadId", ids.lead)).data));
     throw e;

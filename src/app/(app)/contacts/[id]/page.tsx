@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Timeline } from "@/components/timeline";
+import { EmailOptOutButton } from "@/components/email-opt-out";
 import { MarketingPanel } from "@/components/marketing-panel";
 import { DeleteControl } from "@/components/delete-control";
 import { RecentMark } from "@/components/recent-mark";
@@ -61,6 +63,12 @@ export default async function ContactDetailPage({
           <Button asChild variant="outline">
             <Link href={`/contacts/${contact.id}/edit`}>Edit</Link>
           </Button>
+        )}
+        {can(me, PERMISSIONS.ACCOUNT_WRITE) && contact.email && !contact.emailOptOut && (
+          <Button asChild variant="outline"><Link href={`/email/compose?type=Contact&consent=0&ids=${contact.id}`}>Email</Link></Button>
+        )}
+        {can(me, PERMISSIONS.ACCOUNT_WRITE) && contact.email && (
+          <EmailOptOutButton contactId={contact.id} optedOut={Boolean(contact.emailOptOut)} />
         )}
         <FollowControl entityType="Contact" entityId={id} />
         <RecentMark entityType="Contact" entityId={id} label={`${contact.firstName ?? ""} ${contact.lastName ?? ""}`.trim()} />
@@ -171,6 +179,8 @@ export default async function ContactDetailPage({
         />
       </div>
       <MarketingPanel entity="Contact" id={id} canWrite={can(me, PERMISSIONS.ACCOUNT_WRITE)} />
+
+      <Timeline entityType="Contact" id={id} className="mt-6" />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NotesSection entityType="Contact" entityId={id} notes={notes} />

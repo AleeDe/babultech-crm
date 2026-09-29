@@ -298,6 +298,20 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
     needs: ["Referred by set on the lead, or a partner registration"],
     feeds: ["Nothing - a report"],
   },
+  "/email/compose": {
+    purpose: "One email to many people - leads, contacts or campaign members - each getting their own copy with their own unsubscribe link.",
+    needs: ["People chosen on a list, or one person from their page", "A sender address (Administration › Sender addresses)"],
+    feeds: ["The send's page, with who opened and clicked", "A touch on each person when they open or click"],
+    watchOut: "Anyone unsubscribed, bounced or opted out is left out, and so are contacts who have not agreed to marketing unless you untick that box.",
+  },
+  "/email/templates": {
+    purpose: "Saved subjects and messages to start an email from, with placeholders each person's details fill in.",
+    feeds: ["The template choice when composing"],
+  },
+  "/email/senders": {
+    purpose: "The names and addresses mass email can be sent as, such as Sales and Support.",
+    watchOut: "Addresses must be on the domain the mail provider sends for, or they are refused.",
+  },
 };
 
 /**

@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 import { Resend } from "resend";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "./supabase";
+import { isReservedAddress } from "./notification-mailer";
 
 /**
- * Emailing a set of leads - shared by our team's mass email and a partner's.
+ * Emailing a set of people - leads, contacts or campaign members - shared by our
+ * team's mass email and a partner's.
  *
  * Three things a naive loop would not do.
  *
@@ -27,6 +29,15 @@ import { supabaseAdmin } from "./supabase";
  * leads it is given. Our team's leads are read under their own permissions; a
  * partner's are read under theirs, which only ever return the partner's own.
  */
+
+export type Audience = "Lead" | "Contact" | "CampaignMember";
+
+/** The domain the mail provider sends for: the one in EMAIL_FROM. */
+export function verifiedDomain(): string | null {
+  const from = process.env.EMAIL_FROM ?? "";
+  const address = from.replace(/^.*</, "").replace(/>$/, "").trim();
+  return address.split("@")[1]?.toLowerCase() ?? null;
+}
 
 export interface MailableLead {
   id: string;
@@ -72,14 +83,16 @@ function textToHtml(text: string): string {
 }
 
 /** Substitutes the few placeholders a sender may use. */
-function fill(
+export function fill(
   template: string,
   person: { firstName: string; lastName: string | null; companyName: string | null },
+  senderName?: string | null,
 ): string {
   return template
-    .replace(/\{\{\s*firstName\s*\}\}/g, person.firstName)
-    .replace(/\{\{\s*lastName\s*\}\}/g, person.lastName ?? "")
-    .replace(/\{\{\s*companyName\s*\}\}/g, person.companyName ?? "there");
+    .replace(/\{\{\s*firstName\s*\}\}/g, person.firstName || "there")
+    .replace(/\{\{\s*lastName\s*\}\}/g, person.lastName && person.lastName !== "-" ? person.lastName : "")
+    .replace(/\{\{\s*companyName\s*\}\}/g, person.companyName ?? "your company")
+    .replace(/\{\{\s*senderName\s*\}\}/g, senderName ?? "");
 }
 
 /**
@@ -96,8 +109,19 @@ export async function prepareLeadEmails(opts: {
   sentById: string;
   /** Reads the suppression list and writes the batch and its activities. */
   db: SupabaseClient;
+  /** Who they are. Leads unless said otherwise. */
+  audience?: Audience;
+  /** A chosen sender address; on the verified domain, or the send is refused. */
+  fromAddress?: string | null;
+  senderId?: string | null;
+  templateId?: string | null;
 }): Promise<{ ok: true; data: SendResult } | { ok: false; error: string }> {
   const { leads, subject, bodyText, fromName, replyTo, sentById, db } = opts;
+  const audience: Audience = opts.audience ?? "Lead";
+  const fromAddress = opts.fromAddress?.trim().toLowerCase() || null;
+  if (fromAddress && fromAddress.split("@")[1] !== verifiedDomain()) {
+    return { ok: false, error: `${fromAddress} is not on the domain the mail provider sends for (${verifiedDomain() ?? "none set"}).` };
+  }
 
   const key = process.env.RESEND_API_KEY;
   if (!key) return { ok: false, error: "No mail provider is configured, so nothing can be sent." };
@@ -131,7 +155,7 @@ export async function prepareLeadEmails(opts: {
     if (!email) { skipped += 1; skippedReasons.push(`${name}: no email address`); continue; }
     if (seen.has(email)) {
       skipped += 1;
-      skippedReasons.push(`${name}: duplicate of another lead in this send`);
+      skippedReasons.push(`${name}: same address as someone else in this send`);
       continue;
     }
     const reason = suppressionByEmail.get(email);
@@ -160,7 +184,10 @@ export async function prepareLeadEmails(opts: {
     bodyText,
     fromName,
     replyTo,
-    audienceType: "Lead",
+    fromAddress,
+    senderId: opts.senderId ?? null,
+    templateId: opts.templateId ?? null,
+    audienceType: audience,
     sentById,
     sentAt: stamp,
     skippedCount: skipped,
@@ -181,7 +208,7 @@ export async function prepareLeadEmails(opts: {
       activityType: "EMAIL",
       subject,
       ownerUserId: sentById,
-      relatedEntityType: "Lead",
+      relatedEntityType: audience,
       relatedEntityId: lead.id,
       batchId,
       toAddress: lead.email,
@@ -210,14 +237,14 @@ export async function sendNextLeadEmails(batchId: string): Promise<{ processed: 
 
   const { data: batchRow, error: batchError } = await admin
     .from("email_batch")
-    .select("id, subject, bodyText, fromName, replyTo")
+    .select("id, subject, bodyText, fromName, replyTo, fromAddress")
     .eq("id", batchId)
     .maybeSingle();
   if (batchError || !batchRow) throw new Error(`The send ${batchId} could not be found.`);
 
   const { data: rows, error } = await admin
     .from("activity")
-    .select("id, relatedEntityId, toAddress")
+    .select("id, relatedEntityType, relatedEntityId, toAddress")
     .eq("batchId", batchId)
     .is("sentAt", null)
     .is("failReason", null)
@@ -226,6 +253,17 @@ export async function sendNextLeadEmails(batchId: string): Promise<{ processed: 
   if (error) throw new Error(error.message);
   const batch = rows ?? [];
   if (batch.length === 0) return { processed: 0, remaining: 0, sent: 0, failed: 0 };
+
+  // Addresses set aside for examples and testing are never sent to, so a test
+  // run cannot email anyone; they are marked, not left waiting.
+  const reserved = batch.filter((b) => isReservedAddress((b.toAddress as string | null) ?? ""));
+  if (reserved.length) {
+    await admin
+      .from("activity")
+      .update({ failReason: "Test address, not sent", updatedAt: new Date().toISOString() })
+      .in("id", reserved.map((b) => b.id));
+    return { processed: reserved.length, remaining: 1, sent: 0, failed: reserved.length };
+  }
 
   if (!key) {
     const at = new Date().toISOString();
@@ -236,23 +274,35 @@ export async function sendNextLeadEmails(batchId: string): Promise<{ processed: 
     return { processed: batch.length, remaining: 0, sent: 0, failed: batch.length };
   }
 
-  const { data: leads } = await admin
-    .from("lead")
-    .select("id, firstName, lastName, companyName")
-    .in("id", batch.map((b) => b.relatedEntityId as string));
-  const leadById = new Map((leads ?? []).map((l) => [l.id as string, l]));
+  // Names for the placeholders, from whichever kind of person each one is.
+  const idsOf = (type: string) => batch.filter((b) => (b.relatedEntityType ?? "Lead") === type).map((b) => b.relatedEntityId as string);
+  const [leads, contacts, members] = await Promise.all([
+    idsOf("Lead").length ? admin.from("lead").select("id, firstName, lastName, companyName").in("id", idsOf("Lead")) : { data: [] },
+    idsOf("Contact").length ? admin.from("contact").select("id, firstName, lastName, account ( name )").in("id", idsOf("Contact")) : { data: [] },
+    idsOf("CampaignMember").length ? admin.from("campaign_member").select("id, firstName, lastName, companyName").in("id", idsOf("CampaignMember")) : { data: [] },
+  ]);
+  const leadById = new Map<string, { firstName: string; lastName: string | null; companyName: string | null }>();
+  for (const l of [...(leads.data ?? []), ...(members.data ?? [])]) {
+    leadById.set(l.id as string, { firstName: l.firstName as string, lastName: (l.lastName as string | null) ?? null, companyName: (l.companyName as string | null) ?? null });
+  }
+  for (const c of contacts.data ?? []) {
+    const account = (Array.isArray(c.account) ? c.account[0] : c.account) as { name?: string } | null;
+    leadById.set(c.id as string, { firstName: c.firstName as string, lastName: (c.lastName as string | null) ?? null, companyName: account?.name ?? null });
+  }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const from = process.env.EMAIL_FROM ?? "BabulTech <onboarding@resend.dev>";
   const fromName = batchRow.fromName as string | null;
-  const fromLine = fromName
-    ? `${fromName} <${from.replace(/^.*</, "").replace(/>$/, "")}>`
-    : from;
+  // The chosen sender address when it is on the verified domain, which was
+  // checked when the send was made; otherwise the system address.
+  const chosen = (batchRow.fromAddress as string | null) ?? null;
+  const address = chosen && chosen.split("@")[1] === verifiedDomain() ? chosen : from.replace(/^.*</, "").replace(/>$/, "");
+  const fromLine = fromName ? `${fromName} <${address}>` : chosen ? address : from;
 
   const payload = batch.map((row) => {
     const lead = leadById.get(row.relatedEntityId as string) ?? { firstName: "there", lastName: null, companyName: null };
     const unsubscribe = `${appUrl}/unsubscribe/${row.id}`;
-    const body = fill(batchRow.bodyText as string, lead as never);
+    const body = fill(batchRow.bodyText as string, lead as never, fromName);
     const footer =
       `<hr style="border:0;border-top:1px solid #e5e5e5;margin:28px 0 14px">` +
       `<p style="font-family:system-ui,sans-serif;font-size:12px;color:#777;margin:0">` +
@@ -263,7 +313,7 @@ export async function sendNextLeadEmails(batchId: string): Promise<{ processed: 
       from: fromLine,
       to: row.toAddress as string,
       replyTo: (batchRow.replyTo as string | null) ?? undefined,
-      subject: fill(batchRow.subject as string, lead as never),
+      subject: fill(batchRow.subject as string, lead as never, fromName),
       html: textToHtml(body) + footer,
       text: `${body}
 
