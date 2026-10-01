@@ -345,6 +345,33 @@ Added 29 September 2026, migration `20260929000010`.
 - **Timeline** on lead, contact and account pages and as a deal tab:
   activities, emails, notes, campaign touches and key changes, newest first.
 
+### Productivity: boards, reports, approval rules, automatic rules
+
+Added 1 October 2026, migration `20260929000011`.
+
+- **Boards** for leads (`/leads/board`), deals (`/opportunities/board`), cases
+  (`/cases/board`) and your project tasks (`/my-work/board`). A move goes
+  through the record's own action (`server/boards.ts`), so every rule holds:
+  a deal is won only with its products and an accepted quote, Lost asks why,
+  Resolved asks what fixed it. A refused move puts the card back and says why.
+- **Reports** (`/reports`): pipeline by stage and owner, won and lost by month,
+  leads by source and campaign, case response and resolution times, time by
+  project. Each reads under the person's own scope, downloads as CSV, and can
+  be scheduled weekly or monthly - the schedule sends a notification and email
+  with the link, never the figures, so access is checked when it is opened.
+- **Quote approval rules** (Settings › Approval and automatic rules): a total
+  over an amount, or a line discounted over a percentage. Enforced by a trigger
+  on `quotation` (`quotation_rule_guard`), so nothing can send round it;
+  changing an approved quote's total sends it back for approval.
+- **Automatic rules**, all off until switched on: share website-form leads in
+  turn, remind about leads with no follow-up date, deals not moving, and cases
+  near their first-response deadline. `automation_tick()` runs every ten
+  minutes (`babultech-automation`); every action is in `automation_log`.
+- The quote screen and `components/deal-product-services.tsx` reload the page
+  after an action rather than calling `router.refresh()`, because in the
+  production build the refreshed page can arrive and not be shown (React
+  19.2). The lead page's marketing buttons do the same.
+
 ---
 
 ## 4. Bugs found and fixed during testing

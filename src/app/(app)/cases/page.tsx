@@ -93,6 +93,7 @@ export default async function CasesPage({
             <Plus className="h-4 w-4" /> New case
           </Link>
         </Button>
+        <Button asChild variant="outline"><Link href="/cases/board">Board</Link></Button>
         <SavedViewsControl entity="cases" />
       </PageHeader>
 

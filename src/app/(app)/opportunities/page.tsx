@@ -55,6 +55,7 @@ export default async function OpportunitiesPage({
             <Plus className="h-4 w-4" /> New opportunity
           </Link>
         </Button>
+        <Button asChild variant="outline"><Link href="/opportunities/board">Board</Link></Button>
         <SavedViewsControl entity="opportunities" />
       </PageHeader>
 

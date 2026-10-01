@@ -18,6 +18,7 @@ import {
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, formatNumber, humanize, formatMoneyTotal } from "@/lib/utils";
 import { QuoteActions } from "./quote-actions";
+import { getQuoteApprovalReason } from "@/server/quotations";
 
 /** A line's four costs together, as the deal's lines show them. */
 const costsOf = (l: Record<string, unknown>) =>
@@ -30,12 +31,13 @@ export default async function QuotationDetailPage({
 }) {
   const { id } = await params;
 
-  const [notes, documents, emails, emailConfigured, audit] = await Promise.all([
+  const [notes, documents, emails, emailConfigured, audit, ruleReason] = await Promise.all([
     listNotes("Quotation", id),
     listDocuments("Quotation", id),
     listEmails("Quotation", id),
     isEmailConfigured(),
     getAuditTrail("Quotation", id, 15),
+    getQuoteApprovalReason(id).catch(() => null),
   ]);
   const _me = await requireUser();
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="quotations" />;
@@ -265,6 +267,7 @@ export default async function QuotationDetailPage({
               decidedAt: (quote.approvalDecidedAt as string | null) ?? null,
             }}
             canApprove={can(_me, PERMISSIONS.QUOTATION_APPROVE)}
+            ruleReason={ruleReason}
           />
 
           <Card>

@@ -99,7 +99,7 @@ export async function bulkSetLeadStatus(
   const parsed = idsSchema.safeParse(ids);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
 
-  const allowed = ["PROSPECT", "NEW", "ASSIGNED", "ATTEMPTED_CONTACT", "CONTACTED", "QUALIFIED", "NURTURING"];
+  const allowed = ["PROSPECT", "NEW", "ASSIGNED", "ATTEMPTED_CONTACT", "CONTACTED", "DISCOVERY_SCHEDULED", "QUALIFIED", "NURTURING"];
   if (!allowed.includes(status)) {
     // Conversion and disqualification are single-record decisions with their
     // own consequences — converting writes an account, a contact and a deal.

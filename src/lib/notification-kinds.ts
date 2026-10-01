@@ -18,6 +18,8 @@ export const NOTIFICATION_KINDS = [
   { kind: "DEAL_WON", label: "Deal won", description: "A deal you own or follow is closed won.", emailByDefault: false },
   { kind: "TASK_DUE", label: "Due tomorrow and overdue", description: "Checked every morning for your tasks, calls, meetings and project tasks.", emailByDefault: false },
   { kind: "FOLLOWED_CHANGE", label: "Records I follow", description: "The stage, status or owner changes, or a note is added.", emailByDefault: false },
+  { kind: "AUTOMATION", label: "Reminders from rules", description: "An automatic rule spotted something: a lead with no follow-up, a deal not moving, a case response due soon.", emailByDefault: false },
+  { kind: "REPORT_READY", label: "Scheduled reports", description: "A report you asked for weekly or monthly is ready.", emailByDefault: true },
   { kind: "JOB_FINISHED", label: "Background work finished", description: "A mass email or import you started has finished.", emailByDefault: false },
 ] as const;
 

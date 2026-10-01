@@ -29,6 +29,9 @@ export default async function MyWorkPage() {
         description="Tasks, projects, cases and activities assigned to you."
       >
         <Button asChild variant="outline">
+          <Link href="/my-work/board">Task board</Link>
+        </Button>
+        <Button asChild variant="outline">
           <Link href="/timesheets">Log time</Link>
         </Button>
       </PageHeader>

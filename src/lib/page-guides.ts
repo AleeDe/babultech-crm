@@ -312,6 +312,32 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
     purpose: "The names and addresses mass email can be sent as, such as Sales and Support.",
     watchOut: "Addresses must be on the domain the mail provider sends for, or they are refused.",
   },
+  "/leads/board": {
+    purpose: "Open leads in columns by status. Drag a card, or use its Move to list.",
+    feeds: ["The lead's status, exactly as changing it on the lead would"],
+    watchOut: "Converting and disqualifying are done on the lead itself, where they ask what they need.",
+  },
+  "/opportunities/board": {
+    purpose: "The pipeline in columns by stage, with each column's value.",
+    feeds: ["The deal's stage, with the same checks as its own page"],
+    watchOut: "A deal moves to Won only with its products and an accepted quote; moving one to Lost asks why.",
+  },
+  "/cases/board": {
+    purpose: "Open cases in columns by status.",
+    watchOut: "Moving a case to Resolved asks what fixed it.",
+  },
+  "/my-work/board": {
+    purpose: "Your project tasks in columns by status. Completing one sets it to 100%.",
+  },
+  "/reports": {
+    purpose: "Ready-made reports, each with filters and a CSV download, and the ones you have asked to receive.",
+    watchOut: "Reports show what your role may see, so two people can get different figures.",
+  },
+  "/settings/automation": {
+    purpose: "When a quote needs approval before it is sent, and the automatic rules: sharing website leads, follow-up and stale-deal reminders, case response warnings.",
+    feeds: ["Approvals", "Reminders under the bell", "The log of what the rules did"],
+    watchOut: "Every automatic rule starts switched off.",
+  },
 };
 
 /**

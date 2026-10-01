@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { sendQuotation, decideQuotation, reviseQuotation, decideQuotationApproval } from "@/server/quotations";
+import { sendQuotation, decideQuotation, reviseQuotation, decideQuotationApproval, requestQuotationApproval } from "@/server/quotations";
 import { Button, Card, CardContent, CardHeader, CardTitle, Alert, Textarea } from "@/components/ui";
 import { formatDate } from "@/lib/utils";
 
@@ -36,6 +36,7 @@ export function QuoteActions({
   opportunityStage,
   approval,
   canApprove = false,
+  ruleReason = null,
 }: {
   quoteId: string;
   status: string;
@@ -46,6 +47,8 @@ export function QuoteActions({
   approval?: QuoteApproval;
   /** Whether the reader may approve quotations. */
   canApprove?: boolean;
+  /** Why an approval rule holds this quote back, or null. */
+  ruleReason?: string | null;
 }) {
   const [sendBackReason, setSendBackReason] = useState("");
   const [sendingBack, setSendingBack] = useState(false);
@@ -90,7 +93,11 @@ export function QuoteActions({
 
   const expired = new Date(expiryDate) < new Date();
   const partnerQuote = Boolean(approval?.preparedBy);
-  const awaitingApproval = partnerQuote && approval?.approvalStatus !== "APPROVED";
+  // One of ours over an approval rule's limit, or already waiting for approval.
+  const internalApproval =
+    !partnerQuote && EDITABLE.includes(status) && approval?.approvalStatus !== "APPROVED" &&
+    (Boolean(ruleReason) || approval?.approvalStatus === "PENDING");
+  const awaitingApproval = (partnerQuote && approval?.approvalStatus !== "APPROVED") || internalApproval;
 
   return (
     <Card>
@@ -101,7 +108,74 @@ export function QuoteActions({
         {error && <Alert tone="danger">{error}</Alert>}
         {notice && <Alert tone="success">{notice}</Alert>}
 
-        {EDITABLE.includes(status) && awaitingApproval && approval && (
+        {internalApproval && approval && (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {approval.approvalStatus === "PENDING"
+                ? `Waiting for approval${approval.requestedAt ? ` since ${formatDate(approval.requestedAt)}` : ""}. It cannot go to the customer until it is approved.`
+                : "This quote needs approval before it goes to the customer."}
+            </p>
+            {ruleReason && <Alert tone="info">{ruleReason}</Alert>}
+            {approval.approvalStatus === "REJECTED" && approval.note && (
+              <Alert tone="warning">
+                Sent back{approval.decidedBy ? ` by ${approval.decidedBy}` : ""}: {approval.note}
+              </Alert>
+            )}
+            {approval.approvalStatus !== "PENDING" && (
+              <Button
+                className="w-full"
+                disabled={pending}
+                onClick={() => run(() => requestQuotationApproval(quoteId), "Sent for approval. Approvers have been told.")}
+              >
+                {pending ? "Working…" : "Send for approval"}
+              </Button>
+            )}
+            {approval.approvalStatus === "PENDING" && canApprove && (
+              <>
+                <Button
+                  className="w-full"
+                  disabled={pending}
+                  onClick={() => run(() => decideQuotationApproval(quoteId, true), "Approved. It can now be sent.")}
+                >
+                  Approve
+                </Button>
+                {sendingBack ? (
+                  <div className="space-y-2">
+                    <Textarea
+                      rows={3}
+                      value={sendBackReason}
+                      onChange={(e) => setSendBackReason(e.target.value)}
+                      placeholder="What should be changed?"
+                      aria-label="Why it is being sent back"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        disabled={pending || !sendBackReason.trim()}
+                        onClick={() => run(() => decideQuotationApproval(quoteId, false, sendBackReason), "Sent back with your reason.")}
+                      >
+                        Send back
+                      </Button>
+                      <Button variant="ghost" disabled={pending} onClick={() => setSendingBack(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button variant="outline" className="w-full" disabled={pending} onClick={() => setSendingBack(true)}>
+                    Send back
+                  </Button>
+                )}
+              </>
+            )}
+            {approval.approvalStatus === "PENDING" && !canApprove && (
+              <p className="text-xs text-muted-foreground">Somebody who may approve quotations has to approve it.</p>
+            )}
+          </div>
+        )}
+
+        {EDITABLE.includes(status) && partnerQuote && awaitingApproval && approval && (
           <div className="space-y-3">
             {approval.approvalStatus === "PENDING" ? (
               <p className="text-sm text-muted-foreground">

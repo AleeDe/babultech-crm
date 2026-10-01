@@ -256,6 +256,10 @@ export async function sendQuotation(id: string): Promise<ActionResult> {
 
     const unapproved = partnerQuoteUnapproved(before);
     if (unapproved) return { ok: false, error: unapproved };
+    if (before.approvalStatus !== "APPROVED") {
+      const { data: reason } = await db.rpc("quotation_approval_reason", { p_id: id });
+      if (reason) return { ok: false, error: `${before.quoteNumber} needs approval before it is sent. ${reason} Choose Send for approval.` };
+    }
 
     if (!(EDITABLE as readonly string[]).includes(before.status)) {
       return { ok: false, error: before.quoteNumber + " has already been sent." };
@@ -303,6 +307,25 @@ export async function sendQuotation(id: string): Promise<ActionResult> {
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Could not send the quote." };
   }
+}
+
+/** Why an approval rule holds a quote back, or null. */
+export async function getQuoteApprovalReason(id: string): Promise<string | null> {
+  const db = await supabaseServer();
+  const { data } = await db.rpc("quotation_approval_reason", { p_id: id });
+  return (data as string | null) ?? null;
+}
+
+/** Asks for approval of one of our quotes that is over an approval rule's limit. */
+export async function requestQuotationApproval(id: string): Promise<ActionResult> {
+  const _auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const db = await supabaseServer();
+  const { error } = await db.rpc("request_quotation_approval", { p_id: id });
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/approvals");
+  revalidatePath(`/quotations/${id}`);
+  return { ok: true, data: undefined };
 }
 
 /**
