@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DeliverablesPanel } from "@/components/deliverables-panel";
 import { RecentMark } from "@/components/recent-mark";
 import { FollowControl } from "@/components/follow-control";
 import { SyncFromDeal } from "./sync-from-deal";
@@ -255,6 +256,17 @@ export default async function ProjectWorkspacePage({
                 users={s.users as never}
                 currency={project.currencyCode}
                 contractValue={project.contractValue ? String(project.contractValue) : null}
+              />
+            ),
+          },
+          {
+            value: "deliverables",
+            label: "Deliverables",
+            content: (
+              <DeliverablesPanel
+                projectId={project.id}
+                milestones={(s.milestones as { id: string; name: string }[]).map((m) => ({ id: m.id, name: m.name }))}
+                canManage={canManage}
               />
             ),
           },

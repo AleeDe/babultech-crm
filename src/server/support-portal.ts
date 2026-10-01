@@ -7,6 +7,8 @@ import { requireUser, AuthorizationError } from "@/lib/authz";
 import { SEQUENCES } from "@/lib/numbering";
 import { sanitizeRichText } from "@/lib/rich-text";
 import type { ActionResult } from "./partners";
+import { addWorkingMinutes } from "@/lib/business-hours";
+import { loadWorkingCalendar } from "@/lib/working-calendar";
 
 /**
  * The customer portal's data layer.
@@ -28,23 +30,24 @@ type Admin = ReturnType<typeof supabaseAdmin>;
  * The SLA clock for a new portal ticket.
  *
  * A copy of what createCase does internally, run through the admin client: a
- * customer cannot read sla_policy, and should not be able to. Elapsed time
- * rather than business hours, matching the internal behaviour it mirrors.
+ * customer cannot read sla_policy, and should not be able to. Working time,
+ * as createCase counts it.
  */
 async function portalSlaDeadlines(admin: Admin, priority: string, from: Date) {
   const { data: policy } = await admin
     .from("sla_policy")
-    .select("id, firstResponseMinutes, resolutionMinutes")
+    .select("id, firstResponseMinutes, resolutionMinutes, businessHoursId")
     .eq("active", true)
     .eq("priority", priority)
     .limit(1)
     .maybeSingle();
 
   if (!policy) return { slaPolicyId: null, firstResponseDueAt: null, resolutionDueAt: null };
+  const calendar = await loadWorkingCalendar(admin, policy.businessHoursId as string | null);
   return {
     slaPolicyId: policy.id as string,
-    firstResponseDueAt: new Date(from.getTime() + policy.firstResponseMinutes * 60_000),
-    resolutionDueAt: new Date(from.getTime() + policy.resolutionMinutes * 60_000),
+    firstResponseDueAt: addWorkingMinutes(from, policy.firstResponseMinutes, calendar),
+    resolutionDueAt: addWorkingMinutes(from, policy.resolutionMinutes, calendar),
   };
 }
 

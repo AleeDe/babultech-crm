@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { BookOpen, LifeBuoy, LogOut, Menu, PlusCircle, Ticket, X } from "lucide-react";
+import { BookOpen, FolderKanban, LifeBuoy, LogOut, Menu, PlusCircle, Ticket, Users, X } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { signOutAction } from "@/lib/sign-out-action";
 
@@ -18,6 +18,8 @@ const NAV = [
   { href: "/support", label: "My tickets", icon: Ticket, exact: true },
   { href: "/support/new", label: "Raise a ticket", icon: PlusCircle },
   { href: "/support/knowledge", label: "Help articles", icon: BookOpen },
+  { href: "/support/projects", label: "Projects", icon: FolderKanban },
+  { href: "/support/account/team", label: "Your team", icon: Users },
 ];
 
 export function SupportShell({

@@ -40,6 +40,7 @@ function sessionFor(name: string): SessionUser {
     contactId: null,
     customerAccountId: null,
     portalScope: "ACCOUNT",
+    portalRole: "USER",
     permissions: [],
     departmentId: null,
     teamIds: [],

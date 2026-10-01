@@ -56,6 +56,8 @@ export interface SessionUser {
   customerAccountId: string | null;
   /** Whether a customer sees their own tickets or their whole company's. */
   portalScope: "OWN" | "ACCOUNT";
+  /** For partner and customer logins: an Admin manages their company's logins. */
+  portalRole: "ADMIN" | "USER";
 }
 
 export class AuthorizationError extends Error {
@@ -133,7 +135,7 @@ async function loadUser(): Promise<SessionUser> {
     .from("app_user")
     .select(
       `id, fullName, email, status, deletedAt, departmentId, partnerId,
-       userType, contactId, portalScope,
+       userType, contactId, portalScope, portalRole,
        contact:contact!app_user_contactId_fkey ( accountId ),
        role:security_role!inner ( name, dataScope, permissions ),
        teamMemberships:team_member ( teamId )`,
@@ -168,6 +170,7 @@ async function loadUser(): Promise<SessionUser> {
     customerAccountId:
       (Array.isArray(user.contact) ? user.contact[0]?.accountId : (user.contact as { accountId: string } | null)?.accountId) ?? null,
     portalScope: (user.portalScope ?? "ACCOUNT") as "OWN" | "ACCOUNT",
+    portalRole: ((user as { portalRole?: string }).portalRole === "ADMIN" ? "ADMIN" : "USER") as "ADMIN" | "USER",
   };
 }
 

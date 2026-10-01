@@ -90,6 +90,7 @@ const NAV: NavGroup[] = [
     label: "Delivery",
     items: [
       { href: "/cases", label: "Support Cases", icon: LifeBuoy, permissions: ["case:read"] },
+      { href: "/knowledge", label: "Knowledge base", icon: BookMarked, permissions: ["case:read"] },
       { href: "/projects", label: "Projects", icon: FolderKanban, permissions: ["project:read"] },
       { href: "/timesheets", label: "Timesheets", icon: Clock, permissions: ["project:read"] },
       { href: "/resources", label: "Resources", icon: UsersRound, permissions: ["time:approve"] },

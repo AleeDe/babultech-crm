@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requireUser } from "@/lib/authz";
 import { getPortalCommissions } from "@/server/portal";
 import {
   PageHeader, Card, CardContent, Badge, statusTone, EmptyState, StatTile, Select, Button,
@@ -13,6 +14,16 @@ export default async function PortalCommissionsPage({
 }: {
   searchParams: Promise<{ status?: string }>;
 }) {
+  // Commission is for the partner's Admins; the database returns none to a User.
+  const me = await requireUser();
+  if (me.portalRole !== "ADMIN") {
+    return (
+      <div className="rounded-lg border bg-card p-8 text-center">
+        <p className="font-medium">Commission is for your company's portal Admins</p>
+        <p className="mt-1 text-sm text-muted-foreground">Ask one of them if you need to know what a deal has earned.</p>
+      </div>
+    );
+  }
   const { status } = await searchParams;
   const records = await getPortalCommissions(status);
 

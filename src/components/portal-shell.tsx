@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   LayoutDashboard, Target, Coins, Building2, UserPlus, Package,
-  Menu, X, LogOut, MessageSquare,
+  Menu, X, LogOut, MessageSquare, UsersRound,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { signOutAction } from "@/lib/sign-out-action";
@@ -21,17 +21,21 @@ const NAV = [
   { href: "/portal/deals", label: "Opportunities", icon: Target },
   { href: "/portal/customers", label: "Accounts", icon: Building2 },
   { href: "/portal/catalogue", label: "Products & Services", icon: Package },
-  { href: "/portal/commissions", label: "Commission", icon: Coins },
+  { href: "/portal/commissions", label: "Commission", icon: Coins, adminOnly: true },
   { href: "/portal/activities", label: "Activities", icon: MessageSquare },
+  { href: "/portal/account/team", label: "Your team", icon: UsersRound },
 ];
 
 export function PortalShell({
   partner,
   user,
+  isAdmin = true,
   children,
 }: {
   partner: { displayName: string; partnerNumber: string; tier: string };
   user: { fullName: string; email: string };
+  /** A partner User does not see commission. */
+  isAdmin?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -73,7 +77,7 @@ export function PortalShell({
 
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="space-y-0.5">
-            {NAV.map((item) => {
+            {NAV.filter((item) => !("adminOnly" in item && item.adminOnly) || isAdmin).map((item) => {
               const Icon = item.icon;
               return (
                 <li key={item.href}>

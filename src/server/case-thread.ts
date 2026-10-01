@@ -7,6 +7,8 @@ import { supabaseServer } from "@/lib/supabase";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { one } from "@/lib/decimal";
 import type { ActionResult } from "./partners";
+import { addWorkingMinutes, workingMinutesBetween } from "@/lib/business-hours";
+import { loadWorkingCalendar } from "@/lib/working-calendar";
 
 /**
  * The conversation on a support case, and the SLA clock that runs alongside it.
@@ -81,18 +83,25 @@ export async function getCaseThread(caseId: string): Promise<{
 
   const eventRows = (events.data ?? []) as Row[];
 
-  // Total paused time, walking the pause/resume pairs. A pause with no resume
-  // is still running, so it counts up to now.
+  // Total paused working time, walking the pause/resume pairs. A pause with no
+  // resume is still running, so it counts up to now. Working time, because the
+  // deadline it extends is counted in working time.
+  const { data: caseRow } = await db.from("support_case").select("slaPolicyId").eq("id", caseId).maybeSingle();
+  const { data: policyRow } = caseRow?.slaPolicyId
+    ? await db.from("sla_policy").select("businessHoursId").eq("id", caseRow.slaPolicyId).maybeSingle()
+    : { data: null };
+  const calendar = await loadWorkingCalendar(db, (policyRow?.businessHoursId as string | null) ?? null);
+  const at = (iso: string) => new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`);
   let pausedMinutes = 0;
-  let pausedAt: number | null = null;
+  let pausedAt: Date | null = null;
   for (const e of eventRows) {
-    if (e.eventType === "PAUSED") pausedAt = new Date(e.eventAt).getTime();
+    if (e.eventType === "PAUSED") pausedAt = at(e.eventAt);
     else if (e.eventType === "RESUMED" && pausedAt !== null) {
-      pausedMinutes += Math.round((new Date(e.eventAt).getTime() - pausedAt) / 60_000);
+      pausedMinutes += workingMinutesBetween(pausedAt, at(e.eventAt), calendar);
       pausedAt = null;
     }
   }
-  if (pausedAt !== null) pausedMinutes += Math.round((Date.now() - pausedAt) / 60_000);
+  if (pausedAt !== null) pausedMinutes += workingMinutesBetween(pausedAt, new Date(), calendar);
 
   return {
     comments: ((comments.data ?? []) as Row[]).map((c) => ({
@@ -272,7 +281,7 @@ export async function applyPauseToDeadline(caseId: string): Promise<ActionResult
 
   const { data: supportCase } = await db
     .from("support_case")
-    .select("id, resolutionDueAt, slaBreached")
+    .select("id, resolutionDueAt, slaBreached, slaPolicyId")
     .eq("id", caseId)
     .maybeSingle();
 
@@ -280,9 +289,13 @@ export async function applyPauseToDeadline(caseId: string): Promise<ActionResult
     return { ok: false, error: "That case has no resolution deadline to extend." };
   }
 
-  const extended = new Date(
-    new Date(supportCase.resolutionDueAt).getTime() + pausedMinutes * 60_000,
-  );
+  // Pushed on by the paused working time, counted in working time from the old deadline.
+  const { data: policyRow } = supportCase.slaPolicyId
+    ? await db.from("sla_policy").select("businessHoursId").eq("id", supportCase.slaPolicyId).maybeSingle()
+    : { data: null };
+  const calendar = await loadWorkingCalendar(db, (policyRow?.businessHoursId as string | null) ?? null);
+  const due = String(supportCase.resolutionDueAt);
+  const extended = addWorkingMinutes(new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(due) ? due : `${due}Z`), pausedMinutes, calendar);
 
   const { error } = await db
     .from("support_case")

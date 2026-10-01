@@ -184,6 +184,12 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
     feeds: ["Time logged against a case feeds support cost"],
   },
 
+  "/knowledge": {
+    purpose: "Help articles your team writes once instead of answering the same question on every case.",
+    feeds: ["Published articles marked for customers appear under Help articles in the support portal"],
+    watchOut: "A draft or an internal article is never shown to customers - publish it and choose customer visibility first.",
+  },
+
   "/activities": {
     purpose: "Calls, meetings and tasks - the touches that move a deal along.",
     feeds: ["Attached to a lead, deal, account or case as its history - including the calls and meetings partners log in the portal"],

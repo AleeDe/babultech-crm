@@ -372,6 +372,34 @@ Added 1 October 2026, migration `20260929000011`.
   production build the refreshed page can arrive and not be shown (React
   19.2). The lead page's marketing buttons do the same.
 
+### External experience: knowledge base, customer projects, portal roles, business-hours SLA
+
+Added 1 October 2026, migrations `20260930000000` and `20260930000001`.
+
+- **Knowledge base** (`/knowledge`): people who work cases, and administrators,
+  write articles in plain text, with draft, review, published and archived
+  states. A published article shown to customers appears under Help articles
+  in the support portal at once. Editing a published article raises its version.
+- **Customer projects** (`/support/projects`): a customer sees their company's
+  projects, with phases, milestones and progress. They don't see tasks, time or money.
+- **Deliverables** (project › Deliverables tab, table `deliverable`): our team
+  plans what the customer receives and hands it over. The customer's portal
+  Admin approves it or sends it back with a comment through
+  `customer_decide_deliverable`, and the project manager is notified either
+  way. A planned deliverable is never shown to the customer.
+- **Portal Admins and Users** (`app_user."portalRole"`): every partner and
+  customer login that existed before is an Admin. An Admin manages their
+  company's logins under Your team: makes someone an Admin or a User, switches
+  a login off, and invites a colleague. `portal_set_member` keeps at least one
+  active Admin. Only an Admin approves deliverables. For partners, only an Admin
+  sees commission: the menu, the home page figures and the Commission page
+  hide it, and `partner_commission_partner_read` refuses it at the database.
+- **SLA on business hours**: deadlines on new cases, from the portal, and after
+  a pause count only working time. That is the policy's business hours, or the
+  default, less holidays added under Company › Business hours.
+  `lib/business-hours.ts` does the arithmetic in the calendar's own time zone.
+  A calendar with no working time at all falls back to elapsed time.
+
 ---
 
 ## 4. Bugs found and fixed during testing
@@ -408,7 +436,6 @@ Honest list of what is **not** built:
 - **No outbound email.** The `Email` entity is modelled but nothing sends. Partner
   registrations raise a dated **task** for the partner manager instead — that is
   what "notify" means today.
-- **SLA business-hours arithmetic** — elapsed time only, as above.
 - **Currency conversion** is modelled (`Currency.exchangeRate`) but single-rate.
   Multi-currency reporting needs dated rates and a decision about booking at
   invoice date or payment date. That is a finance decision, not a technical one.

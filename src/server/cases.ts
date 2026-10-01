@@ -9,6 +9,8 @@ import { one } from "@/lib/decimal";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
 import type { ActionResult } from "./partners";
+import { addWorkingMinutes } from "@/lib/business-hours";
+import { loadWorkingCalendar } from "@/lib/working-calendar";
 
 /**
  * Support cases (spec §10.3).
@@ -46,9 +48,9 @@ const caseSchema = z.object({
 /**
  * Wall-clock SLA deadlines from the matching policy.
  *
- * NOTE: this is elapsed time, not business hours. `BusinessHours.weeklySchedule`
- * exists and the proper calendar walk belongs here — until it is written, a
- * policy of "4 hours" means four real hours, including overnight.
+ * Working time: a policy of "4 hours" means four hours of the policy's
+ * business hours (or the default ones), skipping evenings, days off and
+ * holidays. With no business hours set up, time runs around the clock.
  */
 async function slaDeadlines(
   slaPolicyId: string | null | undefined,
@@ -69,10 +71,11 @@ async function slaDeadlines(
 
   if (!policy) return { slaPolicyId: null, firstResponseDueAt: null, resolutionDueAt: null };
 
+  const calendar = await loadWorkingCalendar(db, policy.businessHoursId);
   return {
     slaPolicyId: policy.id,
-    firstResponseDueAt: new Date(from.getTime() + policy.firstResponseMinutes * 60_000),
-    resolutionDueAt: new Date(from.getTime() + policy.resolutionMinutes * 60_000),
+    firstResponseDueAt: addWorkingMinutes(from, policy.firstResponseMinutes, calendar),
+    resolutionDueAt: addWorkingMinutes(from, policy.resolutionMinutes, calendar),
   };
 }
 

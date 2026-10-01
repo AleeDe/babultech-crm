@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { Resend } from "resend";
 import { supabaseAdmin } from "@/lib/supabase";
 import { renderDocumentEmail, type EmailBranding } from "@/lib/email-template";
+import { isReservedAddress } from "@/lib/notification-mailer";
 
 /**
  * The email that tells a customer they can sign in.
@@ -58,6 +59,8 @@ export async function sendPortalWelcome(input: {
   /** Which portal they are being let into, which is all that differs. */
   audience?: "customer" | "partner";
 }): Promise<{ ok: boolean; error?: string }> {
+  // Test addresses are never mailed, so a test run cannot email anyone.
+  if (isReservedAddress(input.to)) return { ok: false, error: "Test address, not sent" };
   const b = await branding();
   const first = input.kind === "welcome";
   const signInUrl = `${APP_URL.replace(/\/$/, "")}/login`;

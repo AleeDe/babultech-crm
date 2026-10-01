@@ -9,6 +9,7 @@ import {
   StatTile, Button, Alert, Table, THead, TBody, TR, TH, TD, EmptyState,
 } from "@/components/ui";
 import { RankedList, AttentionList } from "@/components/dashboard-kit";
+import { requireUser } from "@/lib/authz";
 import { Sparkline, Delta } from "@/components/sparkline";
 import { formatMoneyPlain as formatMoney, formatDate, formatPercent, humanize, daysBetween, formatMoneyTotal } from "@/lib/utils";
 
@@ -20,6 +21,8 @@ export default async function PortalHomePage() {
     countUnreadPartnerMessages(),
     getPortalAnalytics(),
   ]);
+  // Commission is for the partner's Admins; a User sees the deals, not the money.
+  const isAdmin = (await requireUser()).portalRole === "ADMIN";
 
   const agreementDays = partner.agreementExpiryDate
     ? daysBetween(new Date(), partner.agreementExpiryDate)
@@ -66,6 +69,8 @@ export default async function PortalHomePage() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {isAdmin && (
+        <>
         <StatTile
           label="Paid to you"
           value={formatMoneyTotal(summary.paidTotal, summary.currency)}
@@ -85,6 +90,8 @@ export default async function PortalHomePage() {
           sublabel="Your commission on open deals, if they are won"
           tone="info"
         />
+        </>
+        )}
         <StatTile
           label="Your deals"
           value={String(summary.dealCount)}
@@ -100,6 +107,7 @@ export default async function PortalHomePage() {
         closest to where they stop reading.
       */}
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
+        {isAdmin && (
         <Card className="lg:col-span-2">
           <CardHeader className="flex-row items-start justify-between space-y-0">
             <div>
@@ -130,6 +138,7 @@ export default async function PortalHomePage() {
             </div>
           </CardContent>
         </Card>
+        )}
 
         <Card>
           <CardHeader>
@@ -186,7 +195,7 @@ export default async function PortalHomePage() {
         />
       </div>
 
-      {(stats.attention.paymentDue > 0 ||
+      {((isAdmin && stats.attention.paymentDue > 0) ||
         stats.attention.stale > 0 ||
         stats.attention.overdue > 0) && (
         <div className="mt-4">
@@ -194,7 +203,7 @@ export default async function PortalHomePage() {
           <AttentionList
             items={
               [
-                stats.attention.paymentDue > 0 && {
+                isAdmin && stats.attention.paymentDue > 0 && {
                   id: "payment-due",
                   count: stats.attention.paymentDue,
                   title: "Commission past its payment date",
@@ -225,6 +234,7 @@ export default async function PortalHomePage() {
         </div>
       )}
 
+      {isAdmin && (
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <Card>
@@ -313,6 +323,7 @@ export default async function PortalHomePage() {
           </CardContent>
         </Card>
       </div>
+      )}
     </>
   );
 }

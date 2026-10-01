@@ -122,6 +122,7 @@ beforeAll(async () => {
     contactId: null,
     customerAccountId: null,
     portalScope: "ACCOUNT" as const,
+    portalRole: "USER" as const,
     departmentId: created!.departmentId,
     teamIds: [],
     partnerId: created!.partnerId,

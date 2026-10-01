@@ -57,6 +57,7 @@ async function sessionUserFor(email: string): Promise<SessionUser> {
     contactId: null,
     customerAccountId: null,
     portalScope: "ACCOUNT" as const,
+    portalRole: "USER" as const,
     teamIds: (user.teamMemberships ?? []).map((m: { teamId: string }) => m.teamId),
     partnerId: user.partnerId,
   };

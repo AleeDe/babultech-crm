@@ -53,6 +53,8 @@ export interface BusinessHoursRow {
   name: string;
   timezone: string;
   weeklySchedule: Record<string, { start: string; end: string } | null>;
+  /** Days the office is closed; SLA clocks skip them. */
+  holidayCalendar: { date: string; name: string }[] | null;
   isDefault: boolean;
   active: boolean;
 }
@@ -71,7 +73,7 @@ export async function getCompanyInformation(): Promise<{
     db.from("company_setting").select("*").maybeSingle(),
     db.rpc("company_overview"),
     db.from("currency").select("code, name, symbol, exchangeRate, isBase, active, updatedAt").order("isBase", { ascending: false }).order("code"),
-    db.from("business_hours").select("id, name, timezone, weeklySchedule, isDefault, active").order("isDefault", { ascending: false }).order("name"),
+    db.from("business_hours").select("id, name, timezone, weeklySchedule, holidayCalendar, isDefault, active").order("isDefault", { ascending: false }).order("name"),
   ]);
 
   let accountName: string | null = null;
@@ -293,4 +295,32 @@ export async function saveBusinessHours(
 
   revalidatePath("/company");
   return { ok: true, data: { id: data.id as string } };
+}
+
+const holidaysSchema = z.object({
+  businessHoursId: z.string().uuid(),
+  holidays: z
+    .array(z.object({ date: z.string().regex(/^d{4}-d{2}-d{2}$/, "Each holiday needs a date."), name: z.string().trim().min(1, "Give each holiday a name.").max(120) }))
+    .max(200),
+});
+
+/**
+ * The days the office is closed. SLA clocks skip them, as they skip evenings
+ * and days off; a deadline that would land on one moves to the next working
+ * time. Deadlines already set are not moved.
+ */
+export async function saveHolidays(input: z.infer<typeof holidaysSchema>): Promise<ActionResult> {
+  const auth = await authorize(PERMISSIONS.ADMIN);
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const parsed = holidaysSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Please check the holidays." };
+  const holidays = [...new Map(parsed.data.holidays.map((h) => [h.date, h])).values()].sort((a, b) => a.date.localeCompare(b.date));
+  const db = await supabaseServer();
+  const { error } = await db
+    .from("business_hours")
+    .update({ holidayCalendar: holidays, updatedAt: new Date().toISOString() })
+    .eq("id", parsed.data.businessHoursId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/company/business-hours");
+  return { ok: true, data: undefined };
 }

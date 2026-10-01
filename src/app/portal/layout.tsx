@@ -47,6 +47,7 @@ export default async function PortalLayout({ children }: { children: React.React
           tier: partner.tier,
         }}
         user={{ fullName: user.fullName, email: user.email }}
+        isAdmin={user.portalRole === "ADMIN"}
       >
         {children}
       </PortalShell>
