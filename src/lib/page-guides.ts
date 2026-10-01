@@ -184,6 +184,38 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
     feeds: ["Time logged against a case feeds support cost"],
   },
 
+  "/data-quality": {
+    purpose: "Records missing something that matters, or left alone too long, one rule per card with the oldest first.",
+    needs: ["Records you can see - each rule counts only those"],
+    feeds: ["Fixing a record takes it off the list straight away"],
+    watchOut: "Duplicates are found on their own screens, linked at the top: merging is a judgement, not a fix.",
+  },
+
+  "/contacts/duplicates": {
+    purpose: "Contacts that look like the same person: same email, same number, or the same name at one account.",
+    feeds: ["Merging moves their deals, cases, quotes, activities and files to the contact you keep"],
+    watchOut: "A contact with a portal login can only be the one kept, and two people with logins cannot be merged.",
+  },
+
+  "/accounts/duplicates": {
+    purpose: "Accounts that look like the same company: same name (ignoring Ltd and Pvt), website, tax number or phone.",
+    feeds: ["Merging moves contacts, deals, quotes, invoices, payments, projects and cases to the account you keep"],
+    watchOut: "A partner's account must be the one kept, and accounts credited to different partners cannot be merged.",
+  },
+
+  "/settings/numbering": {
+    purpose: "How each kind of record is numbered - prefix, digits, year and the next number.",
+    feeds: ["The number every new record gets"],
+    watchOut: "The next number only goes up, so a number is never given out twice. Existing records keep theirs.",
+  },
+
+  "/settings/integrations": {
+    purpose: "Webhooks that tell other systems when something happens here, and the log of every call made.",
+    needs: ["An address on the other system that accepts a signed JSON post"],
+    feeds: ["A delivery per event per webhook, retried for half a day if the other side is down"],
+    watchOut: "Give the receiver the webhook's secret so it can check the signature - and a new one whenever you rotate it.",
+  },
+
   "/knowledge": {
     purpose: "Help articles your team writes once instead of answering the same question on every case.",
     feeds: ["Published articles marked for customers appear under Help articles in the support portal"],

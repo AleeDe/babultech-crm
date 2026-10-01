@@ -4,6 +4,7 @@ import { EmailOptOutButton } from "@/components/email-opt-out";
 import { MarketingPanel } from "@/components/marketing-panel";
 import { DeleteControl } from "@/components/delete-control";
 import { RecentMark } from "@/components/recent-mark";
+import { FavoriteControl } from "@/components/favorite-control";
 import { FollowControl } from "@/components/follow-control";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
@@ -16,6 +17,10 @@ import { getPortalAccess } from "@/server/customer-access";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { Mail, Phone, MessageCircle, Star } from "lucide-react";
 import { getContact } from "@/server/crm";
+import { getContactRelationship } from "@/server/relationship";
+import { ContactRelationshipSections } from "@/components/relationship-sections";
+import { AuditPanel } from "@/components/audit-panel";
+import { getAuditTrail } from "@/lib/audit";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, Button,
@@ -33,14 +38,16 @@ export default async function ContactDetailPage({
 
   const { id } = await params;
 
-  const [notes, documents, portalAccess, activities] = await Promise.all([
+  const [notes, documents, portalAccess, activities, audit] = await Promise.all([
     listNotes("Contact", id),
     listDocuments("Contact", id),
     getPortalAccess(id),
     listActivitiesFor("Contact", id),
+    getAuditTrail("Contact", id, 15),
   ]);
   const contact = await getContact(id);
   if (!contact) notFound();
+  const relationship = await getContactRelationship(id, contact.account?.id ?? null);
 
   const name = `${contact.firstName} ${contact.lastName}`;
   const address = contact.mailingAddress as Record<string, string> | null;
@@ -71,6 +78,8 @@ export default async function ContactDetailPage({
           <EmailOptOutButton contactId={contact.id} optedOut={Boolean(contact.emailOptOut)} />
         )}
         <FollowControl entityType="Contact" entityId={id} />
+        <FavoriteControl entityType="Contact" entityId={id} label={`${contact.firstName ?? ""} ${contact.lastName ?? ""}`.trim()} />
+
         <RecentMark entityType="Contact" entityId={id} label={`${contact.firstName ?? ""} ${contact.lastName ?? ""}`.trim()} />
         <DeleteControl type="Contact" id={id} name={`${contact.firstName ?? ""} ${contact.lastName ?? ""}`.trim()} />
       </PageHeader>
@@ -169,6 +178,7 @@ export default async function ContactDetailPage({
         />
       </div>
 
+      <ContactRelationshipSections data={relationship} accountName={contact.account?.name ?? null} />
 
       <div className="mt-6">
         <ActivitiesPanel
@@ -185,6 +195,10 @@ export default async function ContactDetailPage({
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NotesSection entityType="Contact" entityId={id} notes={notes} />
         <DocumentsPanel entityType="Contact" entityId={id} documents={documents} />
+      </div>
+
+      <div className="mt-6">
+        <AuditPanel entries={audit as never} />
       </div>
     </>
   );

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCustomerContext } from "@/server/support-portal";
 import { PageHeader, Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
 import { PasswordForm } from "./password-form";
+import { PreferencesSection } from "@/components/preferences-section";
 
 /**
  * The customer's own account: who they are, and their password.
@@ -31,6 +32,10 @@ export default async function SupportAccountPage() {
           <PasswordForm />
         </CardContent>
       </Card>
+
+      <div className="mt-6 max-w-2xl">
+        <PreferencesSection />
+      </div>
     </>
   );
 }

@@ -3,36 +3,11 @@
 import { supabaseServer } from "@/lib/supabase";
 import { requireUser } from "@/lib/authz";
 import { getViewAs } from "@/lib/view-as";
+import { RECORD_PATHS as PATHS, RECORD_TYPE_LABEL as TYPE_LABEL } from "@/lib/record-paths";
 
 /**
  * Recently opened records, for the search box and My work.
  */
-
-const PATHS: Record<string, string> = {
-  Lead: "/leads/",
-  Account: "/accounts/",
-  Contact: "/contacts/",
-  Opportunity: "/opportunities/",
-  SupportCase: "/cases/",
-  Project: "/projects/",
-  Quotation: "/quotations/",
-  Campaign: "/campaigns/",
-  Partner: "/partners/",
-  Invoice: "/invoices/",
-};
-
-const TYPE_LABEL: Record<string, string> = {
-  Lead: "Lead",
-  Account: "Account",
-  Contact: "Contact",
-  Opportunity: "Deal",
-  SupportCase: "Case",
-  Project: "Project",
-  Quotation: "Quote",
-  Campaign: "Campaign",
-  Partner: "Partner",
-  Invoice: "Invoice",
-};
 
 export interface RecentRecord {
   href: string;

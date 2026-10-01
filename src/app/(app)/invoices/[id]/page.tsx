@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { RecentMark } from "@/components/recent-mark";
+import { FavoriteControl } from "@/components/favorite-control";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
@@ -117,6 +118,7 @@ export default async function InvoiceDetailPage({
             <Link href={`/invoices/${invoice.id}/edit`}>Edit</Link>
           </Button>
         )}
+        <FavoriteControl entityType="Invoice" entityId={id} label={String(invoice.invoiceNumber ?? "")} />
         <RecentMark entityType="Invoice" entityId={id} label={String(invoice.invoiceNumber ?? "")} />
       </PageHeader>
 

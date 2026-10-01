@@ -20,7 +20,7 @@ const credentialsSchema = z.object({
   password: z.string().min(1),
 });
 
-export type SignInResult = { ok: true } | { ok: false; reason: string };
+export type SignInResult = { ok: true; userId: string } | { ok: false; reason: string };
 
 /**
  * Verifies credentials and starts a session.
@@ -73,7 +73,7 @@ export async function signInWithCredentials(
     .eq("id", profile.id);
   await recordLoginEvent({ eventType: "SIGN_IN", userId: profile.id, email: normalizedEmail });
 
-  return { ok: true };
+  return { ok: true, userId: profile.id };
 }
 
 /** Ends the Supabase session, and any View as it had open. */

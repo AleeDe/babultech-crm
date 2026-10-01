@@ -47,8 +47,14 @@ export function CommandPalette({ items: screens }: { items: PaletteItem[] }) {
     let live = true;
     fetch("/api/recent", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((data: { items?: { href: string; label: string; type: string }[] }) => {
-        if (live) setRecent((data.items ?? []).map((r) => ({ href: r.href, label: r.label, group: `Recent ${r.type.toLowerCase()}` })));
+      .then((data: { items?: { href: string; label: string; type: string }[]; favorites?: { href: string; label: string; type: string }[] }) => {
+        if (!live) return;
+        // Favourites first, then recent records not already among them.
+        const favorites = (data.favorites ?? []).map((r) => ({ href: r.href, label: r.label, group: `Favourite ${r.type.toLowerCase()}` }));
+        const recent = (data.items ?? [])
+          .filter((r) => !favorites.some((f) => f.href === r.href))
+          .map((r) => ({ href: r.href, label: r.label, group: `Recent ${r.type.toLowerCase()}` }));
+        setRecent([...favorites, ...recent]);
       })
       .catch(() => {});
     return () => {

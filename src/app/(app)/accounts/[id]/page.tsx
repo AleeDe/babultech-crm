@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Timeline } from "@/components/timeline";
 import { DeleteControl } from "@/components/delete-control";
 import { RecentMark } from "@/components/recent-mark";
+import { FavoriteControl } from "@/components/favorite-control";
 import { FollowControl } from "@/components/follow-control";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
@@ -13,6 +14,8 @@ import { AuditPanel } from "@/components/audit-panel";
 import { getAuditTrail } from "@/lib/audit";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { getAccount } from "@/server/crm";
+import { getAccountRelationship } from "@/server/relationship";
+import { AccountRelationshipSections } from "@/components/relationship-sections";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, Button, Alert, Forbidden
@@ -30,11 +33,12 @@ export default async function AccountDetailPage({
 
   const { id } = await params;
 
-  const [notes, documents, audit, activities] = await Promise.all([
+  const [notes, documents, audit, activities, relationship] = await Promise.all([
     listNotes("Account", id),
     listDocuments("Account", id),
     getAuditTrail("Account", id, 15),
     listActivitiesFor("Account", id),
+    getAccountRelationship(id),
   ]);
   const account = await getAccount(id);
   if (!account) notFound();
@@ -69,6 +73,7 @@ export default async function AccountDetailPage({
           <Link href={`/accounts/${account.id}/edit`}>Edit</Link>
         </Button>
         <FollowControl entityType="Account" entityId={id} />
+        <FavoriteControl entityType="Account" entityId={id} label={String(account.name ?? "")} />
         <RecentMark entityType="Account" entityId={id} label={String(account.name ?? "")} />
         <DeleteControl type="Account" id={id} name={String(account.name ?? "")} />
       </PageHeader>
@@ -308,6 +313,7 @@ export default async function AccountDetailPage({
         </Card>
       </div>
 
+      <AccountRelationshipSections data={relationship} />
 
       <div className="mt-6">
         <ActivitiesPanel

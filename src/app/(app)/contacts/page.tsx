@@ -32,6 +32,7 @@ export default async function ContactsPage({
         title="Contacts"
         description="People. A contact may belong to an account, or stand alone - an individual partner has no company behind them."
       >
+        <Button asChild variant="outline"><Link href="/contacts/duplicates">Duplicates</Link></Button>
         <ExportButton entity="contacts" params={{ search: params.search }} />
         {can(_me, PERMISSIONS.ACCOUNT_WRITE) && contacts.length > 0 && (
           <Button asChild variant="outline">

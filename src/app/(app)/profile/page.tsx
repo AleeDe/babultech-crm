@@ -4,6 +4,7 @@ import { one } from "@/lib/decimal";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, DetailRow,
 } from "@/components/ui";
+import { PreferencesSection } from "@/components/preferences-section";
 import { formatDateTime, humanize } from "@/lib/utils";
 import { ChangePasswordForm } from "./profile-client";
 import { listLoginEvents } from "@/server/security";
@@ -107,6 +108,8 @@ export default async function ProfilePage() {
           </Card>
 
           <ChangePasswordForm />
+
+          <PreferencesSection />
         </div>
       </div>
 

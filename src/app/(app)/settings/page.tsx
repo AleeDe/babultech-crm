@@ -38,6 +38,8 @@ export default async function SettingsPage() {
         description="The lists every dropdown in the app is built from. Change them here and the forms follow."
       >
         <Button asChild variant="outline"><Link href="/settings/automation">Approval and automatic rules</Link></Button>
+        <Button asChild variant="outline"><Link href="/settings/numbering">Record numbering</Link></Button>
+        <Button asChild variant="outline"><Link href="/settings/integrations">Webhooks and integrations</Link></Button>
       </PageHeader>
 
       {everythingEmpty && (

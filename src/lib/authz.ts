@@ -1,5 +1,6 @@
 import { cache } from "react";
-import { ensureCurrencyContext } from "@/lib/currency-loader";
+import { ensureCurrencyContext, getCompanyTimeZone } from "@/lib/currency-loader";
+import { setRequestDatePrefs, validTimeZone, type DateFormat, type DatePrefs } from "@/lib/date-prefs";
 import { headers } from "next/headers";
 import { supabaseSession, supabaseAdmin } from "./supabase";
 import { getViewAs, ViewAsReadOnlyError } from "./view-as";
@@ -58,6 +59,8 @@ export interface SessionUser {
   portalScope: "OWN" | "ACCOUNT";
   /** For partner and customer logins: an Admin manages their company's logins. */
   portalRole: "ADMIN" | "USER";
+  /** Their own preferences (user_preference). Optional so test fixtures can leave it out. */
+  preferences?: { timeZone: string | null; dateFormat: DateFormat; startPage: string | null };
 }
 
 export class AuthorizationError extends Error {
@@ -138,7 +141,8 @@ async function loadUser(): Promise<SessionUser> {
        userType, contactId, portalScope, portalRole,
        contact:contact!app_user_contactId_fkey ( accountId ),
        role:security_role!inner ( name, dataScope, permissions ),
-       teamMemberships:team_member ( teamId )`,
+       teamMemberships:team_member ( teamId ),
+       preference:user_preference ( timeZone, dateFormat, startPage )`,
     )
     .eq("id", userId)
     .single();
@@ -154,6 +158,10 @@ async function loadUser(): Promise<SessionUser> {
     dataScope: string;
     permissions: string[];
   };
+
+  const pref = (Array.isArray(user.preference) ? user.preference[0] : user.preference) as
+    | { timeZone: string | null; dateFormat: string | null; startPage: string | null }
+    | null;
 
   return {
     id: user.id,
@@ -171,6 +179,11 @@ async function loadUser(): Promise<SessionUser> {
       (Array.isArray(user.contact) ? user.contact[0]?.accountId : (user.contact as { accountId: string } | null)?.accountId) ?? null,
     portalScope: (user.portalScope ?? "ACCOUNT") as "OWN" | "ACCOUNT",
     portalRole: ((user as { portalRole?: string }).portalRole === "ADMIN" ? "ADMIN" : "USER") as "ADMIN" | "USER",
+    preferences: {
+      timeZone: pref?.timeZone ?? null,
+      dateFormat: (["DMY", "MDY", "YMD"].includes(pref?.dateFormat ?? "") ? pref!.dateFormat : "DMY") as DateFormat,
+      startPage: pref?.startPage ?? null,
+    },
   };
 }
 
@@ -184,7 +197,17 @@ async function loadUser(): Promise<SessionUser> {
  */
 async function loadUserAndCurrencies(): Promise<SessionUser> {
   const [user] = await Promise.all([loadUser(), ensureCurrencyContext()]);
+  // Dates for the rest of this request read in this person's zone and format.
+  setRequestDatePrefs(datePrefsFor(user));
   return user;
+}
+
+/** The zone and format a person reads dates in: their own, else the company's zone. */
+export function datePrefsFor(user: SessionUser): DatePrefs {
+  return {
+    timeZone: validTimeZone(user.preferences?.timeZone) ?? validTimeZone(getCompanyTimeZone()),
+    dateFormat: user.preferences?.dateFormat ?? "DMY",
+  };
 }
 
 export const requireUser: () => Promise<SessionUser> = cache(loadUserAndCurrencies);

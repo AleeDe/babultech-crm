@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckSquare, FolderKanban, LifeBuoy, CalendarCheck, Clock } from "lucide-react";
+import { CheckSquare, FolderKanban, LifeBuoy, CalendarCheck, Clock, Star } from "lucide-react";
 import { getMyWork } from "@/server/my-work";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
@@ -8,6 +8,7 @@ import {
 import { formatDate, formatDateTime, formatPercent, humanize } from "@/lib/utils";
 import { TaskProgress } from "./task-progress";
 import { listRecent } from "@/server/recent";
+import { listFavorites } from "@/server/favorites";
 
 /**
  * One screen for "what am I supposed to be doing".
@@ -17,7 +18,7 @@ import { listRecent } from "@/server/recent";
  * data indexed by assignee.
  */
 export default async function MyWorkPage() {
-  const [{ me, tasks, projects, cases, activities, summary }, recent] = await Promise.all([getMyWork(), listRecent(8)]);
+  const [{ me, tasks, projects, cases, activities, summary }, recent, favorites] = await Promise.all([getMyWork(), listRecent(8), listFavorites(30)]);
 
   const nothingAssigned =
     tasks.length === 0 && projects.length === 0 && cases.length === 0 && activities.length === 0;
@@ -35,6 +36,27 @@ export default async function MyWorkPage() {
           <Link href="/timesheets">Log time</Link>
         </Button>
       </PageHeader>
+
+      {favorites.length > 0 && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Favourites</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {favorites.map((r) => (
+              <Link
+                key={r.href}
+                href={r.href}
+                className="inline-flex max-w-full items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm hover:bg-accent"
+              >
+                <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" />
+                <span className="text-xs text-muted-foreground">{r.type}</span>
+                <span className="truncate">{r.label}</span>
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {recent.length > 0 && (
         <Card className="mb-6">

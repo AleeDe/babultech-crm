@@ -4,6 +4,7 @@ import { MarketingPanel } from "@/components/marketing-panel";
 import { QualifyProspectButton } from "@/components/qualify-prospect-button";
 import { DeleteControl } from "@/components/delete-control";
 import { RecentMark } from "@/components/recent-mark";
+import { FavoriteControl } from "@/components/favorite-control";
 import { FollowControl } from "@/components/follow-control";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
@@ -115,6 +116,8 @@ export default async function LeadDetailPage({
           <Button asChild variant="outline"><Link href={`/email/compose?type=Lead&ids=${lead.id}`}>Email</Link></Button>
         )}
         <FollowControl entityType="Lead" entityId={id} />
+        <FavoriteControl entityType="Lead" entityId={id} label={`${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim()} />
+
         <RecentMark entityType="Lead" entityId={id} label={`${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim()} />
         <DeleteControl type="Lead" id={id} name={`${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim()} />
       </PageHeader>

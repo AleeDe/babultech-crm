@@ -3,6 +3,7 @@ import { Timeline } from "@/components/timeline";
 import { DealAttribution } from "@/components/deal-attribution";
 import { DeleteControl } from "@/components/delete-control";
 import { RecentMark } from "@/components/recent-mark";
+import { FavoriteControl } from "@/components/favorite-control";
 import { FollowControl } from "@/components/follow-control";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
@@ -75,6 +76,7 @@ export default async function OpportunityDetailPage({
           <Link href={`/opportunities/${opp.id}/edit`}>Edit</Link>
         </Button>
         <FollowControl entityType="Opportunity" entityId={id} />
+        <FavoriteControl entityType="Opportunity" entityId={id} label={String(opp.name ?? "")} />
         <RecentMark entityType="Opportunity" entityId={id} label={String(opp.name ?? "")} />
         <DeleteControl type="Opportunity" id={id} name={String(opp.name ?? "")} />
       </PageHeader>

@@ -216,7 +216,7 @@ try {
   assert.equal(scored.score, 65, `Score ${scored.score}`);
   pass("The score adds up the touches and the job title: 65");
 
-  await page.getByRole("button", { name: "Add" }).first().click();
+  await page.getByRole("button", { name: "Add", exact: true }).first().click();
   await page.getByLabel("Referring contact").fill(`Rer ${run}`);
   await page.getByRole("button", { name: new RegExp(`Refa Rer ${run}`) }).click();
   await page.getByRole("link", { name: `Refa Rer ${run}` }).waitFor({ timeout: 15000 }).catch(async (e) => {

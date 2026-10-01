@@ -25,10 +25,13 @@ const NAV = [
 export function SupportShell({
   account,
   user,
+  assistant,
   children,
 }: {
   account: { name: string };
   user: { fullName: string; email: string };
+  /** The portal assistant's launcher, under the menu. */
+  assistant?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -90,6 +93,8 @@ export function SupportShell({
             })}
           </ul>
         </nav>
+
+        {assistant && <div className="px-3 pb-3">{assistant}</div>}
 
         <div className="border-t p-3">
           <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5">

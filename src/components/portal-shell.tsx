@@ -30,12 +30,15 @@ export function PortalShell({
   partner,
   user,
   isAdmin = true,
+  assistant,
   children,
 }: {
   partner: { displayName: string; partnerNumber: string; tier: string };
   user: { fullName: string; email: string };
   /** A partner User does not see commission. */
   isAdmin?: boolean;
+  /** The portal assistant's launcher, under the menu. */
+  assistant?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -99,6 +102,8 @@ export function PortalShell({
             })}
           </ul>
         </nav>
+
+        {assistant && <div className="px-3 pb-3">{assistant}</div>}
 
         <div className="border-t p-3">
           <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5">

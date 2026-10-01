@@ -1,5 +1,6 @@
 import { sendNextLeadEmails } from "./lead-mailer";
 import { sendPendingNotificationEmails } from "./notification-mailer";
+import { deliverWebhooks } from "./webhook-delivery";
 
 /**
  * What each kind of background job does, one chunk at a time.
@@ -62,4 +63,5 @@ export type JobType = keyof typeof JOB_HANDLERS;
  */
 export const RUNNER_CHORES: ((deadline: number) => Promise<number>)[] = [
   sendPendingNotificationEmails,
+  deliverWebhooks,
 ];

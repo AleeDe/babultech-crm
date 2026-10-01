@@ -2,6 +2,7 @@ import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import Decimal from "decimal.js";
 import { convert, companionCurrency } from "./currency-context";
+import { currentDatePrefs, type DateFormat } from "./date-prefs";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -116,24 +117,44 @@ export function formatPercent(value: Numeric, digits = 1): string {
   return `${Number(toDecimal(value)).toFixed(digits)}%`;
 }
 
+/**
+ * A date in the reader's own format and time zone (lib/date-prefs.ts): "01 Oct
+ * 2026", "Oct 01, 2026" or "2026-10-01".
+ *
+ * A date with no time ("2026-10-01" - a due date, a close date) is a calendar
+ * day, not a moment, so it is shown as that day everywhere: read at midnight UTC
+ * and formatted in UTC, it does not slip to the 30th for someone in Toronto.
+ */
 export function formatDate(value: Date | string | null | undefined): string {
   if (!value) return "—";
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
+  const prefs = currentDatePrefs();
+  const dayOnly = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  return formatParts(new Date(value), prefs?.dateFormat ?? "DMY", dayOnly ? "UTC" : prefs?.timeZone ?? undefined, false);
 }
 
+/** A moment, in the reader's own format and time zone: "01 Oct 2026, 14:05". */
 export function formatDateTime(value: Date | string | null | undefined): string {
   if (!value) return "—";
-  return new Intl.DateTimeFormat("en-GB", {
+  const prefs = currentDatePrefs();
+  return formatParts(new Date(value), prefs?.dateFormat ?? "DMY", prefs?.timeZone ?? undefined, true);
+}
+
+function formatParts(date: Date, format: DateFormat, timeZone: string | undefined, withTime: boolean): string {
+  if (Number.isNaN(date.getTime())) return "—";
+  const parts = new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
-    month: "short",
+    month: format === "YMD" ? "2-digit" : "short",
     year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+    ...(withTime ? { hour: "2-digit", minute: "2-digit", hourCycle: "h23" as const } : {}),
+    ...(timeZone ? { timeZone } : {}),
+  }).formatToParts(date);
+  // Newer ICU writes "Sept" for en-GB and older builds "Sep"; always three
+  // letters, so the server and the browser print the same text.
+  const get = (type: string) => (parts.find((p) => p.type === type)?.value ?? "").replace(/^Sept$/, "Sep");
+  const day = format === "YMD" ? `${get("year")}-${get("month")}-${get("day")}`
+    : format === "MDY" ? `${get("month")} ${get("day")}, ${get("year")}`
+    : `${get("day")} ${get("month")} ${get("year")}`;
+  return withTime ? `${day}, ${get("hour")}:${get("minute")}` : day;
 }
 
 /** "CLOSED_WON" -> "Closed Won" */

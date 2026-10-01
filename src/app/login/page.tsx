@@ -57,7 +57,16 @@ export default async function LoginPage({
     // redirect() throws, so it must sit outside any try/catch that would
     // swallow the control-flow exception.
     if (!result.ok) redirect(`/login?error=${result.reason}`);
-    redirect("/");
+
+    // Their chosen start page, if they have one. Only a path inside the app:
+    // the column refuses anything else, and it is checked again here.
+    const { data: pref } = await supabaseAdmin()
+      .from("user_preference")
+      .select("startPage")
+      .eq("userId", result.userId)
+      .maybeSingle();
+    const start = pref?.startPage && /^\/[a-z0-9/_-]*$/.test(pref.startPage) ? pref.startPage : "/";
+    redirect(start);
   }
 
   return (

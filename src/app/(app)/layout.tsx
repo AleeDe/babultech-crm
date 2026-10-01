@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { PageGuide } from "@/components/page-guide";
-import { requireUser, can, AuthorizationError, PERMISSIONS } from "@/lib/authz";
+import { requireUser, can, AuthorizationError, PERMISSIONS, datePrefsFor } from "@/lib/authz";
 import { PicklistProvider } from "@/components/picklist";
 import { getPicklistMap } from "@/server/picklists";
 import { CurrencyContextProvider } from "@/components/currency-context-provider";
+import { DatePrefsProvider } from "@/components/date-prefs-provider";
 import { ensureCurrencyContext } from "@/lib/currency-loader";
 import { ViewAsBanner } from "@/components/view-as-banner";
 import { rememberSchedulerAddress } from "@/lib/scheduler-address";
@@ -40,7 +41,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {/* The browser formats money with the same rates the server just used,
             or the two would render different text and fail to hydrate. */}
         <CurrencyContextProvider value={currencies}>
-          <PicklistProvider value={picklists}>{children}</PicklistProvider>
+          <DatePrefsProvider value={datePrefsFor(user)}>
+            <PicklistProvider value={picklists}>{children}</PicklistProvider>
+          </DatePrefsProvider>
         </CurrencyContextProvider>
       </AppShell>
       </>

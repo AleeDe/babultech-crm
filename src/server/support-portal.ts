@@ -216,6 +216,38 @@ const newTicketSchema = z.object({
 export async function raiseTicket(
   input: z.infer<typeof newTicketSchema>,
 ): Promise<ActionResult<{ id: string; caseNumber: string }>> {
+  return createCustomerTicket(input, "PORTAL");
+}
+
+/**
+ * Raises a ticket from the portal assistant: the same as the form, marked as
+ * the assistant's, with the conversation kept in the description so support
+ * reads what the customer already said.
+ */
+export async function raiseTicketFromAssistant(input: {
+  subject: string;
+  description: string;
+  priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  transcript: string;
+}): Promise<ActionResult<{ id: string; caseNumber: string }>> {
+  const transcript = input.transcript.trim().slice(0, 8000);
+  return createCustomerTicket(
+    {
+      subject: input.subject,
+      description: transcript ? `${input.description}
+
+Conversation with the portal assistant:
+${transcript}` : input.description,
+      priority: input.priority,
+    },
+    "CHATBOT",
+  );
+}
+
+async function createCustomerTicket(
+  input: z.infer<typeof newTicketSchema>,
+  source: "PORTAL" | "CHATBOT",
+): Promise<ActionResult<{ id: string; caseNumber: string }>> {
   let me: CustomerContext;
   try {
     me = await requireCustomer();
@@ -269,7 +301,7 @@ export async function raiseTicket(
         contactId: me.contactId,
         caseType: "INCIDENT",
         priority: data.priority,
-        source: "PORTAL",
+        source,
         status: assignee ? "ASSIGNED" : "NEW",
         ownerUserId: assignee ?? null,
         slaPolicyId: sla.slaPolicyId,

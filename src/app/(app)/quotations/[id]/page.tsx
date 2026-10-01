@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { RecentMark } from "@/components/recent-mark";
+import { FavoriteControl } from "@/components/favorite-control";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
@@ -154,6 +155,8 @@ export default async function QuotationDetailPage({
               </Link>
             </Button>
           )}
+        <FavoriteControl entityType="Quotation" entityId={id} label={String(quote.quoteNumber ?? "")} />
+
         <RecentMark entityType="Quotation" entityId={id} label={String(quote.quoteNumber ?? "")} />
       </PageHeader>
 

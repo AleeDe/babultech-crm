@@ -1,7 +1,9 @@
 import { ViewAsBanner } from "@/components/view-as-banner";
 import { redirect } from "next/navigation";
 import { SupportShell } from "@/components/support-shell";
-import { requireUser, AuthorizationError } from "@/lib/authz";
+import { requireUser, AuthorizationError, datePrefsFor } from "@/lib/authz";
+import { DatePrefsProvider } from "@/components/date-prefs-provider";
+import { PortalAssistant } from "@/components/portal-assistant";
 import { supabaseAdmin } from "@/lib/supabase";
 
 /**
@@ -46,8 +48,9 @@ export default async function SupportLayout({ children }: { children: React.Reac
       <SupportShell
         account={{ name: account?.name ?? "Your company" }}
         user={{ fullName: user.fullName, email: user.email }}
+        assistant={<PortalAssistant audience="customer" />}
       >
-        {children}
+        <DatePrefsProvider value={datePrefsFor(user)}>{children}</DatePrefsProvider>
       </SupportShell>
     </>
   );

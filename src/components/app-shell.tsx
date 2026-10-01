@@ -8,7 +8,7 @@ import {
   FileText, FileSignature, Handshake, Coins, LifeBuoy, FolderKanban,
   Receipt, Package, CalendarCheck, Menu, X, LogOut, Clock, UsersRound, Banknote,
   ShieldCheck, UserCog, Settings, BookOpen, CheckSquare, FileInput, Wallet, Stamp,
-  ChevronDown, Trash2, BookMarked, Landmark, PanelLeftClose, PanelLeftOpen, KeyRound, CalendarClock, HeartPulse, CalendarSync, RefreshCw, ContactRound,
+  ChevronDown, Trash2, BookMarked, Landmark, PanelLeftClose, PanelLeftOpen, KeyRound, CalendarClock, HeartPulse, CalendarSync, RefreshCw, ContactRound, ListChecks,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { holdsAny } from "@/lib/nav-permissions";
@@ -52,6 +52,7 @@ const NAV: NavGroup[] = [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/my-work", label: "My work", icon: CheckSquare },
       { href: "/reports", label: "Reports", icon: BookOpen, permissions: ["opportunity:read", "lead:read", "case:read", "project:read"] },
+      { href: "/data-quality", label: "Data quality", icon: ListChecks, permissions: ["account:read", "lead:read", "opportunity:read", "case:read", "project:read"] },
       { href: "/recycle-bin", label: "Recycle bin", icon: Trash2, permissions: ["lead:delete", "account:delete", "opportunity:delete", "case:delete", "campaign:delete"] },
       { href: "/approvals", label: "Approvals", icon: Stamp, permissions: ["quotation:approve", "invoice:approve", "invoice:void", "payable:approve", "expense:approve", "time:approve", "commission:approve"] },
     ],

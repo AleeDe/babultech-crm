@@ -400,6 +400,75 @@ Added 1 October 2026, migrations `20260930000000` and `20260930000001`.
   `lib/business-hours.ts` does the arithmetic in the calendar's own time zone.
   A calendar with no working time at all falls back to elapsed time.
 
+### The remaining items: 360 views, merge, favourites, data quality, preferences, numbering, webhooks, assistant
+
+Added 1 October 2026, migrations `20261001000000` to `20261001000006`.
+
+- **Account 360 and Contact 360**:
+  - The account page adds revenue won, invoiced and paid, per currency, and
+    the products and services bought (the lines on won deals).
+  - It also adds campaign influence (campaigns that reached its deals, leads,
+    contacts or list members), its projects, and the leads converted into it.
+  - The contact page adds their deals, cases, projects, lead history and change
+    history.
+  - All of it is read under the person's own row security (`server/relationship.ts`).
+- **Duplicates and merge for contacts and accounts** (`/contacts/duplicates`,
+  `/accounts/duplicates`):
+  - Contacts match on email, any number's last nine digits, or the same name
+    at one account.
+  - Accounts match on name (Ltd, Pvt and the like ignored), website domain,
+    tax number or phone.
+  - The merge screen keeps a value per field. `merge_contacts()` and
+    `merge_accounts()` move every linked row and follower.
+  - The duplicates are retired (soft-deleted, `mergedIntoId`), never removed,
+    and every merge is kept in `record_merge`.
+  - A merge is refused when two contacts both have portal logins, when the
+    account merged away is a partner, when the accounts are credited to
+    different partners, or when it would touch a closed month.
+- **Favourites**: a star on every record page (`favorite_record`), shown on My
+  work and first in the search box.
+- **Data quality** (`/data-quality`):
+  - Nine rules, from the view `data_quality_issue`, which runs as the reader so
+    each person sees only what they may.
+  - The rules: accounts with no website or no contacts, contacts with no email,
+    leads with no source or untouched for 14 days, deals with no close date or
+    unchanged for 21 days, cases with no owner, projects with no manager.
+- **Preferences** (My account, and the account pages of both portals):
+  - A time zone, a date format and a start page (`user_preference`).
+  - `requireUser()` puts them in a request-scoped box (`lib/date-prefs.ts`) and
+    the layouts hand the same values to the browser, so `formatDate()` and
+    `formatDateTime()` follow the reader everywhere.
+  - A date with no time is a calendar day and never shifts between zones.
+  - Without a choice, dates use the company's time zone.
+- **Record numbering** (Settings › Record numbering): the prefix, digits, year and
+  next number of each sequence. The next number can only go up.
+- **Webhooks and the integration log** (Settings › Webhooks and integrations):
+  - The events are a lead created, a deal won or lost, a quote accepted, and a
+    case created or resolved.
+  - A trigger queues a delivery per active webhook in `integration_log`. The
+    runner posts it (`lib/webhook-delivery.ts`), signed:
+    `X-BabulTech-Signature: sha256=` plus the HMAC of `<timestamp>.<body>` with
+    the webhook's secret.
+  - Failures are retried after 1, 5 and 30 minutes, then 2 and 12 hours. The
+    log keeps every attempt for 90 days.
+  - Private network addresses are refused unless `WEBHOOK_ALLOW_PRIVATE=1`,
+    which is for local testing only.
+- **Portal assistant**, in both portals:
+  - It matches keywords rather than using an AI model, as agreed: answers are
+    predictable and nothing leaves our system.
+  - Customers can ask about open tickets, a ticket's status and replies,
+    projects, the next milestone and deliverables. Anything else searches the
+    help articles.
+  - It raises a case in a short conversation, with Origin `CHATBOT`, the
+    customer's account and contact, and the conversation in the description.
+  - Partners can ask about their deals, a deal's status, pending commission and
+    commission terms (both Admins only), and how to register a deal.
+  - When it cannot answer, a customer can raise a case or send the
+    conversation to support, and a partner can send it to their partner
+    manager.
+  - It calls the same server functions as the portal pages, so it never sees
+    more than they do.
+
 ---
 
 ## 4. Bugs found and fixed during testing
@@ -433,19 +502,25 @@ Each was found by testing behaviour, not by reading code:
 
 Honest list of what is **not** built:
 
-- **No outbound email.** The `Email` entity is modelled but nothing sends. Partner
-  registrations raise a dated **task** for the partner manager instead — that is
-  what "notify" means today.
+Updated 1 October 2026. Several earlier entries here (no outbound email, no
+document storage, read-only campaigns and products, no approvals, no tests) were
+built since, and are removed.
+
 - **Currency conversion** is modelled (`Currency.exchangeRate`) but single-rate.
   Multi-currency reporting needs dated rates and a decision about booking at
   invoice date or payment date. That is a finance decision, not a technical one.
-- **Document storage** — `Document` holds metadata and a `storageUrl`; no object
-  store is wired.
-- **Campaigns, Products and Activities are read-only** — they have list and
-  detail pages but no create/edit.
-- **Approvals engine, forecasting and integrations** (spec Phase 5) are not started.
-- **No automated test suite.** Everything below was verified by driving the real
-  application against the real database; none of it is guarded against regression.
+- **Left out by decision**:
+  - the report and dashboard builder (ready-made reports instead);
+  - multi-touch attribution (first and latest touch are kept);
+  - record sharing;
+  - subscriptions and entitlements;
+  - forecasting;
+  - an AI model behind the assistant.
+- **Integrations are outbound webhooks only.** No inbound API connections, and no
+  WhatsApp, SMS, accounting or currency-provider connectors yet. The integration
+  log is ready for them.
+- **Preferences** cover time zone, date format and start page. Language and theme
+  are not offered: the app is English-only and has one theme.
 
 ---
 

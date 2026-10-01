@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { DeliverablesPanel } from "@/components/deliverables-panel";
 import { RecentMark } from "@/components/recent-mark";
+import { FavoriteControl } from "@/components/favorite-control";
 import { FollowControl } from "@/components/follow-control";
 import { SyncFromDeal } from "./sync-from-deal";
 import { notFound } from "next/navigation";
@@ -108,6 +109,8 @@ export default async function ProjectWorkspacePage({
         {canManage && <DeleteProjectButton projectId={project.id} name={`${project.projectNumber} ${project.name}`} />}
         <Button asChild variant="outline"><Link href={`/projects/${id}/content`}>Content calendar</Link></Button>
         <FollowControl entityType="Project" entityId={id} />
+        <FavoriteControl entityType="Project" entityId={id} label={String(project.name ?? "")} />
+
         <RecentMark entityType="Project" entityId={id} label={String(project.name ?? "")} />
       </PageHeader>
 

@@ -30,6 +30,7 @@ export default async function AccountsPage({
         title="Accounts"
         description="Customers, prospects, partners and vendors - one organisation record, many roles."
       >
+        <Button asChild variant="outline"><Link href="/accounts/duplicates">Duplicates</Link></Button>
         <ExportButton entity="accounts" params={{ search: params.search, accountType: params.accountType, partnerId: params.partnerId }} />
         <Button asChild>
           <Link href="/accounts/new">

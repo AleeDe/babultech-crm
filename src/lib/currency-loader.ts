@@ -18,11 +18,22 @@ const TTL_MS = 5 * 60 * 1000;
 let loaded: { ctx: CurrencyContext; at: number } | null = null;
 let inflight: Promise<CurrencyContext> | null = null;
 
+/**
+ * The company's time zone, read with the currencies because it is the same
+ * kind of thing: one setting for everybody, cached alike. Dates fall back to it
+ * for anybody who has not chosen their own (lib/date-prefs.ts).
+ */
+let companyTimeZone: string | null = null;
+
+export function getCompanyTimeZone(): string | null {
+  return companyTimeZone;
+}
+
 async function load(): Promise<CurrencyContext> {
   const db = supabaseAdmin();
 
   const [{ data: setting }, { data: currencies }] = await Promise.all([
-    db.from("company_setting").select("defaultCurrency, corporateCurrency").maybeSingle(),
+    db.from("company_setting").select("defaultCurrency, corporateCurrency, timezone").maybeSingle(),
     db.from("currency").select("code, exchangeRate").eq("active", true),
   ]);
 
@@ -31,6 +42,8 @@ async function load(): Promise<CurrencyContext> {
     const rate = Number(c.exchangeRate);
     if (rate > 0) rates[String(c.code).trim()] = rate;
   }
+
+  companyTimeZone = (setting as { timezone?: string | null } | null)?.timezone?.trim() || null;
 
   return {
     defaultCurrency: String(setting?.defaultCurrency ?? "PKR").trim(),

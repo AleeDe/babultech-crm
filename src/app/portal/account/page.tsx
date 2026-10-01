@@ -3,6 +3,7 @@ import { getPartnerProfile } from "@/server/portal";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone, DetailRow, Alert,
 } from "@/components/ui";
+import { PreferencesSection } from "@/components/preferences-section";
 import { formatDate, formatPercent, humanize } from "@/lib/utils";
 import { ChangePasswordForm } from "@/app/(app)/profile/profile-client";
 
@@ -56,6 +57,8 @@ export default async function PortalAccountPage() {
           </Card>
 
           <ChangePasswordForm />
+
+          <PreferencesSection />
 
           <Alert tone="info">
             This login only ever sees your own partnership. It has no access to our internal system.
