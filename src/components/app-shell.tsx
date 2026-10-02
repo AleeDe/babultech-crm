@@ -32,6 +32,8 @@ interface NavItem {
    * gated on anything, because every signed-in person has their own copy.
    */
   permissions?: string[];
+  /** Administrators only, whatever the permissions say - for a screen in a mixed group. */
+  adminOnly?: boolean;
 }
 
 interface NavGroup {
@@ -39,8 +41,8 @@ interface NavGroup {
   items: NavItem[];
   /**
    * A group disappears once every item inside it is filtered out, so a group
-   * needs no permission of its own. This flag survives for Administration
-   * alone, where the group is hidden by role rather than by the pages in it.
+   * needs no permission of its own. A whole group can still be hidden by role
+   * with this flag; today screens are marked one by one instead (NavItem.adminOnly).
    */
   adminOnly?: boolean;
 }
@@ -49,12 +51,24 @@ const NAV: NavGroup[] = [
   {
     label: "Overview",
     items: [
+      { href: "/company", label: "Company information", icon: Landmark, adminOnly: true },
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/my-work", label: "My work", icon: CheckSquare },
       { href: "/reports", label: "Reports", icon: BookOpen, permissions: ["opportunity:read", "lead:read", "case:read", "project:read"] },
-      { href: "/data-quality", label: "Data quality", icon: ListChecks, permissions: ["account:read", "lead:read", "opportunity:read", "case:read", "project:read"] },
       { href: "/recycle-bin", label: "Recycle bin", icon: Trash2, permissions: ["lead:delete", "account:delete", "opportunity:delete", "case:delete", "campaign:delete"] },
+    ],
+  },
+  {
+    // Data quality and Approvals are a Manager's too, so this group is not
+    // hidden by role; the screens only administrators may open are marked
+    // one by one.
+    label: "Admin",
+    items: [
+      { href: "/data-quality", label: "Data quality", icon: ListChecks, permissions: ["account:read", "lead:read", "opportunity:read", "case:read", "project:read"] },
       { href: "/approvals", label: "Approvals", icon: Stamp, permissions: ["quotation:approve", "invoice:approve", "invoice:void", "payable:approve", "expense:approve", "time:approve", "commission:approve"] },
+      { href: "/users", label: "Users", icon: ShieldCheck, adminOnly: true },
+      { href: "/jobs", label: "Background jobs", icon: RefreshCw, adminOnly: true },
+      { href: "/email/senders", label: "Sender addresses", icon: Megaphone, adminOnly: true },
+      { href: "/settings", label: "Settings", icon: Settings, adminOnly: true },
     ],
   },
   {
@@ -90,6 +104,8 @@ const NAV: NavGroup[] = [
   {
     label: "Delivery",
     items: [
+      // Everyone's own work: tasks, projects, cases and activities assigned to them.
+      { href: "/my-work", label: "My work", icon: CheckSquare },
       { href: "/cases", label: "Support Cases", icon: LifeBuoy, permissions: ["case:read"] },
       { href: "/knowledge", label: "Knowledge base", icon: BookMarked, permissions: ["case:read"] },
       { href: "/projects", label: "Projects", icon: FolderKanban, permissions: ["project:read"] },
@@ -109,23 +125,12 @@ const NAV: NavGroup[] = [
     ],
   },
   {
-    // Its own group rather than an item under Administration: secret:read is
+    // Its own group rather than an item under Admin: secret:read is
     // meant to be grantable to someone who is not an administrator, and that
     // group is hidden wholesale by role.
     label: "Security",
     items: [
       { href: "/vault", label: "Vault", icon: KeyRound, permissions: ["secret:read"] },
-    ],
-  },
-  {
-    label: "Administration",
-    adminOnly: true,
-    items: [
-      { href: "/company", label: "Company information", icon: Landmark },
-      { href: "/users", label: "Users", icon: ShieldCheck },
-      { href: "/jobs", label: "Background jobs", icon: RefreshCw },
-      { href: "/email/senders", label: "Sender addresses", icon: Megaphone },
-      { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
   {
@@ -160,7 +165,7 @@ export function AppShell({
   const nav = NAV.filter((group) => !group.adminOnly || isAdmin)
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => holdsAny(permissions, item.permissions)),
+      items: group.items.filter((item) => (!item.adminOnly || isAdmin) && holdsAny(permissions, item.permissions)),
     }))
     .filter((group) => group.items.length > 0);
 

@@ -338,7 +338,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
   },
   "/email/compose": {
     purpose: "One email to many people - leads, contacts or campaign members - each getting their own copy with their own unsubscribe link.",
-    needs: ["People chosen on a list, or one person from their page", "A sender address (Administration › Sender addresses)"],
+    needs: ["People chosen on a list, or one person from their page", "A sender address (Admin › Sender addresses)"],
     feeds: ["The send's page, with who opened and clicked", "A touch on each person when they open or click"],
     watchOut: "Anyone unsubscribed, bounced or opted out is left out, and so are contacts who have not agreed to marketing unless you untick that box.",
   },
