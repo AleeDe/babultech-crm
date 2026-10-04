@@ -64,11 +64,12 @@ export function ExpenseBulkTable({
     for (const e of selectedRows) {
       if (e.approvalStatus === "DRAFT" || e.approvalStatus === "REJECTED") submittable += 1;
       // Your own claim is not approvable by you, and the server agrees.
-      if (e.approvalStatus === "SUBMITTED" && e.employeeUserId !== currentUserId) approvable += 1;
+      // An administrator may approve their own (agreed 4 October 2026).
+      if (e.approvalStatus === "SUBMITTED" && (e.employeeUserId !== currentUserId || canAdminDelete)) approvable += 1;
       if (e.approvalStatus === "APPROVED" && e.paymentStatus === "UNPAID") settleable += 1;
     }
     return { submittable, approvable, settleable };
-  }, [selectedRows, currentUserId]);
+  }, [selectedRows, currentUserId, canAdminDelete]);
 
   const selectedTotal = selectedRows.reduce((sum, e) => sum + Number(e.amount ?? 0), 0);
 

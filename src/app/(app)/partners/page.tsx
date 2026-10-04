@@ -197,7 +197,7 @@ export default async function PartnersPage({
                       <Badge tone={statusTone(p.status)}>{humanize(p.status)}</Badge>
                     </TD>
                     <TD className="text-right">
-                      <RowActions type="Partner" id={p.id} name={String(p.displayName ?? "")} canDelete={canDeleteRow} />
+                      <RowActions type="Partner" id={p.id} name={String(p.displayName ?? "")} editHref={can(_me, PERMISSIONS.PARTNER_WRITE) ? `/partners/${p.id}/edit` : null} canDelete={canDeleteRow} />
                     </TD>
                   </TR>
                 );

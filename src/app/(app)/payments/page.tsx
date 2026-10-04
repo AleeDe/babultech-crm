@@ -155,7 +155,7 @@ export default async function PaymentsPage({
                   </TD>
                   <TD><Badge tone={statusTone(p.status)}>{humanize(p.status)}</Badge></TD>
                   <TD className="text-right">
-                    <RowActions type="Payment" id={p.id} name={String(p.paymentNumber ?? "")} canDelete={canDeleteRow} />
+                    <RowActions type="Payment" id={p.id} name={String(p.paymentNumber ?? "")} editHref={can(_me, PERMISSIONS.PAYMENT_WRITE) ? `/payments/${p.id}/edit` : null} canDelete={canDeleteRow} />
                   </TD>
                 </TR>
               ))}

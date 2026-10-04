@@ -2,6 +2,12 @@
 
 How access is decided in this system, and the rules to follow when changing it.
 
+## 4 October 2026: administrators' expense claims
+
+An administrator's claims are approved without a second person: on entry
+(the form and imports), on submitting a draft, or by approving one already
+waiting. Other people's claims, and a Manager's own, are unchanged.
+
 ## 4 October 2026: correcting processed records
 
 Before a record is processed, the usual permissions decide who edits and
@@ -184,7 +190,9 @@ table the role can read — every deal, every case, every customer conversation.
 **Separation of duties beats role design.** The person who creates an obligation
 must not be the one who approves it. Where that cannot be expressed as a
 permission, it is enforced per action: `setExpenseApproval` refuses to let anyone
-approve their own claim regardless of role, including Administrator with `["*"]`.
+approve their own claim. Since 4 October 2026 the one exception is an
+administrator: their expense claims need nobody's approval (see above).
+Everyone else still needs a second person.
 Prefer that pattern — a rule in the action is stronger than a rule in a role.
 
 ## Current roles

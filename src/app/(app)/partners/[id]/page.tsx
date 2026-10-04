@@ -58,6 +58,9 @@ export default async function PartnerDetailPage({
         description={`${partner.partnerNumber} · ${humanize(partner.partnerType)} partner · ${humanize(partner.tier)} tier`}
       >
         <Badge tone={statusTone(partner.status)}>{humanize(partner.status)}</Badge>
+        {can(_me, PERMISSIONS.PARTNER_WRITE) && (
+          <Button asChild><Link href={`/partners/${id}/edit`}>Edit</Link></Button>
+        )}
         <FavoriteControl entityType="Partner" entityId={id} label={String(partner.displayName ?? "")} />
         <RecentMark entityType="Partner" entityId={id} label={String(partner.displayName ?? "")} />
       </PageHeader>

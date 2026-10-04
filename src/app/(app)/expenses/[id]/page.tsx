@@ -112,7 +112,9 @@ export default async function ExpenseDetailPage({
             paymentStatus={expense.paymentStatus}
             canApprove={can(me, PERMISSIONS.EXPENSE_APPROVE)}
             canPay={can(me, PERMISSIONS.EXPENSE_APPROVE)}
-            isOwnClaim={isOwnClaim}
+            // An administrator's own claims need nobody else (agreed 4 October 2026).
+            isOwnClaim={isOwnClaim && !can(me, PERMISSIONS.ADMIN)}
+            approvesOnSubmit={can(me, PERMISSIONS.ADMIN)}
           />
         </CardContent>
       </Card>

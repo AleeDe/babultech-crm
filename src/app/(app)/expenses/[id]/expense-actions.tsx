@@ -20,6 +20,7 @@ export function ExpenseActions({
   canApprove,
   canPay,
   isOwnClaim,
+  approvesOnSubmit = false,
 }: {
   expenseId: string;
   approvalStatus: string;
@@ -27,6 +28,8 @@ export function ExpenseActions({
   canApprove: boolean;
   canPay: boolean;
   isOwnClaim: boolean;
+  /** An administrator: submitting approves it, no second person needed. */
+  approvesOnSubmit?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -50,7 +53,7 @@ export function ExpenseActions({
       <div className="flex flex-wrap gap-2">
         {approvalStatus === "DRAFT" && (
           <Button onClick={() => run(() => setExpenseApproval(expenseId, "SUBMITTED"))} disabled={pending}>
-            <Send className="h-4 w-4" /> Submit for approval
+            <Send className="h-4 w-4" /> {approvesOnSubmit ? "Approve" : "Submit for approval"}
           </Button>
         )}
 

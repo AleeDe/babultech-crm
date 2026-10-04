@@ -334,7 +334,8 @@ export async function createExpense(
         projectId: d.projectId || null,
         billableToCustomer: d.billableToCustomer,
         reimbursable: d.reimbursable,
-        approvalStatus: "DRAFT",
+        // An administrator's entry needs nobody's approval (agreed 4 October 2026).
+        approvalStatus: can(_auth.user, PERMISSIONS.ADMIN) ? "APPROVED" : "DRAFT",
         paymentStatus: "UNPAID",
       },
       { field: "expenseNumber", sequence: SEQUENCES.EXPENSE },
@@ -645,16 +646,21 @@ export async function setExpenseApproval(
     };
   }
 
-  // Approving your own claim is the oldest hole in expense handling.
-  if (next === "APPROVED" && expense.employeeUserId === _auth.user.id) {
+  // An administrator's claims need nobody's approval: submitting one approves
+  // it, and one already waiting they may approve themselves (agreed 4 October
+  // 2026). Everyone else still needs someone else - approving your own claim
+  // is the oldest hole in expense handling.
+  const isAdmin = can(_auth.user, PERMISSIONS.ADMIN);
+  const effective = next === "SUBMITTED" && isAdmin ? "APPROVED" : next;
+  if (effective === "APPROVED" && expense.employeeUserId === _auth.user.id && !isAdmin) {
     return { ok: false, error: "Someone else has to approve your own expense." };
   }
 
   try {
-    await updateRecord("expense", id, { approvalStatus: next }, "Expense", _auth.user.id);
+    await updateRecord("expense", id, { approvalStatus: effective }, "Expense", _auth.user.id);
 
     // Best effort: the decision is written, and a mail failure must not undo it.
-    await notify(next, [id], _auth.user.fullName);
+    await notify(effective, [id], _auth.user.fullName);
 
     revalidatePath("/expenses");
     revalidatePath(`/expenses/${id}`);
@@ -696,6 +702,8 @@ export async function setExpenseApprovalBulk(
   const skipped: { id: string; reason: string }[] = [];
   const moved: string[] = [];
   let updated = 0;
+  const isAdmin = can(_auth.user, PERMISSIONS.ADMIN);
+  const effective = next === "SUBMITTED" && isAdmin ? "APPROVED" : next;
 
   for (const expense of expenses ?? []) {
     const label = expense.expenseNumber ?? expense.id;
@@ -708,13 +716,13 @@ export async function setExpenseApprovalBulk(
       continue;
     }
 
-    if (next === "APPROVED" && expense.employeeUserId === _auth.user.id) {
+    if (effective === "APPROVED" && expense.employeeUserId === _auth.user.id && !isAdmin) {
       skipped.push({ id: label, reason: "your own claim" });
       continue;
     }
 
     try {
-      await updateRecord("expense", expense.id, { approvalStatus: next }, "Expense", _auth.user.id);
+      await updateRecord("expense", expense.id, { approvalStatus: effective }, "Expense", _auth.user.id);
       moved.push(expense.id);
       updated += 1;
     } catch (err) {
@@ -723,7 +731,7 @@ export async function setExpenseApprovalBulk(
   }
 
   // One mail for the whole batch rather than one per row.
-  await notify(next, moved, _auth.user.fullName);
+  await notify(effective, moved, _auth.user.fullName);
 
   revalidatePath("/expenses");
   return { ok: true, data: { updated, skipped } };
@@ -862,7 +870,7 @@ export async function createExpensesBulk(
           projectId: d.projectId || null,
           billableToCustomer: d.billableToCustomer,
           reimbursable: d.reimbursable,
-          approvalStatus: "DRAFT",
+          approvalStatus: can(_auth.user, PERMISSIONS.ADMIN) ? "APPROVED" : "DRAFT",
           paymentStatus: "UNPAID",
         },
         { field: "expenseNumber", sequence: SEQUENCES.EXPENSE },

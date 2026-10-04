@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, User } from "lucide-react";
-import { createPartner, type PartnerInput } from "@/server/partners";
+import { createPartner, updatePartner, type PartnerInput } from "@/server/partners";
 import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input,
   Select, Textarea, Alert,
@@ -23,12 +23,35 @@ interface Options {
  * company fields to person fields — that choice is what lets a freelance
  * referrer exist without a company account behind them.
  */
-export function PartnerForm({ options }: { options: Options }) {
+/** A saved partner, when the form edits rather than creates one. */
+export interface SavedPartner {
+  id: string;
+  partnerType: string;
+  tier: string;
+  status: string;
+  partnerManagerId: string | null;
+  territory: string | null;
+  startDate: string | null;
+  agreementExpiryDate: string | null;
+  defaultCommissionPercent: string | null;
+  payoutCurrencyCode: string;
+  taxNumber: string | null;
+  withholdingTaxPercent: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  notes: string | null;
+  bankDetails: { bankName?: string; accountTitle?: string; accountNumber?: string; iban?: string } | null;
+}
+
+export function PartnerForm({ options, partner }: { options: Options; partner?: SavedPartner }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [kind, setKind] = useState<"COMPANY" | "INDIVIDUAL">("COMPANY");
   const [linkExisting, setLinkExisting] = useState(false);
-  const [tierValue, setTierValue] = useState("SILVER");
+  const [tierValue, setTierValue] = useState(partner?.tier ?? "SILVER");
+  const v = (key: keyof SavedPartner) => (partner?.[key] as string | null | undefined) ?? "";
+  const day = (value: string | null | undefined) => (value ? String(value).slice(0, 10) : "");
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
@@ -96,9 +119,12 @@ export function PartnerForm({ options }: { options: Options }) {
     ) as unknown as PartnerInput;
 
     startTransition(async () => {
-      const result = await createPartner(input);
+      // Editing changes the relationship, commission and payment details; who
+      // they are is kept on their account or contact.
+      const result = partner ? await updatePartner({ id: partner.id, ...(shared as object) } as never) : await createPartner(input);
       if (result.ok) {
-        router.push(`/partners/${result.data.id}`);
+        // A full load: see components/log-touch-button.tsx.
+        window.location.href = `/partners/${result.data.id}`;
       } else {
         setError(result.error);
         setFieldErrors(result.fieldErrors ?? {});
@@ -110,6 +136,7 @@ export function PartnerForm({ options }: { options: Options }) {
     <form onSubmit={onSubmit} className="space-y-6">
       {error && <Alert tone="danger">{error}</Alert>}
 
+      {!partner && (
       <Card>
         <CardHeader>
           <CardTitle>Who is this partner?</CardTitle>
@@ -230,6 +257,7 @@ export function PartnerForm({ options }: { options: Options }) {
           )}
         </CardContent>
       </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -238,7 +266,7 @@ export function PartnerForm({ options }: { options: Options }) {
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Partner type" required
             help="What they do for you: send referrals, hold the account, deliver the work, or put money in.">
-            <Select name="partnerType" required defaultValue="REFERRAL">
+            <Select name="partnerType" required defaultValue={v("partnerType") || "REFERRAL"}>
               {["REFERRAL", "ACCOUNT_MANAGEMENT", "IMPLEMENTATION", "INVESTMENT"].map((t) => (
                 <option key={t} value={t}>{humanize(t)}</option>
               ))}
@@ -254,7 +282,7 @@ export function PartnerForm({ options }: { options: Options }) {
           </Field>
           <Field label="Status" required
             help="Only an active partnership can register deals, add customers or use the portal. Inactive keeps the history without the entitlements.">
-            <Select name="status" defaultValue="INACTIVE">
+            <Select name="status" defaultValue={v("status") || "INACTIVE"}>
               {["ACTIVE", "INACTIVE", "TERMINATED"].map((s) => (
                 <option key={s} value={s}>{humanize(s)}</option>
               ))}
@@ -262,31 +290,31 @@ export function PartnerForm({ options }: { options: Options }) {
           </Field>
           <Field label="Partner manager" hint="Who owns this relationship internally."
             help="Whoever owns this relationship on your side.">
-            <RecordLookup entity="user" name="partnerManagerId" emptyLabel="Unassigned" />
+            <RecordLookup entity="user" name="partnerManagerId" emptyLabel="Unassigned" defaultValue={partner?.partnerManagerId ?? null} />
           </Field>
           <Field label="Territory"
             help="The region they are allowed to sell in. Prevents two partners chasing the same customer.">
-            <Input name="territory" placeholder="Punjab / Middle East" />
+            <Input name="territory" placeholder="Punjab / Middle East" defaultValue={v("territory")} />
           </Field>
           <Field label="Partnership start"
             help="When the agreement began.">
-            <Input name="startDate" type="date" />
+            <Input name="startDate" type="date" defaultValue={day(partner?.startDate)} />
           </Field>
           <Field label="Agreement expiry" hint="Flagged on the list 60 days out."
             help="When it needs renewing.">
-            <Input name="agreementExpiryDate" type="date" />
+            <Input name="agreementExpiryDate" type="date" defaultValue={day(partner?.agreementExpiryDate)} />
           </Field>
           <Field label="Email"
             help="The email this person signs in with.">
-            <Input name="email" type="email" />
+            <Input name="email" type="email" defaultValue={v("email")} />
           </Field>
           <Field label="Phone"
             help="A contact number for them.">
-            <Input name="phone" />
+            <Input name="phone" defaultValue={v("phone")} />
           </Field>
           <Field label="Website"
             help="Their public site.">
-            <Input name="website" placeholder="https://" />
+            <Input name="website" placeholder="https://" defaultValue={v("website")} />
           </Field>
         </CardContent>
       </Card>
@@ -298,11 +326,11 @@ export function PartnerForm({ options }: { options: Options }) {
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Commission %" hint="Copied onto each of their deals."
             help="What they earn on a deal, as a share of its final amount after discounts, tax included. Each deal keeps the rate it started with; a different rate on one deal is agreed on its commission record.">
-            <Input name="defaultCommissionPercent" type="number" step="0.01" min="0" max="100" placeholder="10" />
+            <Input name="defaultCommissionPercent" type="number" step="0.01" min="0" max="100" placeholder="10" defaultValue={v("defaultCommissionPercent")} />
           </Field>
           <Field label="Payout currency" required
             help="The currency they are paid in, which is not always the currency of the deal.">
-            <Select name="payoutCurrencyCode" defaultValue="PKR">
+            <Select name="payoutCurrencyCode" defaultValue={v("payoutCurrencyCode") || "PKR"}>
               {options.currencies.map((c) => (
                 <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
               ))}
@@ -310,23 +338,23 @@ export function PartnerForm({ options }: { options: Options }) {
           </Field>
           <Field label="Tax number / NTN"
             help="Their National Tax Number. Needed before you can pay them.">
-            <Input name="taxNumber" />
+            <Input name="taxNumber" defaultValue={v("taxNumber")} />
           </Field>
           <Field label="Withholding tax %" hint="Deducted from each commission."
             help="Tax deducted at source before paying them. Each commission record shows it separately and pays the partner the rest.">
-            <Input name="withholdingTaxPercent" type="number" step="0.01" min="0" max="100" placeholder="10" />
+            <Input name="withholdingTaxPercent" type="number" step="0.01" min="0" max="100" placeholder="10" defaultValue={v("withholdingTaxPercent")} />
           </Field>
           <Field label="Bank name"
             help="The bank their commission is paid into.">
-            <Input name="bankName" />
+            <Input name="bankName" defaultValue={partner?.bankDetails?.bankName ?? ""} />
           </Field>
           <Field label="Account title"
             help="The account holder's name exactly as the bank has it. A mismatch is the usual reason a transfer bounces.">
-            <Input name="accountTitle" />
+            <Input name="accountTitle" defaultValue={partner?.bankDetails?.accountTitle ?? ""} />
           </Field>
           <Field label="Account number / IBAN"
             help="The account number or IBAN their commission is paid into.">
-            <Input name="iban" />
+            <Input name="iban" defaultValue={partner?.bankDetails?.iban ?? partner?.bankDetails?.accountNumber ?? ""} />
           </Field>
         </CardContent>
       </Card>
@@ -336,7 +364,7 @@ export function PartnerForm({ options }: { options: Options }) {
           <CardTitle>Notes</CardTitle>
         </CardHeader>
         <CardContent>
-          <Textarea name="notes" rows={4} placeholder="Anything the team should know about this partner…" />
+          <Textarea name="notes" rows={4} placeholder="Anything the team should know about this partner…" defaultValue={v("notes")} />
         </CardContent>
       </Card>
 
@@ -345,7 +373,7 @@ export function PartnerForm({ options }: { options: Options }) {
           Cancel
         </Button>
         <Button type="submit" disabled={pending}>
-          {pending ? "Saving…" : "Create partner"}
+          {pending ? "Saving…" : partner ? "Save changes" : "Create partner"}
         </Button>
       </div>
     </form>

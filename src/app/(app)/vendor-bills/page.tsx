@@ -173,7 +173,7 @@ export default async function VendorBillsPage({
                       <Badge tone={statusTone(b.status)}>{humanize(b.status)}</Badge>
                     </TD>
                     <TD className="text-right">
-                      <RowActions type="VendorBill" id={b.id} name={String(b.billNumber ?? "")} canDelete={canDeleteRow} />
+                      <RowActions type="VendorBill" id={b.id} name={String(b.billNumber ?? "")} editHref={can(me, PERMISSIONS.INVOICE_WRITE) ? `/vendor-bills/${b.id}/edit` : null} canDelete={canDeleteRow} />
                     </TD>
                   </TR>
                 );
