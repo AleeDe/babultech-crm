@@ -24,7 +24,8 @@ export default async function CampaignsPage({
   await applyDefaultView("campaigns", params);
   const campaigns = await listCampaigns(params);
 
-  // The ROI view only exists once supabase/schema-sql/02_views.sql has been applied.
+  // ROI comes from the v_campaign_performance view (20261004000000). A failed
+  // read leaves the campaign list working and says so above the table.
   let performance: Awaited<ReturnType<typeof getCampaignPerformance>> = [];
   let viewMissing = false;
   try {
@@ -89,8 +90,8 @@ export default async function CampaignsPage({
       {viewMissing && (
         <div className="mt-6">
           <Alert tone="warning">
-            Campaign ROI is computed by the <code>v_campaign_performance</code> view. Apply{" "}
-            <code>supabase/schema-sql/02_views.sql</code> to your database to populate the performance table below.
+            Return on investment could not be loaded just now, so the table below is missing. Reload the page; if it
+            stays missing, tell your administrator.
           </Alert>
         </div>
       )}
