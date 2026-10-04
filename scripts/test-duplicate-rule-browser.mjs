@@ -151,7 +151,7 @@ try {
   }), "Create the partner");
   const partnerRole = await must(db.from("security_role").select("id").eq("name", "Partner").single(), "Find the Partner role");
   const partnerLogin = await makeLogin(`drb-partner-${tag}@example.com`, {
-    fullName: `QA DRB Partner ${run}`, roleId: partnerRole.id, userType: "PARTNER",
+    fullName: `QA DRB Partner ${run}`, roleId: partnerRole.id, userType: "PARTNER", portalRole: "ADMIN",
     partnerId: ids.partner, contactId: ids.partnerPerson,
   });
   ids.partnerUser = partnerLogin.id;

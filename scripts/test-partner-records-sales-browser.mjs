@@ -83,7 +83,7 @@ try {
   const partnerRole = await must(db.from("security_role").select("id").eq("name", "Partner").single(), "Find the Partner role");
   await must(db.from("app_user").insert({
     id: ids.partnerLogin, fullName: `QA P5 Partner Person ${run}`, email: `qa-p5-partner-${tag}@example.com`,
-    roleId: partnerRole.id, userType: "PARTNER", partnerId: ids.partner, status: "ACTIVE", updatedAt: now(),
+    roleId: partnerRole.id, userType: "PARTNER", portalRole: "ADMIN", partnerId: ids.partner, status: "ACTIVE", updatedAt: now(),
   }), "Create the partner's login record");
 
   await must(db.from("lead").insert([

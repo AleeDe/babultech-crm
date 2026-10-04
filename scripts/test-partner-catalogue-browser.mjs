@@ -72,7 +72,7 @@ try {
   if (auth.error) throw new Error(auth.error.message);
   ids.login = auth.data.user.id;
   await must(db.from("app_user").insert({
-    id: ids.login, fullName: `QA Seller ${run}`, email, roleId: role.id, userType: "PARTNER",
+    id: ids.login, fullName: `QA Seller ${run}`, email, roleId: role.id, userType: "PARTNER", portalRole: "ADMIN",
     partnerId: ids.partner, contactId: ids.person, status: "ACTIVE", updatedAt: now(),
   }), "Create the login");
   await must(db.from("account").insert({

@@ -132,6 +132,21 @@ export async function grantPortalAccess(
 
   try {
     // auth.users.id === app_user.id, as everywhere else in this system.
+    // The company's first active login is its Admin: someone has to approve
+    // deliverables and invite the rest. Later ones are Users until an Admin says otherwise.
+    const { data: colleagues } = await admin
+      .from("contact")
+      .select("id")
+      .eq("accountId", contact.accountId);
+    const { count: admins } = await admin
+      .from("app_user")
+      .select("id", { count: "exact", head: true })
+      .eq("userType", "CUSTOMER")
+      .eq("portalRole", "ADMIN")
+      .eq("status", "ACTIVE")
+      .is("deletedAt", null)
+      .in("contactId", (colleagues ?? []).map((c) => c.id as string).concat(["00000000-0000-0000-0000-000000000000"]));
+
     const { error: profileError } = await admin.from("app_user").insert({
       id: created.user.id,
       fullName: `${contact.firstName} ${contact.lastName}`.trim(),
@@ -140,6 +155,7 @@ export async function grantPortalAccess(
       userType: "CUSTOMER",
       contactId: contact.id,
       portalScope: data.portalScope,
+      portalRole: (admins ?? 0) === 0 ? "ADMIN" : "USER",
       status: "ACTIVE",
       passwordHash: await bcrypt.hash(data.password, BCRYPT_ROUNDS),
       updatedAt: new Date().toISOString(),

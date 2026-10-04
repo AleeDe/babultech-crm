@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { CorrectionGate } from "@/components/correction-gate";
 import { getCampaign, updateCampaign, getCreateFormOptions } from "@/server/crm";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { PageHeader, Forbidden, Input, Select, Textarea } from "@/components/ui";
@@ -33,86 +34,88 @@ export default async function EditCampaignPage({
         title={`Edit ${campaign.name}`} description={campaign.campaignNumber} />
 
       <div className="max-w-2xl">
-        <RecordForm action={save} redirectTo={`/campaigns/${id}`} submitLabel="Save changes">
-          <FormField label="Name" name="name" required
-            help="What this campaign is called. Use something you will recognise in a report a year from now.">
-            <Input name="name" required defaultValue={campaign.name} />
-          </FormField>
-
-          <div className="grid gap-5 sm:grid-cols-2">
-            <FormField label="Type" name="campaignTypeId" required
-            help="The kind of activity - email, event, advertising, webinar.">
-              <Select name="campaignTypeId" required defaultValue={campaign.campaignTypeId}>
-                {campaignTypes.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </Select>
+        <CorrectionGate type="Campaign" id={id}>
+          <RecordForm action={save} redirectTo={`/campaigns/${id}`} submitLabel="Save changes">
+            <FormField label="Name" name="name" required
+              help="What this campaign is called. Use something you will recognise in a report a year from now.">
+              <Input name="name" required defaultValue={campaign.name} />
             </FormField>
-
-            <FormField label="Owner" name="ownerUserId" required
-            help="Who is running it.">
-              <Select name="ownerUserId" required defaultValue={campaign.ownerUserId}>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>{u.fullName}</option>
-                ))}
-              </Select>
-            </FormField>
-
-            <FormField label="Status" name="status"
-            help="Where the campaign is up to. Only active campaigns appear when attributing new leads.">
-              <Select name="status" defaultValue={campaign.status}>
-                <PicklistOptions list="campaign_status" fallback={["PLANNED", "ACTIVE", "PAUSED", "COMPLETED"]} within={["PLANNED", "ACTIVE", "PAUSED", "COMPLETED"]} current={campaign.status} />
-              </Select>
-            </FormField>
-
-            <FormField label="Budget" name="budgetAmount"
-            help="What you have committed to spend. Compared against what the campaign returned.">
-              <Input
-                name="budgetAmount"
-                type="number"
-                step="0.01"
-                min="0"
-                defaultValue={campaign.budgetAmount ?? ""}
-              />
-            </FormField>
-
-            <DateRange
-              startDefault={dateInput(campaign.startDate)}
-              endDefault={dateInput(campaign.endDate)}
-            >
-              <FormField label="Starts" name="startDate"
-              help="When the campaign begins.">
-                <RangeStart name="startDate" />
+  
+            <div className="grid gap-5 sm:grid-cols-2">
+              <FormField label="Type" name="campaignTypeId" required
+              help="The kind of activity - email, event, advertising, webinar.">
+                <Select name="campaignTypeId" required defaultValue={campaign.campaignTypeId}>
+                  {campaignTypes.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </Select>
               </FormField>
-
-              <FormField label="Ends" name="endDate"
-              help="When it finishes. Cannot be before the start date.">
-                <RangeEnd name="endDate" />
+  
+              <FormField label="Owner" name="ownerUserId" required
+              help="Who is running it.">
+                <Select name="ownerUserId" required defaultValue={campaign.ownerUserId}>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>{u.fullName}</option>
+                  ))}
+                </Select>
               </FormField>
-            </DateRange>
-
-            <FormField label="Expected leads" name="expectedLeads"
-            help="How many leads you expect. The benchmark you judge the result against.">
-              <Input name="expectedLeads" type="number" min="0" defaultValue={campaign.expectedLeads ?? ""} />
+  
+              <FormField label="Status" name="status"
+              help="Where the campaign is up to. Only active campaigns appear when attributing new leads.">
+                <Select name="status" defaultValue={campaign.status}>
+                  <PicklistOptions list="campaign_status" fallback={["PLANNED", "ACTIVE", "PAUSED", "COMPLETED"]} within={["PLANNED", "ACTIVE", "PAUSED", "COMPLETED"]} current={campaign.status} />
+                </Select>
+              </FormField>
+  
+              <FormField label="Budget" name="budgetAmount"
+              help="What you have committed to spend. Compared against what the campaign returned.">
+                <Input
+                  name="budgetAmount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  defaultValue={campaign.budgetAmount ?? ""}
+                />
+              </FormField>
+  
+              <DateRange
+                startDefault={dateInput(campaign.startDate)}
+                endDefault={dateInput(campaign.endDate)}
+              >
+                <FormField label="Starts" name="startDate"
+                help="When the campaign begins.">
+                  <RangeStart name="startDate" />
+                </FormField>
+  
+                <FormField label="Ends" name="endDate"
+                help="When it finishes. Cannot be before the start date.">
+                  <RangeEnd name="endDate" />
+                </FormField>
+              </DateRange>
+  
+              <FormField label="Expected leads" name="expectedLeads"
+              help="How many leads you expect. The benchmark you judge the result against.">
+                <Input name="expectedLeads" type="number" min="0" defaultValue={campaign.expectedLeads ?? ""} />
+              </FormField>
+  
+              <FormField label="Expected revenue" name="expectedRevenue"
+              help="The revenue you expect it to generate.">
+                <Input
+                  name="expectedRevenue"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  defaultValue={campaign.expectedRevenue ?? ""}
+                />
+              </FormField>
+            </div>
+  
+            <FormField label="Description" name="description"
+              help="What the campaign is doing and who it targets.">
+              <Textarea name="description" rows={3} defaultValue={campaign.description ?? ""} />
             </FormField>
-
-            <FormField label="Expected revenue" name="expectedRevenue"
-            help="The revenue you expect it to generate.">
-              <Input
-                name="expectedRevenue"
-                type="number"
-                step="0.01"
-                min="0"
-                defaultValue={campaign.expectedRevenue ?? ""}
-              />
-            </FormField>
-          </div>
-
-          <FormField label="Description" name="description"
-            help="What the campaign is doing and who it targets.">
-            <Textarea name="description" rows={3} defaultValue={campaign.description ?? ""} />
-          </FormField>
-        </RecordForm>
+          </RecordForm>
+        </CorrectionGate>
       </div>
     </>
   );

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { CorrectionGate } from "@/components/correction-gate";
+import { WordingCorrectionForm } from "@/components/wording-correction-form";
 import { notFound } from "next/navigation";
 import { getQuotation, getQuoteFormContext } from "@/server/quotations";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
@@ -36,6 +38,26 @@ export default async function EditQuotationPage({
           <Button asChild>
             <Link href={`/quotations/${quote.id}`}>Back to the quote</Link>
           </Button>
+        </div>
+        <div className="mt-6">
+          <CorrectionGate
+            type="Quotation"
+            id={id}
+            quietForOthers
+            wordingForm={
+              <WordingCorrectionForm
+                type="Quotation"
+                id={id}
+                backTo={`/quotations/${id}`}
+                fields={[
+                  { key: "expiryDate", label: "Valid until", kind: "date", value: quote.expiryDate ? String(quote.expiryDate).slice(0, 10) : "" },
+                  { key: "paymentTerms", label: "Payment terms", kind: "text", value: (quote.paymentTerms as string | null) ?? "" },
+                  { key: "notes", label: "Notes", kind: "textarea", value: (quote.notes as string | null) ?? "" },
+                  { key: "termsAndConditions", label: "Terms and conditions", kind: "textarea", value: (quote.termsAndConditions as string | null) ?? "" },
+                ]}
+              />
+            }
+          />
         </div>
       </div>
     );

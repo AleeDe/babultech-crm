@@ -8,6 +8,7 @@ import { createRecord, updateRecord } from "@/lib/db";
 import { one } from "@/lib/decimal";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
+import { editGate, markCorrectionSaved } from "./corrections";
 import type { ActionResult } from "./partners";
 import { addWorkingMinutes } from "@/lib/business-hours";
 import { loadWorkingCalendar } from "@/lib/working-calendar";
@@ -191,6 +192,9 @@ export async function updateCase(
     };
   }
 
+  const gate = await editGate("SupportCase", id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
   try {
     const db = await supabaseServer();
 
@@ -263,6 +267,7 @@ export async function updateCase(
       "Case",
       user.id,
     );
+    await markCorrectionSaved(gate.correctionId);
 
     revalidatePath("/cases");
     revalidatePath(`/cases/${id}`);

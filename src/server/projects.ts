@@ -8,6 +8,7 @@ import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { createRecord, updateRecord, LIST_LIMIT } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, authorizeAny, requirePermission } from "@/lib/authz";
+import { editGate, markCorrectionSaved } from "./corrections";
 import { sanitizeRichText } from "@/lib/rich-text";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActionResult } from "./partners";
@@ -226,6 +227,9 @@ export async function updateProject(
     };
   }
 
+  const gate = await editGate("Project", id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
   try {
     const db = await supabaseServer();
 
@@ -265,6 +269,7 @@ export async function updateProject(
       "Project",
       user.id,
     );
+    await markCorrectionSaved(gate.correctionId);
 
     revalidatePath("/projects");
     revalidatePath(`/projects/${id}`);

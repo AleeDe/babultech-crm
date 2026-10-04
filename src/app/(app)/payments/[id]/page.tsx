@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPayment } from "@/server/billing";
+import { CorrectControl } from "@/components/correction-gate";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
-  Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Alert, Forbidden,
+  Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Alert, Forbidden, Button,
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize } from "@/lib/utils";
 
@@ -32,6 +33,10 @@ export default async function PaymentDetailPage({
         description={`${humanize(payment.paymentMethod)} · received ${formatDate(payment.paymentDate)}`}
       >
         <Badge tone={statusTone(payment.status)}>{humanize(payment.status)}</Badge>
+        {payment.status !== "CLEARED" && can(me, PERMISSIONS.PAYMENT_WRITE) && (
+          <Button asChild variant="outline"><Link href={`/payments/${payment.id}/edit`}>Edit</Link></Button>
+        )}
+        <CorrectControl type="Payment" id={payment.id as string} />
       </PageHeader>
 
       {unallocated > 0 && (

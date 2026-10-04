@@ -1,9 +1,12 @@
 import Link from "next/link";
+import { getCorrectionState } from "@/server/corrections";
+import { CorrectButton } from "@/components/correct-button";
+import { CorrectionGate } from "@/components/correction-gate";
 import { notFound } from "next/navigation";
 import { getLead, getFormOptions } from "@/server/crm";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { PageHeader, Alert, Button , Forbidden} from "@/components/ui";
-import { serialize } from "@/lib/utils";
+import { serialize, formatDate } from "@/lib/utils";
 import { LeadForm, type LeadDefaults } from "../../lead-form";
 
 export default async function EditLeadPage({
@@ -17,8 +20,10 @@ export default async function EditLeadPage({
   const [lead, options] = await Promise.all([getLead(id), getFormOptions()]);
   if (!lead) notFound();
 
-  // Spec §13: conversion freezes the lead. Show where it went instead of a form.
-  if (lead.status === "CONVERTED") {
+  // Spec §13: conversion freezes the lead. Show where it went instead of a
+  // form - unless an administrator has opened a correction on it.
+  const correction = await getCorrectionState("Lead", id);
+  if (lead.status === "CONVERTED" && !correction?.open) {
     return (
       <div className="mx-auto max-w-3xl">
         <PageHeader
@@ -26,7 +31,7 @@ export default async function EditLeadPage({
         backLabel="Back to the lead"
         title={`${lead.firstName} ${lead.lastName}`} description={lead.leadNumber} />
         <Alert tone="info">
-          This lead was converted on {lead.convertedAt?.toLocaleDateString("en-GB")} and is now
+          This lead was converted on {formatDate(lead.convertedAt as string | null)} and is now
           read-only. Edit the records it became instead.
         </Alert>
         <div className="mt-4 flex gap-2">
@@ -46,6 +51,12 @@ export default async function EditLeadPage({
             <Link href="/leads">Back to leads</Link>
           </Button>
         </div>
+        {correction?.isAdmin && (
+          <div className="mt-6">
+            <p className="mb-2 text-sm text-muted-foreground">As an administrator you can still correct it. Say what was wrong first.</p>
+            <CorrectButton type="Lead" id={id} inline />
+          </div>
+        )}
       </div>
     );
   }
@@ -88,19 +99,23 @@ export default async function EditLeadPage({
         title={`${lead.firstName} ${lead.lastName}`}
         description={lead.leadNumber}
       >
-        <Button asChild variant="secondary">
-          <Link href={`/leads/${lead.id}/convert`}>Convert…</Link>
-        </Button>
+        {lead.status !== "CONVERTED" && (
+          <Button asChild variant="secondary">
+            <Link href={`/leads/${lead.id}/convert`}>Convert…</Link>
+          </Button>
+        )}
       </PageHeader>
-      <LeadForm
-        options={serialize({
-          users: options.users,
-          campaigns: options.campaigns,
-          partners: options.partners,
-        })}
-        defaults={defaults}
-        currentUserId={user.id}
-      />
+      <CorrectionGate type="Lead" id={id}>
+        <LeadForm
+          options={serialize({
+            users: options.users,
+            campaigns: options.campaigns,
+            partners: options.partners,
+          })}
+          defaults={defaults}
+          currentUserId={user.id}
+        />
+      </CorrectionGate>
     </div>
   );
 }

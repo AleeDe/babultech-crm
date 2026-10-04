@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { CorrectionGate } from "@/components/correction-gate";
 import { getProject, getProjectFormOptions } from "@/server/projects";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { PageHeader , Forbidden} from "@/components/ui";
@@ -42,11 +43,13 @@ export default async function EditProjectPage({
         backTo={`/projects/${id}`}
         backLabel="Back to the project"
         title={`Edit ${project.name}`} description={project.projectNumber} />
-      <ProjectForm
-        options={serialize(options) as unknown as ProjectFormOptions}
-        defaults={defaults}
-        currentUserId={user.id}
-      />
+      <CorrectionGate type="Project" id={id}>
+        <ProjectForm
+          options={serialize(options) as unknown as ProjectFormOptions}
+          defaults={defaults}
+          currentUserId={user.id}
+        />
+      </CorrectionGate>
     </div>
   );
 }

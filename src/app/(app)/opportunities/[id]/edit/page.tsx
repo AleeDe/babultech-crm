@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { CorrectionGate } from "@/components/correction-gate";
 import { getOpportunity } from "@/server/opportunities";
 import { getFormOptions } from "@/server/crm";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
@@ -50,11 +51,13 @@ export default async function EditOpportunityPage({
         title={`Edit ${opp.name}`}
         description={`${opp.opportunityNumber} · ${opp.account?.name}`}
       />
-      <OpportunityForm
-        options={serialize(options) as unknown as OpportunityFormOptions}
-        defaults={defaults}
-        currentUserId={user.id}
-      />
+      <CorrectionGate type="Opportunity" id={id}>
+        <OpportunityForm
+          options={serialize(options) as unknown as OpportunityFormOptions}
+          defaults={defaults}
+          currentUserId={user.id}
+        />
+      </CorrectionGate>
     </div>
   );
 }

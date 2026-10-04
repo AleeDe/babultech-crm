@@ -68,7 +68,7 @@ async function makePartner(label) {
   const userId = auth.data.user.id;
   ids.logins.push(userId);
   await check(db.from("app_user").insert({
-    id: userId, fullName: `QA ${label} ${run}`, email, roleId: role.id, userType: "PARTNER",
+    id: userId, fullName: `QA ${label} ${run}`, email, roleId: role.id, userType: "PARTNER", portalRole: "ADMIN",
     partnerId: partner, contactId: person, status: "ACTIVE", updatedAt: now(),
   }), `Create ${label}'s login`);
 

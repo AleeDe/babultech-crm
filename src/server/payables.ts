@@ -10,6 +10,7 @@ import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { createRecord, updateRecord, applySearch, LIST_LIMIT, EXPENSE_PAGE_SIZE } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, authorizeAny, can, requirePermission } from "@/lib/authz";
+import { editGate, markCorrectionSaved } from "./corrections";
 import { notifyExpenseSubmitted, notifyExpenseDecided } from "./expense-notifications";
 import type { ActionResult } from "./partners";
 
@@ -408,20 +409,9 @@ export async function updateExpense(
   }
   if (!before || before.deletedAt) return { ok: false, error: "That expense no longer exists." };
 
-  if (before.approvalStatus === "APPROVED") {
-    return {
-      ok: false,
-      error:
-        "Approved expenses are locked. Ask an approver to reject it back to draft before changing it.",
-    };
-  }
-
-  if (before.paymentStatus === "PAID") {
-    return {
-      ok: false,
-      error: "This expense has already been paid, so its record cannot be changed.",
-    };
-  }
+  // Approved or paid: an administrator's correction, with a reason, or nothing.
+  const gate = await editGate("Expense", id);
+  if (!gate.ok) return { ok: false, error: gate.error };
 
   if (before.approvalStatus === "SUBMITTED" && !can(user, PERMISSIONS.EXPENSE_APPROVE)) {
     return {
@@ -481,6 +471,7 @@ export async function updateExpense(
       "Expense",
       user.id,
     );
+    await markCorrectionSaved(gate.correctionId);
 
     revalidatePath("/expenses");
     revalidatePath(`/expenses/${id}`);
@@ -1148,6 +1139,74 @@ export async function createVendorBill(
     return { ok: true, data: { id: bill.id } };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Could not create the bill." };
+  }
+}
+
+/**
+ * Correcting a supplier bill. A draft is edited by anyone who enters bills;
+ * once it moves on, by an administrator correcting it with a reason. A bill
+ * with payments against it keeps its total, so what was paid still adds up.
+ */
+export async function updateVendorBill(
+  id: string,
+  input: z.infer<typeof vendorBillSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const _auth = await authorize(PERMISSIONS.INVOICE_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+
+  const parsed = vendorBillSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "Please correct the highlighted fields.", fieldErrors: parsed.error.flatten().fieldErrors };
+  }
+  const d = parsed.data;
+  if (d.dueDate < d.billDate) {
+    return { ok: false, error: "A bill cannot fall due before it is issued.", fieldErrors: { dueDate: ["Must be on or after the bill date."] } };
+  }
+
+  const gate = await editGate("VendorBill", id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  try {
+    const db = await supabaseServer();
+    const { data: before } = await db.from("vendor_bill").select("totalAmount, paidAmount").eq("id", id).maybeSingle();
+    if (!before) return { ok: false, error: "That bill no longer exists." };
+
+    const totals = await computeBillLines(d.lines);
+    const paid = toDecimal(before.paidAmount ?? 0);
+    if (paid.greaterThan(0) && !totals.totalAmount.equals(toDecimal(before.totalAmount))) {
+      return { ok: false, error: "Payments have been made against this bill, so its total has to stay the same. Correct the wording, or record a credit from the supplier." };
+    }
+
+    const { error } = await db.rpc("update_with_lines", {
+      p_table: "vendor_bill",
+      p_id: id,
+      p_payload: {
+        vendorAccountId: d.vendorAccountId,
+        vendorInvoiceNumber: d.vendorInvoiceNumber || null,
+        projectId: d.projectId || null,
+        billDate: d.billDate,
+        dueDate: d.dueDate,
+        currencyCode: d.currencyCode,
+        subtotal: totals.subtotal.toFixed(2),
+        taxAmount: totals.taxAmount.toFixed(2),
+        totalAmount: totals.totalAmount.toFixed(2),
+        outstandingAmount: totals.totalAmount.minus(paid).toFixed(2),
+        notes: d.notes || null,
+      },
+      p_line_table: "vendor_bill_line",
+      p_lines: totals.lines.map((l) => ({ ...l, lineTotal: l.lineTotal.toFixed(2) })),
+      p_parent_field: "vendorBillId",
+      p_entity_type: "VendorBill",
+      p_actor_id: _auth.user.id,
+    });
+    if (error) throw new Error(error.message);
+    await markCorrectionSaved(gate.correctionId);
+
+    revalidatePath("/vendor-bills");
+    revalidatePath(`/vendor-bills/${id}`);
+    return { ok: true, data: { id } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Could not save the bill." };
   }
 }
 

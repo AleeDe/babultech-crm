@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CorrectControl } from "@/components/correction-gate";
 import { Timeline } from "@/components/timeline";
 import { DealAttribution } from "@/components/deal-attribution";
 import { DeleteControl } from "@/components/delete-control";
@@ -76,6 +77,7 @@ export default async function OpportunityDetailPage({
           <Link href={`/opportunities/${opp.id}/edit`}>Edit</Link>
         </Button>
         <FollowControl entityType="Opportunity" entityId={id} />
+        <CorrectControl type="Opportunity" id={id} />
         <FavoriteControl entityType="Opportunity" entityId={id} label={String(opp.name ?? "")} />
         <RecentMark entityType="Opportunity" entityId={id} label={String(opp.name ?? "")} />
         <DeleteControl type="Opportunity" id={id} name={String(opp.name ?? "")} />

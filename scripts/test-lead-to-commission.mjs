@@ -154,6 +154,8 @@ try {
       admin.from("app_user").insert({
         id, fullName: `L2C ${label} ${run}`, email: address, roleId: role,
         userType: extra.partnerId ? "PARTNER" : "INTERNAL",
+        // The partner's own login is its Admin, who alone sees commission (since 1 October).
+        ...(extra.partnerId ? { portalRole: "ADMIN" } : {}),
         status: "ACTIVE", updatedAt: now(), ...extra,
       }),
       `Create ${label}`,

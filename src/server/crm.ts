@@ -12,6 +12,7 @@ import { createRecord, updateRecord, applyScopeWithPartners, applySearch, LIST_L
 import { one, toDecimal } from "@/lib/decimal";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission, requireUser, scopedContext, can, canAny, AuthorizationError } from "@/lib/authz";
+import { editGate, markCorrectionSaved } from "./corrections";
 import { MESSAGE_CHANNELS } from "@/lib/types";
 import type { ActionResult } from "./partners";
 import {
@@ -653,6 +654,8 @@ const leadUpdateSchema = leadSchema.extend({
   status: z.enum([
     "PROSPECT", "NEW", "ASSIGNED", "ATTEMPTED_CONTACT", "CONTACTED", "DISCOVERY_SCHEDULED",
     "QUALIFIED", "NURTURING", "DISQUALIFIED",
+    // Only ever kept, on a converted lead being corrected; converting is its own step.
+    "CONVERTED",
   ]),
   disqualifiedReason: z.string().max(255).optional().nullable(),
 });
@@ -690,12 +693,12 @@ export async function updateLead(
 
     if (!before) return { ok: false, error: "Lead not found." };
 
-    // Spec §13: a converted lead is read-only.
-    if (before.status === "CONVERTED") {
-      return {
-        ok: false,
-        error: `Lead ${before.leadNumber} has been converted and can no longer be edited.`,
-      };
+    // Spec §13: a converted lead is read-only - to everyone but an
+    // administrator correcting it, who cannot un-convert it by editing.
+    const gate = await editGate("Lead", id);
+    if (!gate.ok) return { ok: false, error: gate.error };
+    if (data.status === "CONVERTED" && before.status !== "CONVERTED") {
+      return { ok: false, error: "Convert a lead with Convert, which creates its account, contact and deal.", fieldErrors: { status: ["Use Convert instead."] } };
     }
 
     const { error } = await db.rpc("update_record", {
@@ -703,6 +706,7 @@ export async function updateLead(
       p_id: id,
       p_payload: {
         ...data,
+        ...(before.status === "CONVERTED" ? { status: "CONVERTED" } : {}),
         email: data.email || null,
         disqualifiedReason:
           data.status === "DISQUALIFIED" ? data.disqualifiedReason : null,
@@ -711,6 +715,7 @@ export async function updateLead(
       p_actor_id: user.id,
     });
     if (error) return duplicateFailure(error) ?? { ok: false, error: error.message };
+    await markCorrectionSaved(gate.correctionId);
 
     revalidatePath("/leads");
     revalidatePath(`/leads/${id}`);
@@ -1417,6 +1422,9 @@ export async function updateCampaign(
     };
   }
 
+  const gate = await editGate("Campaign", id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
   try {
     await updateRecord(
       "campaign",
@@ -1436,6 +1444,7 @@ export async function updateCampaign(
       "Campaign",
       _auth.user.id,
     );
+    await markCorrectionSaved(gate.correctionId);
 
     revalidatePath("/campaigns");
     revalidatePath(`/campaigns/${id}`);

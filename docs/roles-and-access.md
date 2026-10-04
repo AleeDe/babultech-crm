@@ -2,6 +2,42 @@
 
 How access is decided in this system, and the rules to follow when changing it.
 
+## 4 October 2026: correcting processed records
+
+Before a record is processed, the usual permissions decide who edits and
+deletes it. Once processed, only an administrator may, and an edit needs a
+correction opened first (`server/corrections.ts`, `lib/corrections.ts`,
+`20261004000002`):
+
+| Record | Processed when |
+| --- | --- |
+| Lead | converted |
+| Deal | won or lost |
+| Quote | sent, accepted, rejected or expired |
+| Contract | active, expired, terminated or renewed |
+| Case | closed or cancelled (resolved can still be reopened) |
+| Project | completed or cancelled |
+| Campaign | completed |
+| Invoice | issued |
+| Expense claim | approved or paid |
+| Supplier bill | past draft |
+| Payment | cleared |
+
+An administrator presses **Correct** on the record (or on its edit page) and
+says what was wrong. That opens the record for 30 minutes; the reason, who
+opened it and when are kept in `record_correction`, every field change in
+`audit_history`, and the owner is notified (`RECORD_CORRECTED`). Every edit
+action calls `editGate()` before saving, and `deleteToRecycleBin` calls
+`deleteGate()`, so a non-administrator is refused on the server whatever the
+page shows.
+
+Guardrails that hold for administrators too: a closed month stays closed
+(reopen it first), and an issued invoice or a sent quote is corrected in its
+wording, dates and references only (`correctDocumentWording`); its amounts and
+lines change through a credit note or a new version. A supplier bill with
+payments against it keeps its total, and a payment allocated to invoices keeps
+its amount. Approved time is still corrected by the approver rejecting it back.
+
 ## 4 October 2026: deleting from list rows
 
 Every list has a Delete link beside Edit on each row, and more kinds of record

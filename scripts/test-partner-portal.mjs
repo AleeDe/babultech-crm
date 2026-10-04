@@ -103,7 +103,7 @@ try {
   // constraint allows and the partner page now creates.
   await check(db.from("app_user").insert({
     id: ids.login, fullName: `QA Reseller ${run}`, email, roleId: role.id,
-    userType: "PARTNER", partnerId: ids.partner, contactId: ids.contact,
+    userType: "PARTNER", portalRole: "ADMIN", partnerId: ids.partner, contactId: ids.contact,
     status: "ACTIVE", updatedAt: now(),
   }), "Create the partner login");
   cleanup.push(() => db.from("app_user").delete().eq("id", ids.login));

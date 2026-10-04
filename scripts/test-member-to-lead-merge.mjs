@@ -246,7 +246,7 @@ try {
   assert.equal(lead.leadSource, "WEBINAR", "The member's source becomes the lead source");
   assert.equal(lead.campaignId, webinarId, "The campaign must carry across, or it is unmeasurable");
   assert.equal(lead.campaignMemberId, webinarMemberId, "And the lead points back at the member");
-  assert.equal(lead.status, "NEW", "It arrives as a new lead");
+  assert.equal(lead.status, "PROSPECT", "It arrives as a prospect (since 29 September), to be qualified");
   pass("Every field carried across, including the campaign");
 
   const memberAfter = await ok(

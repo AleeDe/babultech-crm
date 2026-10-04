@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase";
-import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission, requireUser, canAny, AuthorizationError } from "@/lib/authz";
 import { one } from "@/lib/decimal";
 import type { ActionResult } from "./partners";
 
@@ -376,7 +376,11 @@ export async function listCatalogueProducts(): Promise<
     priceBooks: { id: string; name: string; total: string }[];
   }[]
 > {
-  await requirePermission(PERMISSIONS.OPPORTUNITY_READ);
+  // Deals and invoices are both priced from the catalogue, so either reader may list it.
+  const me = await requireUser();
+  if (!canAny(me, PERMISSIONS.OPPORTUNITY_READ, PERMISSIONS.INVOICE_READ)) {
+    throw new AuthorizationError(`Missing permission: ${PERMISSIONS.OPPORTUNITY_READ}`);
+  }
   const db = await supabaseServer();
 
   const [products, entries] = await Promise.all([

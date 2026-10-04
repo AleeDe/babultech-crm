@@ -11,7 +11,7 @@ const base = process.argv[2] || "http://localhost:3100";
 if (!["localhost", "127.0.0.1"].includes(new URL(base).hostname)) throw new Error("This pilot only targets the local application.");
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const run = randomUUID().slice(0, 8);
-const ids = { managerRole: randomUUID(), writerRole: randomUUID(), manager: null, writer: null, project: randomUUID(), task: randomUUID() };
+const ids = { managerRole: randomUUID(), writerRole: randomUUID(), editorRole: randomUUID(), manager: null, writer: null, project: randomUUID(), task: randomUUID() };
 const output = "artifacts/browser-qa";
 await mkdir(output, { recursive: true });
 const report = { run, passed: [], failed: null, browserErrors: [], cleanup: [] };
@@ -26,6 +26,8 @@ try {
  await check(db.from("security_role").insert([
   { id: ids.managerRole, name: `QA manager ${run}`, permissions: ["project:*"], dataScope: "OWN", updatedAt: now() },
   { id: ids.writerRole, name: `QA writer ${run}`, permissions: ["project:read", "project:write"], dataScope: "OWN", updatedAt: now() },
+  // The Content Editor preset was removed on 20 September; the same permissions, made here.
+  { id: ids.editorRole, name: `QA content editor ${run}`, permissions: ["project:read", "content:review"], dataScope: "OWN", updatedAt: now() },
  ]), "Create temporary roles");
  const passwords = { manager: randomBytes(24).toString("base64url"), writer: randomBytes(24).toString("base64url") };
  const emails = { manager: `qa-manager-${run}@example.com`, writer: `qa-writer-${run}@example.com` };
@@ -86,8 +88,7 @@ try {
  assert.equal(await writer.locator("summary").filter({ hasText: "Record publication evidence" }).count(), 0);
  await passed("Writer creates version; planning, self-review and unapproved publication controls hidden");
  currentPage = pm;
- const editorRole = await check(db.from("security_role").select("id").eq("name", "Content Editor").single(), "Find editor preset");
- await check(db.from("app_user").update({ roleId: editorRole.id }).eq("id", ids.manager), "Switch only QA reviewer to editor preset");
+ await check(db.from("app_user").update({ roleId: ids.editorRole }).eq("id", ids.manager), "Switch only QA reviewer to editor preset");
  await pm.goto(versionUrl);
  await pm.getByLabel("Internal review", { exact: true }).selectOption("APPROVED");
  await pm.getByLabel("Review notes and asset verification evidence", { exact: true }).fill("QA independent copy review completed; no asset attached.");
@@ -158,7 +159,7 @@ try {
   await clean(`${role} profile`, db.from("app_user").delete().eq("id", ids[role]));
   await clean(`${role} auth`, db.auth.admin.deleteUser(ids[role]));
  }
- await clean("Roles", db.from("security_role").delete().in("id", [ids.managerRole, ids.writerRole]));
+ await clean("Roles", db.from("security_role").delete().in("id", [ids.managerRole, ids.writerRole, ids.editorRole]));
  const residue = await db.from("project").select("id").eq("id", ids.project);
  report.fixtureProjectRemaining = residue.data?.length ?? null;
  await writeFile(`${output}/report.json`, JSON.stringify(report, null, 2));

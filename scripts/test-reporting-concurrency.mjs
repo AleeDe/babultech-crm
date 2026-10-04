@@ -3,6 +3,7 @@ import { config } from 'dotenv';
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
+config({ path: '.env.local', quiet: true });
 config({ path: '.env', quiet: true });
 const token = process.env.SUPABASE_ACCESS_TOKEN || readFileSync(0, 'utf8').trim();
 const ref = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split('.')[0];

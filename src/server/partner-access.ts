@@ -233,6 +233,16 @@ export async function grantPartnerAccess(
   }
 
   try {
+    // The company's first active login is its Admin: someone has to see the
+    // commission and invite the rest. Later ones are Users until an Admin says otherwise.
+    const { count: admins } = await admin
+      .from("app_user")
+      .select("id", { count: "exact", head: true })
+      .eq("partnerId", data.partnerId)
+      .eq("portalRole", "ADMIN")
+      .eq("status", "ACTIVE")
+      .is("deletedAt", null);
+
     const { error: profileError } = await admin.from("app_user").insert({
       id: created.user.id,
       fullName: `${contact.firstName} ${contact.lastName}`.trim(),
@@ -241,6 +251,7 @@ export async function grantPartnerAccess(
       userType: "PARTNER",
       partnerId: data.partnerId,
       contactId: contact.id,
+      portalRole: (admins ?? 0) === 0 ? "ADMIN" : "USER",
       status: "ACTIVE",
       passwordHash: await bcrypt.hash(data.password, BCRYPT_ROUNDS),
       updatedAt: new Date().toISOString(),

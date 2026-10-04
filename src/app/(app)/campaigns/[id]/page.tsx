@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CorrectControl } from "@/components/correction-gate";
 import { DeleteControl } from "@/components/delete-control";
 import { RecentMark } from "@/components/recent-mark";
 import { FavoriteControl } from "@/components/favorite-control";
@@ -101,6 +102,7 @@ export default async function CampaignDetailPage({
             <Link href={`/campaigns/${campaign.id}/edit`}>Edit</Link>
           </Button>
         )}
+        <CorrectControl type="Campaign" id={id} />
         <FavoriteControl entityType="Campaign" entityId={id} label={String(campaign.name ?? "")} />
         <RecentMark entityType="Campaign" entityId={id} label={String(campaign.name ?? "")} />
         <DeleteControl type="Campaign" id={id} name={String(campaign.name ?? "")} />

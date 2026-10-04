@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { sendInvoice, writeOffInvoice } from "@/server/billing";
 import {
   Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Alert,
@@ -21,7 +20,6 @@ export function InvoiceActions({
   outstanding: string;
   currency: string;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -36,7 +34,9 @@ export function InvoiceActions({
       const result = await sendInvoice(invoiceId);
       if (result.ok) {
         setNotice("Marked as issued. Nothing has been emailed - use the Email panel to send it.");
-        router.refresh();
+        // A full load: in the production build a refreshed page can arrive and
+        // not be shown (see components/log-touch-button.tsx).
+        window.setTimeout(() => window.location.reload(), 800);
       } else setError(result.error);
     });
   }
@@ -51,7 +51,9 @@ export function InvoiceActions({
       if (result.ok) {
         setNotice("Written off.");
         setWritingOff(false);
-        router.refresh();
+        // A full load: in the production build a refreshed page can arrive and
+        // not be shown (see components/log-touch-button.tsx).
+        window.setTimeout(() => window.location.reload(), 800);
       } else setError(result.error);
     });
   }

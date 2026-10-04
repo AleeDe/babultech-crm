@@ -292,6 +292,10 @@ Added 29 September 2026, migrations `20260929000000` to `20260929000005`.
   activities, draft invoices and supplier bills, unallocated payments and
   expense claims go to the bin too. See `docs/roles-and-access.md` for who may
   delete what.
+- **Corrections.** Once a record is processed (approved, issued, sent, paid,
+  converted, closed), only an administrator edits or deletes it, after pressing
+  Correct and giving a reason. Supplier bills and payments gained edit screens.
+  See `docs/roles-and-access.md`, "correcting processed records".
 - **Campaign ROI** comes from `v_campaign_performance`, recreated by
   `20261004000000` after the 21 September rebuild of `campaign_member` dropped
   it with `CASCADE`. A `DROP ... CASCADE` drops dependent views silently, so

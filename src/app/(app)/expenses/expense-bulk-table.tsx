@@ -311,7 +311,7 @@ export function ExpenseBulkTable({
                     const deleteLocked = canAdminDelete ? null : locked;
                     return (
                       <div className="flex items-center gap-1">
-                        {locked ? (
+                        {locked && !canAdminDelete ? (
                           <Button size="sm" variant="ghost" disabled title={locked} aria-label={`Edit ${e.expenseNumber}`}>
                             <Pencil className="h-4 w-4" />
                           </Button>

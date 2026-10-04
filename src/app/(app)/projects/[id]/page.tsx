@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CorrectControl } from "@/components/correction-gate";
 import { DeliverablesPanel } from "@/components/deliverables-panel";
 import { RecentMark } from "@/components/recent-mark";
 import { FavoriteControl } from "@/components/favorite-control";
@@ -109,6 +110,7 @@ export default async function ProjectWorkspacePage({
         {canManage && <DeleteProjectButton projectId={project.id} name={`${project.projectNumber} ${project.name}`} />}
         <Button asChild variant="outline"><Link href={`/projects/${id}/content`}>Content calendar</Link></Button>
         <FollowControl entityType="Project" entityId={id} />
+        <CorrectControl type="Project" id={id} />
         <FavoriteControl entityType="Project" entityId={id} label={String(project.name ?? "")} />
 
         <RecentMark entityType="Project" entityId={id} label={String(project.name ?? "")} />

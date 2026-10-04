@@ -100,7 +100,7 @@ try {
 
   await check(db.from("app_user").insert({
     id: ids.login, fullName: `QA Writer ${run}`, email, roleId: role.id,
-    userType: "PARTNER", partnerId: ids.myPartner, contactId: ids.myContact,
+    userType: "PARTNER", portalRole: "ADMIN", partnerId: ids.myPartner, contactId: ids.myContact,
     status: "ACTIVE", updatedAt: now(),
   }), "Create the partner login");
   cleanup.push(() => db.from("app_user").delete().eq("id", ids.login));

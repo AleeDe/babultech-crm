@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { CorrectionGate } from "@/components/correction-gate";
 import { getContract, getContractFormOptions } from "@/server/contracts";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { PageHeader , Forbidden} from "@/components/ui";
@@ -42,11 +43,13 @@ export default async function EditContractPage({
         backTo={`/contracts/${id}`}
         backLabel="Back to the contract"
         title={`Edit ${contract.name}`} description={contract.contractNumber} />
-      <ContractForm
-        options={serialize(options) as unknown as ContractFormOptions}
-        defaults={defaults}
-        currentUserId={user.id}
-      />
+      <CorrectionGate type="Contract" id={id}>
+        <ContractForm
+          options={serialize(options) as unknown as ContractFormOptions}
+          defaults={defaults}
+          currentUserId={user.id}
+        />
+      </CorrectionGate>
     </div>
   );
 }

@@ -97,7 +97,7 @@ export function ReviewLinkPanel({
                   url: reviewLinkUrl(window.location.origin, result.data.token),
                   expiresAt: result.data.expiresAt,
                 });
-                router.refresh();
+                setTimeout(() => router.refresh(), 0);
               } else setError(result.error);
             });
           }}
@@ -160,7 +160,7 @@ export function ReviewLinkPanel({
                       setError(null);
                       start(async () => {
                         const result = await revokeReviewLink(link.id);
-                        if (result.ok) { setMinted(null); router.refresh(); }
+                        if (result.ok) { setMinted(null); setTimeout(() => router.refresh(), 0); }
                         else setError(result.error);
                       });
                     }}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CorrectControl } from "@/components/correction-gate";
 import { notFound } from "next/navigation";
 import { getVendorBill, getPayableFormOptions } from "@/server/payables";
 import { listNotes } from "@/server/notes";
@@ -10,7 +11,7 @@ import { DocumentsPanel } from "@/components/documents-panel";
 import { requireUser, can, canAny, PERMISSIONS } from "@/lib/authz";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
-  Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Forbidden,
+  Table, THead, TBody, TR, TH, TD, StatTile, DetailRow, Forbidden, Button,
 } from "@/components/ui";
 import { formatMoney, formatDate, formatNumber, humanize, formatMoneyTotal } from "@/lib/utils";
 import { BillActions } from "./bill-actions";
@@ -45,6 +46,10 @@ export default async function VendorBillDetailPage({
         description={`${bill.vendor?.name ?? "Unknown supplier"}${bill.vendorInvoiceNumber ? ` · their ref ${bill.vendorInvoiceNumber}` : ""}`}
       >
         <Badge tone={statusTone(bill.status)}>{humanize(bill.status)}</Badge>
+        {bill.status === "DRAFT" && can(me, PERMISSIONS.INVOICE_WRITE) && (
+          <Button asChild variant="outline"><Link href={`/vendor-bills/${bill.id}/edit`}>Edit</Link></Button>
+        )}
+        <CorrectControl type="VendorBill" id={bill.id as string} />
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -58,7 +58,7 @@ export async function mutateContentVersion(kind: "version" | "review" | "publica
  const { data: task, error: taskError } = await db.from("project_task").select("projectId").eq("id", taskId).maybeSingle();
  if (taskError || !task) return { ok: false, error: "Task not available." };
  const { data, error } = await db.rpc(rpc, args);
- if (error) return { ok: false, error: error.code === "40001" ? "Content or plan changed. Refresh and use a new version." : "Could not save. Check your assignment/reviewer access, latest version, required approvals and whether this action was already recorded." };
+ if (error) return { ok: false, error: error.code === "40001" ? "Content or plan changed. Refresh and use a new version." : ["42501", "22023", "23505"].includes(error.code ?? "") ? `Could not save: ${error.message}.` : "Could not save. Check your assignment/reviewer access, latest version, required approvals and whether this action was already recorded." };
  revalidatePath(`/projects/${task.projectId}/content/${taskId}`); revalidatePath(`/projects/${task.projectId}/content`);
  return { ok: true, data: { id: String(data) } };
 }

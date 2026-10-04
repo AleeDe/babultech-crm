@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CorrectControl } from "@/components/correction-gate";
 import { Timeline } from "@/components/timeline";
 import { MarketingPanel } from "@/components/marketing-panel";
 import { QualifyProspectButton } from "@/components/qualify-prospect-button";
@@ -116,6 +117,7 @@ export default async function LeadDetailPage({
           <Button asChild variant="outline"><Link href={`/email/compose?type=Lead&ids=${lead.id}`}>Email</Link></Button>
         )}
         <FollowControl entityType="Lead" entityId={id} />
+        <CorrectControl type="Lead" id={id} />
         <FavoriteControl entityType="Lead" entityId={id} label={`${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim()} />
 
         <RecentMark entityType="Lead" entityId={id} label={`${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim()} />

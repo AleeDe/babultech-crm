@@ -36,7 +36,9 @@ export function BillingRun({
             ? "No completed billing milestones are waiting to be invoiced."
             : `${created} draft invoice(s) raised.${skipped.length ? ` Skipped: ${skipped.join("; ")}` : ""}`,
         );
-        router.refresh();
+        // Outside the transition: in the production build a refresh inside it
+        // can keep the buttons disabled (see components/log-touch-button.tsx).
+        setTimeout(() => router.refresh(), 0);
       } else setError(result.error);
     });
   }
@@ -53,7 +55,9 @@ export function BillingRun({
             ? "No contract periods are waiting to be billed."
             : `${created} draft invoice(s) raised.${skipped.length ? ` Skipped: ${skipped.join("; ")}` : ""}`,
         );
-        router.refresh();
+        // Outside the transition: in the production build a refresh inside it
+        // can keep the buttons disabled (see components/log-touch-button.tsx).
+        setTimeout(() => router.refresh(), 0);
       } else setError(result.error);
     });
   }

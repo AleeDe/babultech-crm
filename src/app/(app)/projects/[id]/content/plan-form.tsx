@@ -1,13 +1,12 @@
 "use client";
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Button, Input, Select, Textarea } from "@/components/ui";
 import { CONTENT_CHANNELS, CONTENT_FORMATS, type ContentPlan } from "@/lib/content-planning";
 import { pakistanInputToIso } from "@/lib/calling";
 import { humanize } from "@/lib/utils";
 import { saveContentPlan } from "@/server/content-planning";
 export function ContentPlanForm({ tasks, initial }: { tasks: { id: string; name: string }[]; initial?: ContentPlan }) {
- const router = useRouter(); const [pending, start] = useTransition(); const [message, setMessage] = useState("");
+ const [pending, start] = useTransition(); const [message, setMessage] = useState("");
  return <form className="grid gap-3 sm:grid-cols-2 mt-4" onSubmit={event => {
  event.preventDefault(); const data = new FormData(event.currentTarget); setMessage("");
  const plannedPublishAt = pakistanInputToIso(String(data.get("plannedPublishAt")));
@@ -17,7 +16,9 @@ export function ContentPlanForm({ tasks, initial }: { tasks: { id: string; name:
  channel: data.get("channel"), format: data.get("format"), objective: data.get("objective"), audience: data.get("audience"), brief: data.get("brief"), plannedPublishAt, clientApprovalRequired: data.get("clientApprovalRequired") === "on",
  } });
  if (!result.ok) { setMessage(result.error); return; }
- router.push(`?month=${String(data.get("plannedPublishAt")).slice(0, 7)}`); router.refresh(); setMessage("Plan saved. This is a planning date, not approval or publication.");
+ setMessage("Plan saved. This is a planning date, not approval or publication.");
+ // A full load: in the production build a refreshed page can arrive and not be shown (see components/log-touch-button.tsx).
+ window.location.assign(`?month=${String(data.get("plannedPublishAt")).slice(0, 7)}`);
  } catch { setMessage("Save could not be confirmed. Refresh to check the plan before retrying."); } });
  }}>
  {!initial && <label className="sm:col-span-2">Existing project task<Select aria-label="Existing project task" name="taskId" required disabled={pending}><option value="">Choose an open task</option>{tasks.map(task => <option key={task.id} value={task.id}>{task.name}</option>)}</Select></label>}

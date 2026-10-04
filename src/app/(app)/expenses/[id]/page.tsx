@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CorrectControl } from "@/components/correction-gate";
 import { notFound } from "next/navigation";
 import { Receipt } from "lucide-react";
 import { getExpense } from "@/server/payables";
@@ -69,6 +70,7 @@ export default async function ExpenseDetailPage({
             <Link href={`/expenses/${expense.id}/edit`}>Edit</Link>
           </Button>
         )}
+        <CorrectControl type="Expense" id={id} />
       </PageHeader>
 
       {needsReceipt && (

@@ -106,7 +106,7 @@ try {
   }), "Create the partner");
   const partnerRole = await check(db.from("security_role").select("id").eq("name", "Partner").single(), "Find the Partner role");
   const partner = await login(`dup-partner-${run}@example.com`, {
-    fullName: `QA Dup Partner ${run}`, roleId: partnerRole.id, userType: "PARTNER",
+    fullName: `QA Dup Partner ${run}`, roleId: partnerRole.id, userType: "PARTNER", portalRole: "ADMIN",
     partnerId: ids.partner, contactId: partnerPerson,
   });
 

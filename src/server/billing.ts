@@ -12,6 +12,7 @@ import { listCatalogueProducts } from "./price-books";
 import { createRecord, updateRecord, LIST_LIMIT, applySearch } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, authorizeAny, requirePermission } from "@/lib/authz";
+import { editGate, markCorrectionSaved } from "./corrections";
 import type { ActionResult } from "./partners";
 
 /**
@@ -885,4 +886,58 @@ export async function getPayment(id: string) {
       invoice: one(a.invoice as never),
     })),
   };
+}
+
+const paymentEditSchema = z.object({
+  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Give the date it was received."),
+  paymentMethod: z.enum(["BANK", "CHEQUE", "CASH", "CARD", "WALLET"]),
+  referenceNumber: z.string().trim().max(100).optional().nullable(),
+  notes: z.string().trim().max(5000).optional().nullable(),
+  amount: z.coerce.number().positive("The amount must be more than nothing.").optional(),
+});
+
+/**
+ * Correcting a payment. A pending one is edited by anyone who records
+ * payments; once cleared, by an administrator correcting it with a reason. The
+ * amount only changes while nothing is allocated from it, so the invoices it
+ * settled still add up.
+ */
+export async function updatePayment(id: string, input: z.infer<typeof paymentEditSchema>): Promise<ActionResult<{ id: string }>> {
+  const _auth = await authorize(PERMISSIONS.PAYMENT_WRITE);
+  if (!_auth.ok) return { ok: false, error: _auth.error };
+  const parsed = paymentEditSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Please check the payment." };
+  const d = parsed.data;
+
+  const gate = await editGate("Payment", id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const db = await supabaseServer();
+  const { data: before } = await db.from("payment").select("amount, unallocatedAmount").eq("id", id).is("deletedAt", null).maybeSingle();
+  if (!before) return { ok: false, error: "That payment no longer exists." };
+  const { count: allocations } = await db.from("payment_allocation").select("id", { count: "exact", head: true }).eq("paymentId", id);
+
+  const patch: Record<string, unknown> = {
+    paymentDate: d.paymentDate,
+    paymentMethod: d.paymentMethod,
+    referenceNumber: d.referenceNumber || null,
+    notes: d.notes || null,
+  };
+  if (d.amount !== undefined && !toDecimal(d.amount).equals(toDecimal(before.amount))) {
+    if ((allocations ?? 0) > 0) {
+      return { ok: false, error: "This payment is allocated to invoices, so its amount has to stay the same. Remove the allocations first." };
+    }
+    patch.amount = d.amount.toFixed(2);
+    patch.unallocatedAmount = d.amount.toFixed(2);
+  }
+
+  try {
+    await updateRecord("payment", id, patch, "Payment", _auth.user.id);
+    await markCorrectionSaved(gate.correctionId);
+    revalidatePath("/payments");
+    revalidatePath(`/payments/${id}`);
+    return { ok: true, data: { id } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Could not save the payment." };
+  }
 }

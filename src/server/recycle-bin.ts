@@ -6,6 +6,7 @@ import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { authorize, requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { RECYCLE_TYPES, recycleLabel, type RecycleType } from "@/lib/recycle-types";
 import type { ActionResult } from "./partners";
+import { deleteGate } from "./corrections";
 
 /**
  * Deleting to the recycle bin, restoring, and erasing for good.
@@ -66,6 +67,11 @@ export async function deleteToRecycleBin(type: RecycleType, id: string): Promise
   const { data: seen } = await db.from(config.table).select("id, deletedAt").eq("id", id).maybeSingle();
   if (!seen) return { ok: false, error: "That record could not be found." };
   if (seen.deletedAt) return { ok: false, error: "It is already deleted." };
+
+  // Once processed (approved, issued, sent, paid, converted, closed), a
+  // record is an administrator's to delete.
+  const processed = await deleteGate(type, id);
+  if (processed) return { ok: false, error: processed };
 
   const admin = supabaseAdmin();
   const { data: blocker } = await admin.rpc("recycle_blocker", { p_entity_type: type, p_id: id });

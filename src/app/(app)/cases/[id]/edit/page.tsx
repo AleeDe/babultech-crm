@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { CorrectionGate } from "@/components/correction-gate";
 import { getCase, getCaseFormOptions } from "@/server/cases";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { PageHeader , Forbidden} from "@/components/ui";
@@ -43,10 +44,12 @@ export default async function EditCasePage({
         title={`Edit ${supportCase.caseNumber}`}
         description={`${supportCase.subject} · ${supportCase.account?.name}`}
       />
-      <CaseForm
-        options={serialize(options) as unknown as CaseFormOptions}
-        defaults={defaults}
-      />
+      <CorrectionGate type="SupportCase" id={id}>
+        <CaseForm
+          options={serialize(options) as unknown as CaseFormOptions}
+          defaults={defaults}
+        />
+      </CorrectionGate>
     </div>
   );
 }

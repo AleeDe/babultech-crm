@@ -9,6 +9,7 @@ import { supabaseServer } from "@/lib/supabase";
 import { createRecord, updateRecord, applyScopeWithPartners, LIST_LIMIT } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission, scopedContext } from "@/lib/authz";
+import { editGate, markCorrectionSaved } from "./corrections";
 import { auditChanges } from "@/lib/audit";
 import type { ActionResult } from "./partners";
 
@@ -128,6 +129,9 @@ export async function updateOpportunity(
   }
   const data = parsed.data;
 
+  const gate = await editGate("Opportunity", id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
   try {
     const db = await supabaseServer();
 
@@ -164,6 +168,7 @@ export async function updateOpportunity(
       "Opportunity",
       user.id,
     );
+    await markCorrectionSaved(gate.correctionId);
 
     revalidatePath("/opportunities");
     revalidatePath(`/opportunities/${id}`);

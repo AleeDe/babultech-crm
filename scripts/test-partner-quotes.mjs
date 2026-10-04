@@ -88,7 +88,7 @@ async function makePartner(label, owner) {
   ids.partners.push(partner);
   const role = await check(db.from("security_role").select("id").eq("name", "Partner").single(), "Find the Partner role");
   const client = await makeLogin(`qa-pq-${label.toLowerCase()}-${run}@example.com`, {
-    fullName: `QA ${label} ${run}`, roleId: role.id, userType: "PARTNER", partnerId: partner, contactId: person,
+    fullName: `QA ${label} ${run}`, roleId: role.id, userType: "PARTNER", portalRole: "ADMIN", partnerId: partner, contactId: person,
   });
   return { partner, account, client };
 }

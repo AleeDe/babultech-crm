@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CorrectControl } from "@/components/correction-gate";
 import { DeleteControl } from "@/components/delete-control";
 import { RecentMark } from "@/components/recent-mark";
 import { FavoriteControl } from "@/components/favorite-control";
@@ -55,6 +56,7 @@ export default async function CaseDetailPage({
           <Link href={`/cases/${c.id}/edit`}>Edit</Link>
         </Button>
         <FollowControl entityType="SupportCase" entityId={id} />
+        <CorrectControl type="SupportCase" id={id} />
         <FavoriteControl entityType="SupportCase" entityId={id} label={`${c.caseNumber ?? ""} ${c.subject ?? ""}`.trim()} />
 
         <RecentMark entityType="SupportCase" entityId={id} label={`${c.caseNumber ?? ""} ${c.subject ?? ""}`.trim()} />

@@ -69,7 +69,7 @@ async function makePartner(label, owner) {
   if (auth.error) throw new Error(`Create identity: ${auth.error.message}`);
   ids.logins.push(auth.data.user.id);
   await check(db.from("app_user").insert({
-    id: auth.data.user.id, fullName: `QA ${label} ${run}`, email, roleId: role.id, userType: "PARTNER",
+    id: auth.data.user.id, fullName: `QA ${label} ${run}`, email, roleId: role.id, userType: "PARTNER", portalRole: "ADMIN",
     partnerId: partner, contactId: person, status: "ACTIVE", updatedAt: now(),
   }), `Create ${label}'s login`);
   const client = createClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {

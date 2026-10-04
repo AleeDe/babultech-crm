@@ -6,6 +6,7 @@ import { supabaseServer } from "@/lib/supabase";
 import { createRecord, updateRecord } from "@/lib/db";
 import { SEQUENCES } from "@/lib/numbering";
 import { PERMISSIONS, authorize, requirePermission } from "@/lib/authz";
+import { editGate, markCorrectionSaved } from "./corrections";
 import type { ActionResult } from "./partners";
 
 /**
@@ -107,6 +108,9 @@ export async function updateContract(
   const invalid = validate(parsed.data);
   if (invalid) return invalid;
 
+  const gate = await editGate("Contract", id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
   try {
     const db = await supabaseServer();
 
@@ -138,6 +142,7 @@ export async function updateContract(
       "Contract",
       user.id,
     );
+    await markCorrectionSaved(gate.correctionId);
 
     revalidatePath("/contracts");
     revalidatePath(`/contracts/${id}`);

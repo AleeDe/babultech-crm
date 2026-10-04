@@ -7,7 +7,7 @@ import {
   Card, CardContent, CardFooter, Input, Select, Textarea, Button, Alert, Field,
 } from "@/components/ui";
 import { RecordLookup } from "@/components/record-lookup";
-import { createVendorBill } from "@/server/payables";
+import { createVendorBill, updateVendorBill } from "@/server/payables";
 import { formatMoney, formatMoneyTotal } from "@/lib/utils";
 
 interface Option {
@@ -48,11 +48,35 @@ const emptyLine = (): Line => ({
  * server from the same inputs — what is displayed here is a preview, never the
  * figure that gets stored.
  */
-export function BillForm({ options }: { options: BillFormOptions }) {
+/** A saved bill, when the form edits rather than enters one. */
+export interface SavedBill {
+  id: string;
+  vendorAccountId: string;
+  vendorInvoiceNumber: string | null;
+  projectId: string | null;
+  billDate: string;
+  dueDate: string;
+  currencyCode: string;
+  notes: string | null;
+  lines: { description: string; quantity: string; unitCost: string; expenseCategoryId: string | null; taxRateId: string | null }[];
+}
+
+export function BillForm({ options, bill }: { options: BillFormOptions; bill?: SavedBill }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [lines, setLines] = useState<Line[]>([emptyLine()]);
+  const [lines, setLines] = useState<Line[]>(() =>
+    bill?.lines.length
+      ? bill.lines.map((l) => ({
+          key: crypto.randomUUID(),
+          description: l.description,
+          quantity: String(l.quantity),
+          unitCost: String(l.unitCost),
+          expenseCategoryId: l.expenseCategoryId ?? "",
+          taxRateId: l.taxRateId ?? "",
+        }))
+      : [emptyLine()],
+  );
 
   const rateOf = (id: string) =>
     Number(options.taxRates.find((t) => t.id === id)?.ratePercent ?? 0);
@@ -80,7 +104,8 @@ export function BillForm({ options }: { options: BillFormOptions }) {
     }
 
     start(async () => {
-      const result = await createVendorBill({
+      const save = bill ? (input: never) => updateVendorBill(bill.id, input) : createVendorBill;
+      const result = await save({
         vendorAccountId: String(formData.get("vendorAccountId") ?? ""),
         vendorInvoiceNumber: String(formData.get("vendorInvoiceNumber") ?? "") || null,
         projectId: String(formData.get("projectId") ?? "") || null,
@@ -99,8 +124,8 @@ export function BillForm({ options }: { options: BillFormOptions }) {
       } as never);
 
       if (result.ok) {
-        router.push(`/vendor-bills/${result.data.id}`);
-        router.refresh();
+        // A full load: see components/log-touch-button.tsx.
+        window.location.href = `/vendor-bills/${result.data.id}`;
       } else {
         setError(result.error);
       }
@@ -119,7 +144,7 @@ export function BillForm({ options }: { options: BillFormOptions }) {
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label="Supplier" required
             help="Who is billing you.">
-              <Select name="vendorAccountId" required defaultValue="">
+              <Select name="vendorAccountId" required defaultValue={bill?.vendorAccountId ?? ""}>
                 <option value="" disabled>
                   Choose a supplier…
                 </option>
@@ -133,22 +158,22 @@ export function BillForm({ options }: { options: BillFormOptions }) {
 
             <Field label="Their invoice number"
             help="The reference the supplier put on their own invoice. Needed to match payments to their records.">
-              <Input name="vendorInvoiceNumber" placeholder="As printed on their invoice" />
+              <Input name="vendorInvoiceNumber" placeholder="As printed on their invoice" defaultValue={bill?.vendorInvoiceNumber ?? ""} />
             </Field>
 
             <Field label="Bill date" required
             help="The date on the supplier's invoice.">
-              <Input name="billDate" type="date" required defaultValue={today} />
+              <Input name="billDate" type="date" required defaultValue={bill?.billDate?.slice(0, 10) ?? today} />
             </Field>
 
             <Field label="Due date" required
             help="When you have to pay by. Drives the payables list and what shows as overdue.">
-              <Input name="dueDate" type="date" required defaultValue={inThirtyDays} />
+              <Input name="dueDate" type="date" required defaultValue={bill?.dueDate?.slice(0, 10) ?? inThirtyDays} />
             </Field>
 
             <Field label="Currency"
             help="The currency the supplier billed in.">
-              <Select name="currencyCode" defaultValue="PKR">
+              <Select name="currencyCode" defaultValue={bill?.currencyCode ?? "PKR"}>
                 {options.currencies.map((c) => (
                   <option key={c.code} value={c.code}>
                     {c.code} - {c.name}
@@ -159,7 +184,7 @@ export function BillForm({ options }: { options: BillFormOptions }) {
 
             <Field label="Project"
             help="The project the cost belongs to, if it was incurred for one.">
-              <RecordLookup entity="project" name="projectId" emptyLabel="None" />
+              <RecordLookup entity="project" name="projectId" emptyLabel="None" defaultValue={bill?.projectId ?? null} />
             </Field>
           </div>
 
@@ -250,7 +275,7 @@ export function BillForm({ options }: { options: BillFormOptions }) {
 
           <Field label="Notes"
             help="Anything worth knowing when this comes up for payment.">
-            <Textarea name="notes" rows={2} placeholder="Anything worth recording about this bill." />
+            <Textarea name="notes" rows={2} placeholder="Anything worth recording about this bill." defaultValue={bill?.notes ?? ""} />
           </Field>
 
           <dl className="space-y-1 rounded-lg border bg-muted/30 p-3 text-sm">
@@ -274,7 +299,7 @@ export function BillForm({ options }: { options: BillFormOptions }) {
             Cancel
           </Button>
           <Button type="submit" disabled={pending}>
-            {pending ? "Saving…" : "Create bill"}
+            {pending ? "Saving…" : bill ? "Save changes" : "Create bill"}
           </Button>
         </CardFooter>
       </Card>

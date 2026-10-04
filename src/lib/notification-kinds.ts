@@ -21,6 +21,7 @@ export const NOTIFICATION_KINDS = [
   { kind: "AUTOMATION", label: "Reminders from rules", description: "An automatic rule spotted something: a lead with no follow-up, a deal not moving, a case response due soon.", emailByDefault: false },
   { kind: "REPORT_READY", label: "Scheduled reports", description: "A report you asked for weekly or monthly is ready.", emailByDefault: true },
   { kind: "JOB_FINISHED", label: "Background work finished", description: "A mass email or import you started has finished.", emailByDefault: false },
+  { kind: "RECORD_CORRECTED", label: "Records corrected", description: "An administrator corrects a record of yours that was already approved, issued, paid or closed, and says why.", emailByDefault: false },
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]["kind"];

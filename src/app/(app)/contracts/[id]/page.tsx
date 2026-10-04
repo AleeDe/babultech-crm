@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CorrectControl } from "@/components/correction-gate";
 import { notFound } from "next/navigation";
 import { listNotes } from "@/server/notes";
 import { listDocuments } from "@/server/documents";
@@ -94,6 +95,7 @@ export default async function ContractDetailPage({
         <Button asChild>
           <Link href={`/invoices/new?accountId=${contract.account?.id}`}>New invoice</Link>
         </Button>
+        <CorrectControl type="Contract" id={id} />
       </PageHeader>
 
       {inRenewalWindow && (

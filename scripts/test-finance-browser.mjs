@@ -144,7 +144,7 @@ try {
 
  currentPage = approver;
  await approver.goto(`${base}/invoices/${ids.selfInvoice}`);
- await approver.getByRole("button", { name: "Issue invoice", exact: true }).click();
+ await approver.getByRole("button", { name: "Mark as issued", exact: true }).click();
  await approver.getByText("prepared by you", { exact: false }).waitFor({ timeout: 30000 });
  await approver.screenshot({ path: `${output}/finance-self-issue-refused.png`, fullPage: true });
  const afterUiAttempt = await db.from("invoice").select("status").eq("id", ids.selfInvoice).single();
@@ -154,7 +154,7 @@ try {
  // --- A second person issues it ---
  currentPage = approver;
  await approver.goto(`${base}/invoices/${ids.invoice}`);
- await approver.getByRole("button", { name: "Issue invoice", exact: true }).click();
+ await approver.getByRole("button", { name: "Mark as issued", exact: true }).click();
  // The button reads "Working…" until the action settles; wait for the result
  // rather than reading the database mid-flight.
  await approver.getByRole("button", { name: "Working…", exact: true }).waitFor({ state: "detached", timeout: 30000 }).catch(() => {});
@@ -194,7 +194,7 @@ try {
 
  await approver.setViewportSize({ width: 390, height: 844 });
  await approver.goto(`${base}/invoices/${ids.invoice}`);
- await approver.getByRole("button", { name: "Issue invoice", exact: true }).waitFor({ state: "detached" }).catch(() => {});
+ await approver.getByRole("button", { name: "Mark as issued", exact: true }).waitFor({ state: "detached" }).catch(() => {});
  assert.equal(await approver.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1), false, "Mobile horizontal overflow");
  await passed("Invoice page fits 390px viewport");
 

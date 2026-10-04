@@ -103,7 +103,7 @@ try {
   }), "Create the partner");
   const partnerRole = await must(db.from("security_role").select("id").eq("name", "Partner").single(), "Find the Partner role");
   const partnerLogin = await makeLogin(`qpqb-${tag}@example.com`, {
-    fullName: `QA Quoter ${run}`, roleId: partnerRole.id, userType: "PARTNER", partnerId: ids.partner, contactId: ids.person,
+    fullName: `QA Quoter ${run}`, roleId: partnerRole.id, userType: "PARTNER", portalRole: "ADMIN", partnerId: ids.partner, contactId: ids.person,
   });
   await must(db.from("security_role").insert({
     id: ids.role, name: `QA PQB Approver ${run}`, dataScope: "ALL", updatedAt: now(),

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { CorrectionGate } from "@/components/correction-gate";
+import { WordingCorrectionForm } from "@/components/wording-correction-form";
 import { notFound } from "next/navigation";
 import { getInvoice, getBillingFormOptions } from "@/server/billing";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
@@ -34,6 +36,25 @@ export default async function EditInvoicePage({
           <Button asChild>
             <Link href={`/invoices/${invoice.id}`}>Back to the invoice</Link>
           </Button>
+        </div>
+        <div className="mt-6">
+          <CorrectionGate
+            type="Invoice"
+            id={id}
+            quietForOthers
+            wordingForm={
+              <WordingCorrectionForm
+                type="Invoice"
+                id={id}
+                backTo={`/invoices/${id}`}
+                fields={[
+                  { key: "dueDate", label: "Due date", kind: "date", value: invoice.dueDate ? String(invoice.dueDate).slice(0, 10) : "" },
+                  { key: "paymentTermsDays", label: "Payment terms (days)", kind: "int", value: invoice.paymentTermsDays != null ? String(invoice.paymentTermsDays) : "" },
+                  { key: "notes", label: "Notes", kind: "textarea", value: (invoice.notes as string | null) ?? "" },
+                ]}
+              />
+            }
+          />
         </div>
       </div>
     );
