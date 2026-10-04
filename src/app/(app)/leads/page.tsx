@@ -11,6 +11,7 @@ import { formatMoney, humanize, serialize, formatMoneyTotal } from "@/lib/utils"
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { ExportButton } from "@/components/export-button";
 import { LeadsTable } from "./leads-table";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import { getAssignableUsers } from "@/server/bulk";
 import { listPartnerOptions } from "@/server/partners";
 import { countProspects } from "@/server/marketing";
@@ -138,6 +139,7 @@ export default async function LeadsPage({
           leads={serialize(leads) as never}
           users={users}
           canWrite={can(_me, PERMISSIONS.LEAD_WRITE)}
+          canDelete={can(_me, RECYCLE_TYPES.Lead.permission)}
         />
       </Card>
     </>

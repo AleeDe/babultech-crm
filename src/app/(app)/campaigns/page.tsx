@@ -10,6 +10,8 @@ import {
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize, formatMoneyTotal } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import { ExportButton } from "@/components/export-button";
 
 export default async function CampaignsPage({
@@ -18,6 +20,7 @@ export default async function CampaignsPage({
   searchParams: Promise<{ search?: string; status?: string }>;
 }) {
   const _me = await requireUser();
+  const canDeleteRow = can(_me, RECYCLE_TYPES.Campaign.permission);
   if (!can(_me, PERMISSIONS.LEAD_READ)) return <Forbidden what="campaigns" />;
 
   const params = await searchParams;
@@ -118,6 +121,7 @@ export default async function CampaignsPage({
                   <TH className="text-right" priority="tertiary">Leads</TH>
                   <TH className="text-right" priority="tertiary">Deals</TH>
                   <TH>Status</TH>
+                  <TH><span className="sr-only">Actions</span></TH>
                 </TR>
               </THead>
               <TBody>
@@ -152,6 +156,9 @@ export default async function CampaignsPage({
                     <TD priority="tertiary" className="text-right tabular">{c._count.opportunities}</TD>
                     <TD>
                       <Badge tone={statusTone(c.status)}>{humanize(c.status)}</Badge>
+                    </TD>
+                    <TD className="text-right">
+                      <RowActions type="Campaign" id={c.id} name={String(c.name ?? "")} editHref={`/campaigns/${c.id}/edit`} canDelete={canDeleteRow} />
                     </TD>
                   </TR>
                 ))}

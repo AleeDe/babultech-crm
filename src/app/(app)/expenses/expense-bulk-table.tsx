@@ -8,6 +8,7 @@ import {
   Table, THead, TBody, TR, TH, TD, Badge, statusTone, Button, Alert,
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize } from "@/lib/utils";
+import { deleteToRecycleBin } from "@/server/recycle-bin";
 import {
   setExpenseApprovalBulk, markExpensePaidBulk, deleteExpense,
 } from "@/server/payables";
@@ -30,12 +31,15 @@ export function ExpenseBulkTable({
   canApprove,
   canPay,
   canWrite,
+  canAdminDelete = false,
   currentUserId,
 }: {
   expenses: Expense[];
   canApprove: boolean;
   canPay: boolean;
   canWrite: boolean;
+  /** An administrator deletes any claim (approved and paid included) to the recycle bin. */
+  canAdminDelete?: boolean;
   currentUserId: string;
 }) {
   const router = useRouter();
@@ -131,10 +135,10 @@ export function ExpenseBulkTable({
   }
 
   function remove(e: Expense) {
-    if (!window.confirm(`Delete ${e.expenseNumber}? This removes it from the expense list.`)) return;
+    if (!window.confirm(`Delete ${e.expenseNumber}? It goes to the recycle bin, where it can be restored for 90 days.`)) return;
     setMessage(null);
     start(async () => {
-      const result = await deleteExpense(e.id);
+      const result = canAdminDelete ? await deleteToRecycleBin("Expense", e.id) : await deleteExpense(e.id);
       if (!result.ok) {
         setMessage({ tone: "danger", text: result.error ?? "Could not delete the expense." });
         return;
@@ -273,7 +277,7 @@ export function ExpenseBulkTable({
                 className="h-4 w-4 cursor-pointer rounded border-input"
               />
             </TH>
-            {canWrite && <TH className="w-24">Actions</TH>}
+            {(canWrite || canAdminDelete) && <TH className="w-24">Actions</TH>}
             <TH>Expense</TH>
             <TH priority="tertiary">Category</TH>
             <TH priority="secondary">Who</TH>
@@ -300,10 +304,11 @@ export function ExpenseBulkTable({
                   className="h-4 w-4 cursor-pointer rounded border-input"
                 />
               </TD>
-              {canWrite && (
+              {(canWrite || canAdminDelete) && (
                 <TD>
                   {(() => {
                     const locked = lockedReason(e);
+                    const deleteLocked = canAdminDelete ? null : locked;
                     return (
                       <div className="flex items-center gap-1">
                         {locked ? (
@@ -320,8 +325,8 @@ export function ExpenseBulkTable({
                         <Button
                           size="sm"
                           variant="ghost"
-                          disabled={pending || Boolean(locked)}
-                          title={locked ?? "Delete"}
+                          disabled={pending || Boolean(deleteLocked)}
+                          title={deleteLocked ?? "Delete"}
                           aria-label={`Delete ${e.expenseNumber}`}
                           onClick={() => remove(e)}
                           className="text-destructive hover:text-destructive"

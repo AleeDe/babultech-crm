@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { requireUser, canAny, PERMISSIONS } from "@/lib/authz";
+import { requireUser, canAny, PERMISSIONS, can } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import { listKnowledge, canWriteKnowledge } from "@/server/knowledge";
 import { PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, EmptyState, Button, Forbidden, Input, Select } from "@/components/ui";
 import { FilterForm } from "@/components/filter-form";
@@ -15,6 +17,7 @@ const STATUS_TONE: Record<string, "neutral" | "info" | "success" | "warning"> = 
 
 export default async function KnowledgePage({ searchParams }: { searchParams: Promise<{ search?: string; status?: string }> }) {
   const me = await requireUser();
+  const canDeleteRow = can(me, RECYCLE_TYPES.KnowledgeArticle.permission);
   if (!canAny(me, PERMISSIONS.CASE_READ, PERMISSIONS.ADMIN)) return <Forbidden what="the knowledge base" />;
   const params = await searchParams;
   const [articles, canWrite] = await Promise.all([listKnowledge(params), canWriteKnowledge()]);
@@ -54,6 +57,7 @@ export default async function KnowledgePage({ searchParams }: { searchParams: Pr
                 <TH>Status</TH>
                 <TH priority="secondary">Shown to</TH>
                 <TH priority="secondary">Updated</TH>
+                <TH><span className="sr-only">Actions</span></TH>
               </TR>
             </THead>
             <TBody>
@@ -66,6 +70,9 @@ export default async function KnowledgePage({ searchParams }: { searchParams: Pr
                   <TD><Badge tone={STATUS_TONE[a.status] ?? "neutral"}>{a.status === "REVIEW" ? "In review" : a.status.charAt(0) + a.status.slice(1).toLowerCase()}</Badge></TD>
                   <TD className="text-sm" priority="secondary">{a.visibility === "CUSTOMER_PORTAL" ? "Customers" : "Our team"}</TD>
                   <TD className="text-sm" priority="secondary">{formatDate(a.updatedAt)}</TD>
+                  <TD className="text-right">
+                    <RowActions type="KnowledgeArticle" id={a.id} name={String(a.title ?? "")} editHref={`/knowledge/${a.id}`} canDelete={canDeleteRow} />
+                  </TD>
                 </TR>
               ))}
             </TBody>

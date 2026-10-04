@@ -3,6 +3,8 @@ import { Plus } from "lucide-react";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
   EmptyState, StatTile, Alert, Button, Forbidden
@@ -11,6 +13,7 @@ import { formatMoney, formatDate, humanize, daysBetween, formatMoneyTotal } from
 
 export default async function ContractsPage() {
   const _me = await requireUser();
+  const canDeleteRow = can(_me, RECYCLE_TYPES.Contract.permission);
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="contracts" />;
   const db = await supabaseServer();
 
@@ -89,6 +92,7 @@ export default async function ContractsPage() {
                 <TH priority="tertiary">Billing</TH>
                 <TH priority="tertiary">Renewal</TH>
                 <TH>Status</TH>
+                <TH><span className="sr-only">Actions</span></TH>
               </TR>
             </THead>
             <TBody>
@@ -126,6 +130,9 @@ export default async function ContractsPage() {
                     </TD>
                     <TD>
                       <Badge tone={statusTone(c.status)}>{humanize(c.status)}</Badge>
+                    </TD>
+                    <TD className="text-right">
+                      <RowActions type="Contract" id={c.id} name={String(c.contractNumber ?? c.name ?? "")} editHref={`/contracts/${c.id}/edit`} canDelete={canDeleteRow} />
                     </TD>
                   </TR>
                 );

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import { listPriceBooks } from "@/server/price-books";
 import {
   PageHeader, Forbidden, Card, Table, THead, TBody, TR, TH, TD, Badge, EmptyState,
@@ -16,6 +18,7 @@ import { NewPriceBook } from "./new-price-book";
  */
 export default async function PriceBooksPage() {
   const me = await requireUser();
+  const canDeleteRow = can(me, RECYCLE_TYPES.PriceBook.permission);
   if (!can(me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="price books" />;
 
   const books = await listPriceBooks();
@@ -43,6 +46,7 @@ export default async function PriceBooksPage() {
                 <TH className="text-right">Items priced</TH>
                 <TH>Valid</TH>
                 <TH>Status</TH>
+                <TH><span className="sr-only">Actions</span></TH>
               </TR>
             </THead>
             <TBody>
@@ -62,6 +66,9 @@ export default async function PriceBooksPage() {
                   </TD>
                   <TD>
                     {b.active ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Inactive</Badge>}
+                  </TD>
+                  <TD className="text-right">
+                    <RowActions type="PriceBook" id={b.id} name={String(b.name ?? "")} editHref={`/price-books/${b.id}`} canDelete={canDeleteRow} />
                   </TD>
                 </TR>
               ))}

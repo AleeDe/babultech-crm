@@ -286,7 +286,16 @@ Added 29 September 2026, migrations `20260929000000` to `20260929000005`.
 - **Recent records.** The last thirty opened, in the ⌘K box and on My work.
 - **Recycle bin.** Soft delete with `deletedById`; `recycle_blocker()` decides
   what may not be deleted; `recycle_purge()` erases after 90 days at 03:30
-  Karachi.
+  Karachi. Since 4 October 2026 (`20261004000001`) every list row has a Delete
+  link (`components/row-actions.tsx`), and quotes, contracts, projects,
+  products, price books, partners, help articles, campaign members,
+  activities, draft invoices and supplier bills, unallocated payments and
+  expense claims go to the bin too. See `docs/roles-and-access.md` for who may
+  delete what.
+- **Campaign ROI** comes from `v_campaign_performance`, recreated by
+  `20261004000000` after the 21 September rebuild of `campaign_member` dropped
+  it with `CASCADE`. A `DROP ... CASCADE` drops dependent views silently, so
+  check `information_schema.views` after one.
 
 Scheduled database jobs: `babultech-jobs-tick` (every minute),
 `babultech-due-reminders` (03:00 UTC), `babultech-jobs-housekeeping` (22:15 UTC),

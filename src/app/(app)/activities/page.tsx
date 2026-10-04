@@ -6,7 +6,9 @@ import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
 import { applySearch } from "@/lib/db";
 import { ListFilters, optionsFrom } from "@/components/list-filters";
-import { requireUser } from "@/lib/authz";
+import { requireUser, can } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import {
   PageHeader, Button, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, EmptyState, StatTile,
@@ -19,6 +21,7 @@ export default async function ActivitiesPage({
   searchParams: Promise<{ search?: string; activityType?: string; status?: string }>;
 }) {
   const user = await requireUser();
+  const canDeleteRow = can(user, RECYCLE_TYPES.Activity.permission);
   const params = await searchParams;
   await applyDefaultView("activities", params);
 
@@ -129,6 +132,7 @@ export default async function ActivitiesPage({
                   <TH>Due</TH>
                   <TH priority="secondary">Priority</TH>
                   <TH>Status</TH>
+                  <TH><span className="sr-only">Actions</span></TH>
                 </TR>
               </THead>
               <TBody>
@@ -173,6 +177,9 @@ export default async function ActivitiesPage({
                       </TD>
                       <TD>
                         <Badge tone={statusTone(a.status)}>{humanize(a.status)}</Badge>
+                      </TD>
+                      <TD className="text-right">
+                        <RowActions type="Activity" id={a.id} name={String(a.subject ?? "")} canDelete={canDeleteRow} />
                       </TD>
                     </TR>
                   );

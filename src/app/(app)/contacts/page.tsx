@@ -9,6 +9,8 @@ import {
 } from "@/components/ui";
 import { humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import { ExportButton } from "@/components/export-button";
 
 export default async function ContactsPage({
@@ -17,6 +19,7 @@ export default async function ContactsPage({
   searchParams: Promise<{ search?: string; filter?: string }>;
 }) {
   const _me = await requireUser();
+  const canDeleteRow = can(_me, RECYCLE_TYPES.Contact.permission);
   if (!can(_me, PERMISSIONS.ACCOUNT_READ)) return <Forbidden what="contacts" />;
 
   const params = await searchParams;
@@ -74,6 +77,7 @@ export default async function ContactsPage({
                 <TH priority="secondary">Phone</TH>
                 <TH priority="tertiary">Role</TH>
                 <TH className="text-right">Actions</TH>
+                <TH><span className="sr-only">Actions</span></TH>
               </TR>
             </THead>
             <TBody>
@@ -113,6 +117,9 @@ export default async function ContactsPage({
                     <Link href={`/contacts/${c.id}/edit`} className="text-sm text-primary hover:underline">
                       Edit
                     </Link>
+                  </TD>
+                  <TD className="text-right">
+                    <RowActions type="Contact" id={c.id} name={`${c.firstName ?? ""} ${c.lastName ?? ""}`.trim()} canDelete={canDeleteRow} />
                   </TD>
                 </TR>
               ))}

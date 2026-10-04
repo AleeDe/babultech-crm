@@ -19,12 +19,12 @@ export default async function RecycleBinPage() {
     <>
       <PageHeader
         title="Recycle bin"
-        description="Deleted leads, accounts, contacts, deals, cases and campaigns. Each can be restored for 90 days, then it is erased for good."
+        description="Everything deleted from a list or a record's page. Each can be restored for 90 days, then it is erased for good. Users are never deleted, only switched off."
       />
       <Card>
         {items.length === 0 ? (
           <div className="p-6">
-            <EmptyState title="The recycle bin is empty" description="Something you delete from its page waits here in case it is wanted back." />
+            <EmptyState title="The recycle bin is empty" description="Something you delete waits here in case it is wanted back." />
           </div>
         ) : (
           <Table>
@@ -45,7 +45,7 @@ export default async function RecycleBinPage() {
                 return (
                   <TR key={`${item.type}:${item.id}`}>
                     <TD className="text-sm font-medium">
-                      <Link href={item.href} className="hover:underline">{item.label}</Link>
+                      {item.href ? <Link href={item.href} className="hover:underline">{item.label}</Link> : item.label}
                     </TD>
                     <TD><Badge tone="neutral">{item.typeLabel}</Badge></TD>
                     <TD className="text-sm" priority="secondary">{formatDateTime(item.deletedAt)}</TD>

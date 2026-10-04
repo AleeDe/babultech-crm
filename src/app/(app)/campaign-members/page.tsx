@@ -5,6 +5,8 @@ import { BanIcon, MailX, Plus, Upload } from "lucide-react";
 import { listCampaignMembers, getCampaignMemberTotals } from "@/server/campaign-members";
 import { getPicklistMap } from "@/server/picklists";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, Button, Select,
   EmptyState, StatTile, Input, Forbidden,
@@ -27,6 +29,7 @@ export default async function CampaignMembersPage({
   }>;
 }) {
   const me = await requireUser();
+  const canDeleteRow = can(me, RECYCLE_TYPES.CampaignMember.permission);
   if (!can(me, PERMISSIONS.LEAD_READ)) return <Forbidden what="campaign members" />;
 
   const params = await searchParams;
@@ -153,6 +156,7 @@ export default async function CampaignMembersPage({
                 <TH priority="secondary">Last contacted</TH>
                 <TH className="text-right" priority="tertiary">Campaigns</TH>
                 <TH>Email</TH>
+                <TH><span className="sr-only">Actions</span></TH>
               </TR>
             </THead>
             <TBody>
@@ -216,6 +220,9 @@ export default async function CampaignMembersPage({
                     ) : (
                       <Badge tone="neutral">No address</Badge>
                     )}
+                  </TD>
+                  <TD className="text-right">
+                    <RowActions type="CampaignMember" id={member.id} name={`${member.firstName ?? ""} ${member.lastName ?? ""}`.trim()} editHref={`/campaign-members/${member.id}/edit`} canDelete={canDeleteRow} />
                   </TD>
                 </TR>
               ))}

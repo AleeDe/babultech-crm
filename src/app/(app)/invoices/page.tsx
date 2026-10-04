@@ -7,6 +7,8 @@ import { one } from "@/lib/decimal";
 import { applySearch, LIST_LIMIT } from "@/lib/db";
 import { ListFilters, optionsFrom } from "@/components/list-filters";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import { ExportButton } from "@/components/export-button";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
@@ -22,6 +24,7 @@ export default async function InvoicesPage({
   searchParams: Promise<{ search?: string; status?: string }>;
 }) {
   const _me = await requireUser();
+  const canDeleteRow = can(_me, RECYCLE_TYPES.Invoice.permission);
   if (!can(_me, PERMISSIONS.INVOICE_READ)) return <Forbidden what="invoices" />;
 
   const params = await searchParams;
@@ -139,6 +142,7 @@ export default async function InvoicesPage({
                 <TH className="text-right">Outstanding</TH>
                 <TH priority="tertiary">Ageing</TH>
                 <TH>Status</TH>
+                <TH><span className="sr-only">Actions</span></TH>
               </TR>
             </THead>
             <TBody>
@@ -178,6 +182,9 @@ export default async function InvoicesPage({
                     </TD>
                     <TD>
                       <Badge tone={statusTone(i.status)}>{humanize(i.status)}</Badge>
+                    </TD>
+                    <TD className="text-right">
+                      <RowActions type="Invoice" id={i.id} name={String(i.invoiceNumber ?? "")} editHref={`/invoices/${i.id}/edit`} canDelete={canDeleteRow} />
                     </TD>
                   </TR>
                 );

@@ -5,6 +5,8 @@ import { Plus } from "lucide-react";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
 import { requireUser, can, scopeFilter, PERMISSIONS } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import { applyScope } from "@/lib/db";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
@@ -23,6 +25,7 @@ export default async function CasesPage({
   searchParams: Promise<{ status?: string; priority?: string; search?: string }>;
 }) {
   const _me = await requireUser();
+  const canDeleteRow = can(_me, RECYCLE_TYPES.SupportCase.permission);
   if (!can(_me, PERMISSIONS.CASE_READ)) return <Forbidden what="support cases" />;
   const params = await searchParams;
   await applyDefaultView("cases", params);
@@ -146,6 +149,7 @@ export default async function CasesPage({
                 <TH>Resolution due</TH>
                 <TH priority="secondary">Priority</TH>
                 <TH>Status</TH>
+                <TH><span className="sr-only">Actions</span></TH>
               </TR>
             </THead>
             <TBody>
@@ -195,6 +199,9 @@ export default async function CasesPage({
                     </TD>
                     <TD>
                       <Badge tone={statusTone(c.status)}>{humanize(c.status)}</Badge>
+                    </TD>
+                    <TD className="text-right">
+                      <RowActions type="SupportCase" id={c.id} name={String(c.subject ?? "")} canDelete={canDeleteRow} />
                     </TD>
                   </TR>
                 );

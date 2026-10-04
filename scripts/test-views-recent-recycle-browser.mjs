@@ -80,7 +80,7 @@ try {
   await page.getByRole("dialog").getByRole("textbox").fill(`Contacted ${run}`);
   await page.getByRole("dialog").getByLabel("Open this list with this view").check();
   await page.getByRole("button", { name: "Save view" }).click();
-  await page.getByRole("button", { name: new RegExp(`Contacted ${run}`) }).waitFor({ timeout: 15000 });
+  await page.getByRole("button", { name: new RegExp(`^Contacted ${run}`) }).waitFor({ timeout: 15000 });
   const view = await must(db.from("saved_view").select("query, isDefault").eq("userId", ids.user).single(), "Read the view");
   assert.deepEqual(view, { query: "status=CONTACTED", isDefault: true });
   pass("Save the filtered list as a view, made the default");
@@ -91,7 +91,7 @@ try {
   assert.ok(body.includes(`Contacted ${run}`) && !body.includes(`Open ${run}`), "The default view opens");
   pass("Arriving at the list opens the default view");
 
-  await page.getByRole("button", { name: new RegExp(`Contacted ${run}`) }).click();
+  await page.getByRole("button", { name: new RegExp(`^Contacted ${run}`) }).click();
   await page.getByRole("menuitem", { name: "All records" }).click();
   await page.waitForURL(/\/leads\?all=1/, { timeout: 15000 });
   await page.getByText(`Open ${run}`).first().waitFor({ timeout: 15000 });

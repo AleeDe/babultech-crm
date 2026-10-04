@@ -5,6 +5,8 @@ import { listPartners } from "@/server/partners";
 import { supabaseServer } from "@/lib/supabase";
 import { one } from "@/lib/decimal";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import { ExportButton } from "@/components/export-button";
 import {
   PageHeader, Button, Card, Table, THead, TBody, TR, TH, TD,
@@ -18,6 +20,7 @@ export default async function PartnersPage({
   searchParams: Promise<{ search?: string; status?: string; kind?: string; partnerType?: string }>;
 }) {
   const _me = await requireUser();
+  const canDeleteRow = can(_me, RECYCLE_TYPES.Partner.permission);
   if (!can(_me, PERMISSIONS.PARTNER_READ)) return <Forbidden what="partners" />;
 
   const params = await searchParams;
@@ -136,6 +139,7 @@ export default async function PartnersPage({
                 <TH className="text-right">Referrals</TH>
                 <TH>Agreement</TH>
                 <TH>Status</TH>
+                <TH><span className="sr-only">Actions</span></TH>
               </TR>
             </THead>
             <TBody>
@@ -191,6 +195,9 @@ export default async function PartnersPage({
                     </TD>
                     <TD>
                       <Badge tone={statusTone(p.status)}>{humanize(p.status)}</Badge>
+                    </TD>
+                    <TD className="text-right">
+                      <RowActions type="Partner" id={p.id} name={String(p.displayName ?? "")} canDelete={canDeleteRow} />
                     </TD>
                   </TR>
                 );

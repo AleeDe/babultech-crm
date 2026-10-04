@@ -5,6 +5,8 @@ import { one } from "@/lib/decimal";
 import { applySearch, LIST_LIMIT } from "@/lib/db";
 import { ListFilters, optionsFrom } from "@/components/list-filters";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import { ExportButton } from "@/components/export-button";
 import {
   PageHeader, Card, Table, THead, TBody, TR, TH, TD, Badge, statusTone,
@@ -18,6 +20,7 @@ export default async function QuotationsPage({
   searchParams: Promise<{ search?: string; status?: string }>;
 }) {
   const _me = await requireUser();
+  const canDeleteRow = can(_me, RECYCLE_TYPES.Quotation.permission);
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="quotations" />;
 
   const params = await searchParams;
@@ -120,6 +123,7 @@ export default async function QuotationsPage({
                 <TH className="text-right">Total</TH>
                 <TH priority="tertiary">Approval</TH>
                 <TH>Status</TH>
+                <TH><span className="sr-only">Actions</span></TH>
               </TR>
             </THead>
             <TBody>
@@ -155,6 +159,9 @@ export default async function QuotationsPage({
                     </TD>
                     <TD>
                       <Badge tone={statusTone(q.status)}>{humanize(q.status)}</Badge>
+                    </TD>
+                    <TD className="text-right">
+                      <RowActions type="Quotation" id={q.id} name={String(q.quoteNumber ?? "")} editHref={`/quotations/${q.id}/edit`} canDelete={canDeleteRow} />
                     </TD>
                   </TR>
                 );

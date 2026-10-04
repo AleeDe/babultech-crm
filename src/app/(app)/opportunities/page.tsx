@@ -10,6 +10,8 @@ import {
 } from "@/components/ui";
 import { formatMoney, formatCompactMoney, formatDate, humanize, formatCompactMoneyTotal } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import { ExportButton } from "@/components/export-button";
 import { listPartnerOptions } from "@/server/partners";
 
@@ -25,6 +27,7 @@ export default async function OpportunitiesPage({
   searchParams: Promise<{ stage?: string; search?: string; partnerId?: string }>;
 }) {
   const _me = await requireUser();
+  const canDeleteRow = can(_me, RECYCLE_TYPES.Opportunity.permission);
   if (!can(_me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="opportunities" />;
 
   const params = await searchParams;
@@ -109,6 +112,7 @@ export default async function OpportunitiesPage({
                 <TH className="text-right">Prob.</TH>
                 <TH>Close date</TH>
                 <TH priority="secondary">Stage</TH>
+                <TH><span className="sr-only">Actions</span></TH>
               </TR>
             </THead>
             <TBody>
@@ -157,6 +161,9 @@ export default async function OpportunitiesPage({
                     </TD>
                     <TD priority="secondary">
                       <Badge tone={statusTone(d.stage)}>{humanize(d.stage)}</Badge>
+                    </TD>
+                    <TD className="text-right">
+                      <RowActions type="Opportunity" id={d.id} name={String(d.name ?? "")} editHref={`/opportunities/${d.id}/edit`} canDelete={canDeleteRow} />
                     </TD>
                   </TR>
                 );

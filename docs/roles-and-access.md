@@ -2,6 +2,32 @@
 
 How access is decided in this system, and the rules to follow when changing it.
 
+## 4 October 2026: deleting from list rows
+
+Every list has a Delete link beside Edit on each row, and more kinds of record
+go to the recycle bin (`20261004000001`). Who may delete each kind:
+
+| Kind | Permission |
+| --- | --- |
+| Leads, campaign members, activities | `lead:delete` |
+| Accounts, contacts | `account:delete` |
+| Deals, quotes | `opportunity:delete` |
+| Cases, help articles | `case:delete` |
+| Campaigns | `campaign:delete` |
+| Contracts | `contract:delete` |
+| Projects | `project:manage` |
+| Invoices (drafts only) | `invoice:write` |
+| Supplier bills (drafts only) | `payable:approve` |
+| Payments (unallocated only) | `payment:write` |
+| Products and services, price books, partners, expense claims | administrators |
+
+Money stays intact: an issued invoice is voided or credited, never deleted; a
+supplier bill only while a draft; a payment only while nothing is allocated
+from it; nothing in a closed month. An administrator may delete any expense
+claim, approved or paid included, unless its month is closed; everyone else
+keeps the earlier rule (their own, before approval). Users are never deleted,
+only switched off. `recycle_blocker()` gives the reason for every refusal.
+
 ## 29 September 2026: View as, and deleting records
 
 **View as** (`user:view_as`) opens the CRM or a portal as another person sees

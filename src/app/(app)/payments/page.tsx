@@ -8,6 +8,8 @@ import {
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize, formatMoneyTotal } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import { ExportButton } from "@/components/export-button";
 
 export default async function PaymentsPage({
@@ -16,6 +18,7 @@ export default async function PaymentsPage({
   searchParams: Promise<{ filter?: string; search?: string; status?: string }>;
 }) {
   const _me = await requireUser();
+  const canDeleteRow = can(_me, RECYCLE_TYPES.Payment.permission);
   if (!can(_me, PERMISSIONS.INVOICE_READ)) return <Forbidden what="payments" />;
 
   const params = await searchParams;
@@ -104,6 +107,7 @@ export default async function PaymentsPage({
                 <TH className="text-right" priority="tertiary">Unapplied</TH>
                 <TH priority="tertiary">Applied to</TH>
                 <TH>Status</TH>
+                <TH><span className="sr-only">Actions</span></TH>
               </TR>
             </THead>
             <TBody>
@@ -150,6 +154,9 @@ export default async function PaymentsPage({
                     )}
                   </TD>
                   <TD><Badge tone={statusTone(p.status)}>{humanize(p.status)}</Badge></TD>
+                  <TD className="text-right">
+                    <RowActions type="Payment" id={p.id} name={String(p.paymentNumber ?? "")} canDelete={canDeleteRow} />
+                  </TD>
                 </TR>
               ))}
             </TBody>

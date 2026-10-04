@@ -2,6 +2,7 @@
 
 import { Mail } from "lucide-react";
 import Link from "next/link";
+import { RowActions } from "@/components/row-actions";
 import {
   Table, THead, TBody, TR, TH, TD, Badge, statusTone, EmptyState, Button,
 } from "@/components/ui";
@@ -23,10 +24,13 @@ export function LeadsTable({
   leads,
   users,
   canWrite,
+  canDelete = false,
 }: {
   leads: Lead[];
   users: { id: string; fullName: string }[];
   canWrite: boolean;
+  /** Delete to the recycle bin, from the row. */
+  canDelete?: boolean;
 }) {
   const selection = useSelection(leads);
 
@@ -159,6 +163,7 @@ export function LeadsTable({
                   <Badge tone={statusTone(l.status)}>{humanize(l.status)}</Badge>
                 </TD>
                 <TD className="whitespace-nowrap text-right text-sm">
+                  <div className="flex items-start justify-end gap-x-1.5">
                   <Link href={`/leads/${l.id}/edit`} className="text-primary hover:underline">
                     {l.status === "CONVERTED" ? "View" : "Edit"}
                   </Link>
@@ -173,6 +178,13 @@ export function LeadsTable({
                       </Link>
                     </>
                   )}
+                  {canDelete && l.status !== "CONVERTED" && (
+                    <>
+                      <span className="text-muted-foreground">·</span>
+                      <RowActions type="Lead" id={l.id} name={`${l.firstName ?? ""} ${l.lastName ?? ""}`.trim()} canDelete />
+                    </>
+                  )}
+                  </div>
                 </TD>
               </TR>
             );

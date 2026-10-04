@@ -9,6 +9,8 @@ import {
 } from "@/components/ui";
 import { humanize } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import { ExportButton } from "@/components/export-button";
 import { listPartnerOptions } from "@/server/partners";
 
@@ -18,6 +20,7 @@ export default async function AccountsPage({
   searchParams: Promise<{ search?: string; accountType?: string; partnerId?: string }>;
 }) {
   const _me = await requireUser();
+  const canDeleteRow = can(_me, RECYCLE_TYPES.Account.permission);
   if (!can(_me, PERMISSIONS.ACCOUNT_READ)) return <Forbidden what="accounts" />;
 
   const params = await searchParams;
@@ -77,6 +80,7 @@ export default async function AccountsPage({
                 <TH className="text-right" priority="tertiary">Deals</TH>
                 <TH className="text-right" priority="tertiary">Cases</TH>
                 <TH priority="secondary">Health</TH>
+                <TH><span className="sr-only">Actions</span></TH>
               </TR>
             </THead>
             <TBody>
@@ -118,6 +122,9 @@ export default async function AccountsPage({
                     ) : (
                       <span className="text-sm text-muted-foreground">—</span>
                     )}
+                  </TD>
+                  <TD className="text-right">
+                    <RowActions type="Account" id={a.id} name={String(a.name ?? "")} editHref={`/accounts/${a.id}/edit`} canDelete={canDeleteRow} />
                   </TD>
                 </TR>
               ))}

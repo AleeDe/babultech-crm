@@ -138,7 +138,8 @@ export interface RecycleItem {
   label: string;
   deletedAt: string;
   deletedByName: string | null;
-  href: string;
+  /** The record's own page, for the kinds whose page still opens once deleted. */
+  href: string | null;
 }
 
 /** Everything in the bin that this person may restore, newest first. */
@@ -173,7 +174,7 @@ export async function listRecycleBin(): Promise<RecycleItem[]> {
       label: recycleLabel(type, row) || "(no name)",
       deletedAt: row.deletedAt as string,
       deletedByName: names.get(row.deletedById as string) ?? null,
-      href: `${RECYCLE_TYPES[type].path}${row.id}`,
+      href: RECYCLE_TYPES[type].opensWhenDeleted ? `${RECYCLE_TYPES[type].path}${row.id}` : null,
     }))
     .sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)));
 }

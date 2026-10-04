@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { listVendorBills, getPayablesSummary } from "@/server/payables";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import { ExportButton } from "@/components/export-button";
 import { ListFilters, optionsFrom } from "@/components/list-filters";
 import {
@@ -17,6 +19,7 @@ export default async function VendorBillsPage({
   searchParams: Promise<{ search?: string; status?: string }>;
 }) {
   const me = await requireUser();
+  const canDeleteRow = can(me, RECYCLE_TYPES.VendorBill.permission);
   if (!can(me, PERMISSIONS.INVOICE_READ)) return <Forbidden what="vendor bills" />;
 
   const params = await searchParams;
@@ -109,6 +112,7 @@ export default async function VendorBillsPage({
                 <TH className="text-right">Outstanding</TH>
                 <TH priority="tertiary">Ageing</TH>
                 <TH>Status</TH>
+                <TH><span className="sr-only">Actions</span></TH>
               </TR>
             </THead>
             <TBody>
@@ -167,6 +171,9 @@ export default async function VendorBillsPage({
                     </TD>
                     <TD>
                       <Badge tone={statusTone(b.status)}>{humanize(b.status)}</Badge>
+                    </TD>
+                    <TD className="text-right">
+                      <RowActions type="VendorBill" id={b.id} name={String(b.billNumber ?? "")} canDelete={canDeleteRow} />
                     </TD>
                   </TR>
                 );

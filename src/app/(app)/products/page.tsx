@@ -6,6 +6,8 @@ import {
   PageHeader, Button, Card, Table, THead, TBody, TR, TH, TD, Badge, EmptyState, Forbidden, StatTile,
 } from "@/components/ui";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 
 export default async function ProductsServicesPage({
   searchParams,
@@ -13,6 +15,7 @@ export default async function ProductsServicesPage({
   searchParams: Promise<{ search?: string; productType?: string; active?: string }>;
 }) {
   const me = await requireUser();
+  const canDeleteRow = can(me, RECYCLE_TYPES.Product.permission);
   if (!can(me, PERMISSIONS.OPPORTUNITY_READ)) return <Forbidden what="products and services" />;
 
   const params = await searchParams;
@@ -90,6 +93,7 @@ export default async function ProductsServicesPage({
                 <TH priority="secondary">Add in Task</TH>
                 <TH priority="secondary">Owner</TH>
                 <TH>Status</TH>
+                <TH><span className="sr-only">Actions</span></TH>
               </TR>
             </THead>
             <TBody>
@@ -112,6 +116,9 @@ export default async function ProductsServicesPage({
                   <TD priority="secondary" className="text-sm">{i.owner?.name ?? "—"}</TD>
                   <TD>
                     {i.active ? <Badge tone="success">Active</Badge> : <Badge tone="warning">Inactive</Badge>}
+                  </TD>
+                  <TD className="text-right">
+                    <RowActions type="Product" id={i.id} name={String(i.name ?? "")} editHref={`/products/${i.id}/edit`} canDelete={canDeleteRow} />
                   </TD>
                 </TR>
               ))}

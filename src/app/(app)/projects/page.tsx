@@ -9,6 +9,8 @@ import {
 } from "@/components/ui";
 import { formatMoney, formatDate, formatPercent, humanize, formatMoneyTotal } from "@/lib/utils";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import { ExportButton } from "@/components/export-button";
 
 const STATUSES = ["DRAFT", "PLANNING", "ACTIVE", "ON_HOLD", "AT_RISK", "COMPLETED", "CANCELLED"];
@@ -19,6 +21,7 @@ export default async function ProjectsPage({
   searchParams: Promise<{ status?: string; search?: string; projectType?: string }>;
 }) {
   const _me = await requireUser();
+  const canDeleteRow = can(_me, RECYCLE_TYPES.Project.permission);
   if (!can(_me, PERMISSIONS.PROJECT_READ)) return <Forbidden what="projects" />;
 
   const params = await searchParams;
@@ -106,6 +109,7 @@ export default async function ProjectsPage({
                 <TH className="text-right" priority="tertiary">Progress</TH>
                 <TH priority="secondary">Health</TH>
                 <TH>Status</TH>
+                <TH><span className="sr-only">Actions</span></TH>
               </TR>
             </THead>
             <TBody>
@@ -155,6 +159,9 @@ export default async function ProjectsPage({
                     </TD>
                     <TD>
                       <Badge tone={statusTone(p.status)}>{humanize(p.status)}</Badge>
+                    </TD>
+                    <TD className="text-right">
+                      <RowActions type="Project" id={p.id} name={String(p.name ?? "")} editHref={`/projects/${p.id}/edit`} canDelete={canDeleteRow} />
                     </TD>
                   </TR>
                 );
