@@ -303,7 +303,9 @@ Added 29 September 2026, migrations `20260929000000` to `20260929000005`.
 
 Scheduled database jobs: `babultech-jobs-tick` (every minute),
 `babultech-due-reminders` (03:00 UTC), `babultech-jobs-housekeeping` (22:15 UTC),
-`babultech-recycle-purge` (22:30 UTC).
+`babultech-recycle-purge` (22:30 UTC), `babultech-notification-housekeeping`
+(22:45 UTC: read notifications 7 days after reading, email-only ones 7 days
+after sending, overdue reminders after 31 days; unread ones are kept).
 
 ### Marketing: prospects, tracking, forms, attribution, scoring
 
