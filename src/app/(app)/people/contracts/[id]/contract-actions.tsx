@@ -15,7 +15,8 @@ interface ContractSummary {
   status: ContractStatus;
   contractNumber: string;
   startDate: string;
-  endDate: string;
+  endDate: string | null;
+  contractType: string;
   personalEmail: string | null;
   staffId: string;
   signTokenExpiresAt: string | null;
@@ -122,8 +123,15 @@ export function ContractActions({ contract: c }: { contract: ContractSummary }) 
 
         {c.status === "ACTIVE" && (
           <div className="space-y-3">
-            <p>Running until <span className="font-medium">{contractDate(c.endDate)}</span>. If nothing follows it, it ends then and their login is switched off the day after.</p>
-            {!c.hasSuccessor && (
+            {c.endDate ? (
+              <p>Running until <span className="font-medium">{contractDate(c.endDate)}</span>. If nothing follows it, it ends then and their login is switched off the day after.</p>
+            ) : (
+              <p>Running, with no end date. To change equity, areas or financials, revise it: the new agreement replaces this one once signed.</p>
+            )}
+            {!c.hasSuccessor && c.contractType === "COFOUNDER" && (
+              <Button asChild><Link href={`/people/${c.staffId}/contracts/new?from=${c.id}&mode=renew`}>Revise agreement</Link></Button>
+            )}
+            {!c.hasSuccessor && c.contractType !== "COFOUNDER" && (
               <div className="flex flex-wrap gap-2">
                 <Button asChild><Link href={`/people/${c.staffId}/contracts/new?from=${c.id}&mode=renew`}>Renew</Link></Button>
                 <Button asChild variant="outline"><Link href={`/people/${c.staffId}/contracts/new?from=${c.id}&mode=convert`}>Convert to employment</Link></Button>
@@ -149,7 +157,7 @@ export function ContractActions({ contract: c }: { contract: ContractSummary }) 
                   </Select>
                 </Field>
                 <Field label="Notice given on"><Input type="date" name="noticeGivenOn" defaultValue={today} /></Field>
-                <Field label="Last working day" required hint="Their login stays on until then."><Input type="date" name="lastWorkingDay" min={c.startDate} max={c.endDate} required /></Field>
+                <Field label="Last working day" required hint="Their login stays on until then."><Input type="date" name="lastWorkingDay" min={c.startDate} max={c.endDate ?? undefined} required /></Field>
                 <Field label="Reason" required><Textarea name="endReason" rows={2} required /></Field>
                 <div className="flex gap-2">
                   <Button type="submit" variant="destructive" disabled={pending}>Record it</Button>

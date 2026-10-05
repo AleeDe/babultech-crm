@@ -84,3 +84,32 @@ describe("the People permissions", () => {
     expect(ALL_PERMISSIONS).toContain(PERMISSIONS.PEOPLE_WRITE);
   });
 });
+
+describe("co-founder agreements", () => {
+  it("are a kind of contract with no end date", async () => {
+    const { CONTRACT_TYPES, isCofounder, tenureLabel, daysUntil } = await import("@/lib/people");
+    expect(CONTRACT_TYPES).toContain("COFOUNDER");
+    expect(isCofounder("COFOUNDER")).toBe(true);
+    expect(isCofounder("PERMANENT")).toBe(false);
+    expect(tenureLabel(null)).toBe("no fixed end");
+    expect(daysUntil(null, "2026-10-05")).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it("word equity, vesting and capital as the agreement prints them", async () => {
+    const { percentLabel, vestingLabel, capitalLabel } = await import("@/lib/people");
+    expect(percentLabel("40.000")).toBe("40%");
+    expect(percentLabel(12.5)).toBe("12.5%");
+    expect(percentLabel(null, "in proportion to equity")).toBe("in proportion to equity");
+    expect(vestingLabel(48, 12)).toBe("vests in equal monthly parts over 4 years, with a 12-month cliff");
+    expect(vestingLabel(12, null)).toBe("vests in equal monthly parts over 1 year");
+    expect(vestingLabel(30, 6)).toBe("vests in equal monthly parts over 30 months, with a 6-month cliff");
+    expect(vestingLabel(null, null)).toBe("fully vested from the start date");
+    expect(capitalLabel("500000", "PKR")).toBe("PKR 500,000");
+    expect(capitalLabel(null, null)).toBe("None");
+  });
+
+  it("fill the co-founder placeholders", () => {
+    const text = fillContract("{{equity}} · {{responsibilities}}", { equity: "40%", responsibilities: benefitLines(["Development", "Research"]) });
+    expect(text).toBe("40% · - Development\n- Research");
+  });
+});

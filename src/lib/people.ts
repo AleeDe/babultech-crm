@@ -2,13 +2,14 @@
  * Hiring and employment contracts: the shapes and rules the server, the forms
  * and the tests share. No database access here.
  *
- * A contract always has an end date. Internships, training and fixed-term
- * employment run for the tenure chosen at hiring; a permanent contract runs a
- * year and is renewed at each appraisal. See
+ * Internships, training and fixed-term employment run for the tenure chosen
+ * at hiring; a permanent contract runs a year and is renewed at each
+ * appraisal. A co-founder agreement has no end date: it records equity and
+ * areas of responsibility instead, and runs until ended or revised. See
  * supabase/migrations/20261005000000_people_and_contracts.sql for the life cycle.
  */
 
-export const CONTRACT_TYPES = ["INTERNSHIP", "TRAINING", "EMPLOYMENT", "PERMANENT"] as const;
+export const CONTRACT_TYPES = ["INTERNSHIP", "TRAINING", "EMPLOYMENT", "PERMANENT", "COFOUNDER"] as const;
 export type ContractType = (typeof CONTRACT_TYPES)[number];
 
 export const CONTRACT_TYPE_LABELS: Record<ContractType, string> = {
@@ -16,7 +17,11 @@ export const CONTRACT_TYPE_LABELS: Record<ContractType, string> = {
   TRAINING: "Training",
   EMPLOYMENT: "Employment (fixed term)",
   PERMANENT: "Permanent employment",
+  COFOUNDER: "Co-founder",
 };
+
+/** A co-founder agreement: no end date, equity instead of a tenure. */
+export const isCofounder = (type: string | null | undefined) => type === "COFOUNDER";
 
 /** The tenures offered at hiring. A permanent contract is always 12 months. */
 export const TENURES = [
@@ -102,11 +107,13 @@ export function karachiToday(now = new Date()): string {
 }
 
 /** Whole days from today to a date; negative once it has passed. */
-export function daysUntil(date: string, today = karachiToday()): number {
+export function daysUntil(date: string | null, today = karachiToday()): number {
+  if (!date) return Number.POSITIVE_INFINITY;
   return Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
 }
 
-export function tenureLabel(months: number): string {
+export function tenureLabel(months: number | null): string {
+  if (months == null) return "no fixed end";
   if (months === 12) return "one year";
   if (months % 12 === 0) return `${months / 12} years`;
   return months === 1 ? "one month" : `${months} months`;
@@ -122,6 +129,28 @@ export function payLabel(basis: string, amount: string | number | null, currency
   return `${currency ?? ""} ${figure} ${per[basis] ?? ""}`.trim();
 }
 
+const figure = (v: string | number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 3 }).format(Number(v));
+
+/** "25%". */
+export function percentLabel(value: string | number | null | undefined, none = "None"): string {
+  return value == null || value === "" ? none : `${figure(value)}%`;
+}
+
+/** How a co-founder's equity vests, in words. */
+export function vestingLabel(vestingMonths: string | number | null | undefined, cliffMonths: string | number | null | undefined): string {
+  const v = vestingMonths == null || vestingMonths === "" ? null : Number(vestingMonths);
+  const c = cliffMonths == null || cliffMonths === "" ? null : Number(cliffMonths);
+  if (!v) return "fully vested from the start date";
+  const over = v % 12 === 0 ? `${v / 12} year${v === 12 ? "" : "s"}` : `${v} months`;
+  return c ? `vests in equal monthly parts over ${over}, with a ${c}-month cliff` : `vests in equal monthly parts over ${over}`;
+}
+
+/** "PKR 500,000", or "None". */
+export function capitalLabel(amount: string | number | null | undefined, currency: string | null | undefined): string {
+  if (amount == null || amount === "" || Number(amount) === 0) return "None";
+  return `${currency ?? ""} ${figure(amount)}`.trim();
+}
+
 /**
  * A cost per hour for project costing, or null when it cannot be worked out.
  * Monthly and weekly pay need the weekly hours; a fixed amount is spread over
@@ -131,7 +160,7 @@ export function hourlyCost(input: {
   payBasis: string;
   payAmount: number | null;
   hoursPerWeek: number | null;
-  tenureMonths: number;
+  tenureMonths: number | null;
 }): number | null {
   const { payBasis, payAmount, hoursPerWeek, tenureMonths } = input;
   if (payAmount == null || payAmount <= 0) return null;
@@ -141,7 +170,7 @@ export function hourlyCost(input: {
   if (!hoursPerWeek) return null;
   if (payBasis === "WEEKLY") return round(payAmount / hoursPerWeek);
   if (payBasis === "MONTHLY") return round((payAmount * 12) / (hoursPerWeek * 52));
-  if (payBasis === "FIXED") return round(payAmount / (hoursPerWeek * (52 / 12) * tenureMonths));
+  if (payBasis === "FIXED") return tenureMonths ? round(payAmount / (hoursPerWeek * (52 / 12) * tenureMonths)) : null;
   return null;
 }
 
@@ -149,6 +178,8 @@ export const TEMPLATE_PLACEHOLDERS = [
   "companyName", "contractNumber", "today", "fullName", "fatherName", "nationalId", "address",
   "jobTitle", "department", "reportsTo", "contractType", "tenure", "startDate", "endDate",
   "hoursPerWeek", "pay", "benefits", "noticeDays", "otherTerms",
+  // Co-founder agreements.
+  "equity", "responsibilities", "vesting", "capital", "profitShare",
 ] as const;
 
 /**

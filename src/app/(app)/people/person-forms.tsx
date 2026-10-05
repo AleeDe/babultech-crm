@@ -5,7 +5,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui";
 import {
   CONTRACT_TYPES, CONTRACT_TYPE_LABELS, TENURES, PAY_BASES, PAY_BASIS_LABELS,
-  termEndDate, payLabel, tenureLabel,
+  termEndDate, payLabel, tenureLabel, percentLabel,
   type EducationEntry, type ExperienceEntry,
 } from "@/lib/people";
 import type { ProfileState, TermsState } from "@/lib/people-forms";
@@ -183,13 +183,19 @@ export function PositionFields({ value, onChange, options, errors, selfUserId }:
 }) {
   const f = useField(value, onChange);
   const permanent = value.contractType === "PERMANENT";
+  const cofounder = value.contractType === "COFOUNDER";
   const custom = !TENURES.some((t) => t.months === value.tenureMonths);
 
   // The end date follows the start and tenure; it can still be changed by hand.
   const setTerm = (patch: Partial<TermsState>) => {
     const next = { ...value, ...patch };
     if (next.contractType === "PERMANENT") next.tenureMonths = 12;
-    if (next.startDate && next.tenureMonths) next.endDate = termEndDate(next.startDate, next.tenureMonths);
+    if (next.contractType === "COFOUNDER") {
+      next.endDate = "";
+      if (!next.jobTitle) next.jobTitle = "Co-founder";
+    } else if (next.startDate && next.tenureMonths) {
+      next.endDate = termEndDate(next.startDate, next.tenureMonths);
+    }
     onChange(next);
   };
   const toggleTeam = (id: string) =>
@@ -203,6 +209,11 @@ export function PositionFields({ value, onChange, options, errors, selfUserId }:
             {CONTRACT_TYPES.map((t) => <option key={t} value={t}>{CONTRACT_TYPE_LABELS[t]}</option>)}
           </Select>
         </Field>
+        {cofounder ? (
+          <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground" data-cofounder-term>
+            A co-founder agreement has <span className="font-medium text-foreground">no end date</span>. It runs until it is ended, or replaced by a revised agreement. The next step, Financials, takes their equity and areas of responsibility.
+          </div>
+        ) : (
         <Field label="Tenure" required hint={permanent ? "Permanent contracts run a year and are renewed at each appraisal." : undefined}>
           <Select name="tenureMonths" disabled={permanent} value={custom ? "custom" : String(value.tenureMonths)}
             onChange={(e) => setTerm({ tenureMonths: e.target.value === "custom" ? 2 : Number(e.target.value) })}>
@@ -210,7 +221,8 @@ export function PositionFields({ value, onChange, options, errors, selfUserId }:
             <option value="custom">Other number of months…</option>
           </Select>
         </Field>
-        {custom && !permanent && (
+        )}
+        {custom && !permanent && !cofounder && (
           <Field label="Months" required>
             <Input name="customMonths" type="number" min={1} max={36} value={value.tenureMonths}
               onChange={(e) => setTerm({ tenureMonths: Math.max(1, Math.min(36, Number(e.target.value) || 1)) })} />
@@ -219,9 +231,11 @@ export function PositionFields({ value, onChange, options, errors, selfUserId }:
         <Field label="Start date" required error={err(errors, "startDate")}>
           <Input name="startDate" type="date" value={value.startDate} onChange={(e) => setTerm({ startDate: e.target.value })} />
         </Field>
-        <Field label="End date" required hint={`Worked out from the tenure: ${tenureLabel(value.tenureMonths)}.`} error={err(errors, "endDate")}>
-          <Input name="endDate" type="date" value={value.endDate} disabled={permanent} onChange={(e) => onChange({ ...value, endDate: e.target.value })} />
-        </Field>
+        {!cofounder && (
+          <Field label="End date" required hint={`Worked out from the tenure: ${tenureLabel(value.tenureMonths)}.`} error={err(errors, "endDate")}>
+            <Input name="endDate" type="date" value={value.endDate} disabled={permanent} onChange={(e) => onChange({ ...value, endDate: e.target.value })} />
+          </Field>
+        )}
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2">
@@ -285,11 +299,13 @@ export function CompensationFields({ value, onChange, options, errors }: {
     setExtra("");
   };
   const templates = options.templates.filter((t) => t.contractType === value.contractType);
+  const cofounder = value.contractType === "COFOUNDER";
 
   return (
     <div className="space-y-6">
+      {cofounder && <CofounderFields value={value} onChange={onChange} options={options} errors={errors} />}
       <section>
-        <h3 className="mb-1 text-sm font-semibold">What they get besides pay</h3>
+        <h3 className="mb-1 text-sm font-semibold">{cofounder ? "Benefits (optional)" : "What they get besides pay"}</h3>
         <p className="mb-2 text-xs text-muted-foreground">Tick everything that applies. The list is kept under Settings › Hiring benefits.</p>
         <div className="flex flex-wrap gap-2">
           {choices.map((b) => (
@@ -307,7 +323,7 @@ export function CompensationFields({ value, onChange, options, errors }: {
       </section>
 
       <section className="grid gap-4 sm:grid-cols-3">
-        <Field label="Pay" required>
+        <Field label={cofounder ? "Salary or drawings" : "Pay"} required>
           <Select name="payBasis" {...f("payBasis")}>
             {PAY_BASES.map((b) => <option key={b} value={b}>{PAY_BASIS_LABELS[b]}</option>)}
           </Select>
@@ -340,6 +356,92 @@ export function CompensationFields({ value, onChange, options, errors }: {
             <Textarea name="otherTerms" rows={3} {...f("otherTerms")} />
           </Field>
         </div>
+      </section>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Financials: what only a co-founder agreement records
+// ---------------------------------------------------------------------------
+
+function CofounderFields({ value, onChange, options, errors }: {
+  value: TermsState; onChange: (v: TermsState) => void; options: HiringOptions; errors?: Errors;
+}) {
+  const f = useField(value, onChange);
+  const [extra, setExtra] = useState("");
+  const areas = Array.from(new Set([...options.cofounderAreas, ...value.responsibilities]));
+  const toggle = (a: string) =>
+    onChange({ ...value, responsibilities: value.responsibilities.includes(a) ? value.responsibilities.filter((x) => x !== a) : [...value.responsibilities, a] });
+  const addExtra = () => {
+    const a = extra.trim();
+    if (a && !value.responsibilities.includes(a)) onChange({ ...value, responsibilities: [...value.responsibilities, a] });
+    setExtra("");
+  };
+  // Equity already given to others: running agreements and ones being signed.
+  // The agreement a revision replaces, or the draft being edited, is not counted.
+  const others = options.equityHeld.filter((e) => e.contractId !== value.replacesContractId && e.contractId !== value.editingContractId);
+  const held = others.reduce((sum, e) => sum + e.percent, 0);
+  const mine = Number(value.equityPercent) || 0;
+  const total = Math.round((held + mine) * 1000) / 1000;
+
+  return (
+    <div className="space-y-6 rounded-lg border p-4" data-cofounder-financials>
+      <section className="grid gap-4 sm:grid-cols-3">
+        <Field label="Equity (%)" required error={err(errors, "equityPercent")}>
+          <Input name="equityPercent" type="number" min={0.001} max={100} step="0.001" placeholder="25" {...f("equityPercent")} />
+        </Field>
+        <Field label="Vesting period (months)" hint="Optional. Equity is earned monthly over this period, e.g. 48.">
+          <Input name="vestingMonths" type="number" min={1} max={120} {...f("vestingMonths")} />
+        </Field>
+        <Field label="Cliff (months)" hint="Optional. Nothing vests before this, e.g. 12." error={err(errors, "cliffMonths")}>
+          <Input name="cliffMonths" type="number" min={0} max={60} disabled={!value.vestingMonths} {...f("cliffMonths")} />
+        </Field>
+      </section>
+      <div
+        className={total > 100
+          ? "rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200"
+          : "text-sm text-muted-foreground"}
+        data-equity-total
+      >
+        {others.length > 0
+          ? <>Already held: {others.map((e) => `${e.fullName} ${percentLabel(e.percent)}`).join(", ")}. </>
+          : <>No other co-founder agreements yet. </>}
+        With this one: <span className="font-medium">{percentLabel(total, "0%")}</span> of the company.
+        {total > 100 && " That is more than 100%. Check the percentages before saving."}
+      </div>
+
+      <section>
+        <h3 className="mb-1 text-sm font-semibold">Areas of responsibility</h3>
+        <p className="mb-2 text-xs text-muted-foreground">What they lead. Tick all that apply; the list is kept under Settings › Co-founder areas.</p>
+        <div className="flex flex-wrap gap-2">
+          {areas.map((a) => (
+            <label key={a} className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+              <input type="checkbox" name="responsibilities" value={a} checked={value.responsibilities.includes(a)} onChange={() => toggle(a)} />
+              {a}
+            </label>
+          ))}
+        </div>
+        <div className="mt-2 flex max-w-md gap-2">
+          <Input name="extraArea" placeholder="Another area, e.g. Finance" value={extra} onChange={(e) => setExtra(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addExtra(); } }} />
+          <Button type="button" variant="outline" onClick={addExtra}>Add</Button>
+        </div>
+        {err(errors, "responsibilities") && <p className="mt-1 text-xs text-destructive">{err(errors, "responsibilities")}</p>}
+      </section>
+
+      <section className="grid gap-4 sm:grid-cols-3">
+        <Field label="Capital invested" hint="Optional. What they put into the company.">
+          <Input name="capitalAmount" type="number" min={0} step="0.01" {...f("capitalAmount")} />
+        </Field>
+        <Field label="Currency" error={err(errors, "capitalCurrency")}>
+          <Select name="capitalCurrency" {...f("capitalCurrency")}>
+            {options.currencies.map((c) => <option key={c} value={c}>{c}</option>)}
+          </Select>
+        </Field>
+        <Field label="Profit share (%)" hint="Optional. Leave empty if profits follow equity.">
+          <Input name="profitSharePercent" type="number" min={0} max={100} step="0.001" {...f("profitSharePercent")} />
+        </Field>
       </section>
     </div>
   );

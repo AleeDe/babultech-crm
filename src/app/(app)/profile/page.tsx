@@ -126,7 +126,7 @@ export default async function ProfilePage() {
                       <Link href={`/people/contracts/${c.id}`} className="font-medium hover:underline">
                         {CONTRACT_TYPE_LABELS[c.contractType as ContractType]} · {c.jobTitle}
                       </Link>
-                      <p className="text-xs text-muted-foreground">{c.contractNumber} · {formatDate(c.startDate)} to {formatDate(c.endDate)}</p>
+                      <p className="text-xs text-muted-foreground">{c.contractNumber} · {formatDate(c.startDate)} to {c.endDate ? formatDate(c.endDate) : "no end date"}</p>
                     </div>
                     <Badge tone={contractTone(c.status)}>{CONTRACT_STATUS_LABELS[c.status as ContractStatus]}</Badge>
                   </div>

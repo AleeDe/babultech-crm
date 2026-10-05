@@ -8,7 +8,7 @@ import {
 import { DocumentsPanel } from "@/components/documents-panel";
 import { listDocuments } from "@/server/documents";
 import { getPerson } from "@/server/people";
-import { CONTRACT_TYPE_LABELS, CONTRACT_STATUS_LABELS, contractTone, payLabel, daysUntil, type ContractStatus, type ContractType } from "@/lib/people";
+import { CONTRACT_TYPE_LABELS, CONTRACT_STATUS_LABELS, contractTone, payLabel, daysUntil, isCofounder, percentLabel, type ContractStatus, type ContractType } from "@/lib/people";
 import { formatDate, humanize } from "@/lib/utils";
 import { LoginPanel } from "./login-panel";
 
@@ -24,7 +24,8 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
   const pending = contracts.find((c) => ["DRAFT", "SENT", "EMPLOYEE_SIGNED", "SIGNED"].includes(c.status));
   const followed = new Set(contracts.map((c) => c.previousContractId).filter(Boolean));
   const renewable = contracts.find((c) => ["ACTIVE", "ENDED"].includes(c.status) && !followed.has(c.id));
-  const left = running ? daysUntil(running.endDate) : null;
+  const left = running?.endDate ? daysUntil(running.endDate) : null;
+  const revisable = renewable && isCofounder(renewable.contractType);
   const s = (k: string) => (staff[k] ? String(staff[k]) : "—");
   const link = (k: string, label: string) => staff[k]
     ? <a href={String(staff[k])} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">{label}<ExternalLink className="h-3 w-3" /></a>
@@ -34,7 +35,10 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
     <div className="mx-auto max-w-6xl">
       <PageHeader title={staff.fullName} description={`${staff.profileNumber} · ${humanize(staff.status)}`} backTo="/people" backLabel="People">
         {canWrite && <Button asChild variant="outline"><Link href={`/people/${id}/edit`}>Edit</Link></Button>}
-        {canWrite && renewable && (
+        {canWrite && renewable && revisable && (
+          <Button asChild><Link href={`/people/${id}/contracts/new?from=${renewable.id}&mode=renew`}>Revise agreement</Link></Button>
+        )}
+        {canWrite && renewable && !revisable && (
           <>
             <Button asChild variant="outline"><Link href={`/people/${id}/contracts/new?from=${renewable.id}&mode=renew`}>Renew contract</Link></Button>
             <Button asChild><Link href={`/people/${id}/contracts/new?from=${renewable.id}&mode=convert`}>Convert</Link></Button>
@@ -45,7 +49,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
         )}
       </PageHeader>
 
-      {running && left != null && left <= 30 && !followed.has(running.id) && (
+      {running && running.endDate && left != null && left <= 30 && !followed.has(running.id) && (
         <div className="mb-6">
           <Alert tone={left <= 7 ? "danger" : "warning"}>
             {CONTRACT_TYPE_LABELS[running.contractType as ContractType]} contract {running.contractNumber} ends {left === 0 ? "today" : `in ${left} day${left === 1 ? "" : "s"}`}, on {formatDate(running.endDate)}.
@@ -62,7 +66,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
               <CardContent className="text-sm text-muted-foreground">No contracts.</CardContent>
             ) : (
               <Table>
-                <THead><TR><TH>Contract</TH><TH>Position</TH><TH>Term</TH><TH>Pay</TH><TH>Status</TH></TR></THead>
+                <THead><TR><TH>Contract</TH><TH>Position</TH><TH>Term</TH><TH>Pay or equity</TH><TH>Status</TH></TR></THead>
                 <TBody>
                   {contracts.map((c) => (
                     <TR key={c.id}>
@@ -71,8 +75,8 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
                         <p className="text-xs text-muted-foreground">{c.contractNumber}{c.previousContractId ? " · follows an earlier contract" : ""}</p>
                       </TD>
                       <TD className="text-sm">{c.jobTitle}</TD>
-                      <TD className="text-sm">{formatDate(c.startDate)} – {formatDate(c.endDate)}{c.lastWorkingDay && <p className="text-xs text-muted-foreground">Last day {formatDate(c.lastWorkingDay)}</p>}</TD>
-                      <TD className="text-sm">{payLabel(c.payBasis, c.payAmount, c.currencyCode)}</TD>
+                      <TD className="text-sm">{formatDate(c.startDate)} – {c.endDate ? formatDate(c.endDate) : "no end date"}{c.lastWorkingDay && <p className="text-xs text-muted-foreground">Last day {formatDate(c.lastWorkingDay)}</p>}</TD>
+                      <TD className="text-sm">{isCofounder(c.contractType) ? `${percentLabel(c.equityPercent)} equity` : payLabel(c.payBasis, c.payAmount, c.currencyCode)}</TD>
                       <TD><Badge tone={contractTone(c.status)}>{CONTRACT_STATUS_LABELS[c.status as ContractStatus]}</Badge></TD>
                     </TR>
                   ))}

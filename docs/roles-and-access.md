@@ -39,6 +39,14 @@ documents and signed scans on profiles and contracts to holders and the person.
 Creating a login from a profile needs `admin:*`, since it assigns a role. Nobody
 signs, terminates or records a resignation on their own contract.
 
+**Co-founders** (`20261005000002_cofounder_agreements.sql`) have a fifth kind of
+contract with no end date. It records equity, areas of responsibility (the
+`cofounder_area` list), optional vesting and cliff, capital invested and a
+profit share, and is written from its own template. It never ends by itself;
+a revised agreement replaces it when it starts. Equity is as confidential as
+pay. A co-founder who already has a login is linked to it in the wizard, and
+their role is not changed.
+
 The daily job (`people_contract_tick`) switches a login off the day after the
 last contract ends, and back on when a new one starts. It never switches off an
 administrator's login; it tells the People managers instead.

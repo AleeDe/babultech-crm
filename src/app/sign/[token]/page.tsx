@@ -28,9 +28,9 @@ export default async function SignContractPage({ params }: { params: Promise<{ t
   return (
     <Shell>
       <p className="text-sm text-gray-500">{context.companyName}</p>
-      <h1 className="mt-1 text-2xl font-semibold">{context.contractType} contract for {context.fullName}</h1>
+      <h1 className="mt-1 text-2xl font-semibold">{context.contractType === "Co-founder" ? "Co-founder agreement" : `${context.contractType} contract`} for {context.fullName}</h1>
       <p className="mt-2 text-gray-600">
-        {context.jobTitle}, {contractDate(context.startDate)} to {contractDate(context.endDate)} · {context.contractNumber}
+        {context.jobTitle}, {context.endDate ? `${contractDate(context.startDate)} to ${contractDate(context.endDate)}` : `from ${contractDate(context.startDate)}`} · {context.contractNumber}
       </p>
 
       <article className="mt-6 whitespace-pre-wrap rounded-xl border border-gray-200 bg-white p-6 font-serif text-[15px] leading-relaxed text-gray-900 shadow-sm" data-contract-text>

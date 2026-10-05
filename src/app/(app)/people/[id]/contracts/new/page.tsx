@@ -29,9 +29,14 @@ export default async function NewContractPage({
   let description = "A fresh contract for someone with no current one.";
   if (previous) {
     const prev = previous.contract;
-    const start = prev.status === "ENDED" && prev.endDate < karachiToday() ? karachiToday() : dayAfter(prev.endDate);
+    // A co-founder agreement has no end: its revision starts today and
+    // replaces it when it starts.
+    const start = !prev.endDate || (prev.status === "ENDED" && prev.endDate < karachiToday()) ? karachiToday() : dayAfter(prev.endDate);
     initial = { ...termsState(prev), startDate: start, templateId: "" };
-    if (mode === "convert") {
+    if (prev.contractType === "COFOUNDER") {
+      title = `Revise ${person.staff.fullName}'s co-founder agreement`;
+      description = `A new agreement replacing ${prev.contractNumber}, for a change of equity, areas or financials. Once signed it takes over on its start date and ${prev.contractNumber} is marked as replaced.`;
+    } else if (mode === "convert") {
       const to = prev.contractType === "EMPLOYMENT" ? "PERMANENT" : "EMPLOYMENT";
       initial = { ...initial, contractType: to, tenureMonths: 12 };
       title = `Convert ${person.staff.fullName}`;
@@ -40,7 +45,7 @@ export default async function NewContractPage({
       title = `Renew ${person.staff.fullName}'s contract`;
       description = `The next term after ${prev.contractNumber}, starting the day after it ends. Change the pay or benefits here, as agreed at the appraisal.`;
     }
-    initial.endDate = termEndDate(initial.startDate, initial.contractType === "PERMANENT" ? 12 : initial.tenureMonths);
+    initial.endDate = initial.contractType === "COFOUNDER" ? "" : termEndDate(initial.startDate, initial.contractType === "PERMANENT" ? 12 : initial.tenureMonths);
   }
 
   return (

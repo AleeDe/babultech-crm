@@ -16,7 +16,7 @@ export function TermsEditor({ mode, staffId, contractId, previousContractId, ini
   options: HiringOptions;
   selfUserId?: string | null;
 }) {
-  const [terms, setTerms] = useState<TermsState>(initial);
+  const [terms, setTerms] = useState<TermsState>(() => ({ ...initial, replacesContractId: previousContractId ?? undefined, editingContractId: contractId }));
   const [rebuild, setRebuild] = useState(true);
   const [errors, setErrors] = useState<Record<string, string[] | undefined>>();
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +42,7 @@ export function TermsEditor({ mode, staffId, contractId, previousContractId, ini
         <CardContent><PositionFields value={terms} onChange={setTerms} options={options} errors={errors} selfUserId={selfUserId} /></CardContent>
       </Card>
       <Card>
-        <CardHeader><CardTitle>Compensation</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{terms.contractType === "COFOUNDER" ? "Financials" : "Compensation"}</CardTitle></CardHeader>
         <CardContent><CompensationFields value={terms} onChange={setTerms} options={options} errors={errors} /></CardContent>
       </Card>
       {mode === "edit" && (

@@ -11,7 +11,8 @@ import { one } from "@/lib/decimal";
 import { SEQUENCES } from "@/lib/numbering";
 import {
   CONTRACT_TYPES, PAY_BASES, CANCELLABLE_STATUSES, CONTRACT_TYPE_LABELS, SIGNING_LINK_DAYS,
-  termEndDate, dayAfter, karachiToday, tenureLabel, payLabel, fillContract, benefitLines, contractDate, hourlyCost,
+  termEndDate, dayAfter, karachiToday, tenureLabel, payLabel, fillContract, benefitLines, contractDate, hourlyCost, daysUntil,
+  percentLabel, vestingLabel, capitalLabel,
   type ContractType, type EducationEntry, type ExperienceEntry,
 } from "@/lib/people";
 import { renderDocumentEmail, emailSettingsFromRow, brandingFromSettings, EMAIL_SETTINGS_ID } from "@/lib/email-template";
@@ -119,7 +120,7 @@ export type ProfileInput = z.input<typeof profileSchema>;
 const termsSchema = z
   .object({
     contractType: z.enum(CONTRACT_TYPES),
-    tenureMonths: z.coerce.number().int().min(1, "Choose a tenure.").max(36),
+    tenureMonths: z.coerce.number().int().min(1, "Choose a tenure.").max(36).default(12),
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose the start date."),
     endDate: date,
     jobTitle: z.string().trim().min(1, "Enter the job title.").max(150),
@@ -135,8 +136,22 @@ const termsSchema = z
     otherTerms: text(4000),
     noticeDays: z.coerce.number().int().min(0).max(180).default(14),
     templateId: uuid,
+    // Co-founder agreements.
+    equityPercent: z.preprocess(blank, z.coerce.number().min(0).max(100).nullable().optional()),
+    responsibilities: z.array(z.string().trim().min(1).max(60)).max(20).default([]),
+    vestingMonths: z.preprocess(blank, z.coerce.number().int().min(1).max(120).nullable().optional()),
+    cliffMonths: z.preprocess(blank, z.coerce.number().int().min(0).max(60).nullable().optional()),
+    capitalAmount: z.preprocess(blank, z.coerce.number().min(0).max(1000000000000).nullable().optional()),
+    capitalCurrency: z.preprocess(blank, z.string().length(3).nullable().optional()),
+    profitSharePercent: z.preprocess(blank, z.coerce.number().min(0).max(100).nullable().optional()),
   })
   .superRefine((v, ctx) => {
+    if (v.contractType === "COFOUNDER") {
+      if (!v.equityPercent || v.equityPercent <= 0) ctx.addIssue({ code: "custom", path: ["equityPercent"], message: "Enter the co-founder's equity, more than 0%." });
+      if (!v.responsibilities.length) ctx.addIssue({ code: "custom", path: ["responsibilities"], message: "Tick at least one area they are responsible for." });
+      if (v.vestingMonths && v.cliffMonths != null && v.cliffMonths > v.vestingMonths) ctx.addIssue({ code: "custom", path: ["cliffMonths"], message: "The cliff cannot be longer than the vesting period." });
+      if (v.capitalAmount && !v.capitalCurrency) ctx.addIssue({ code: "custom", path: ["capitalCurrency"], message: "Choose the currency of the capital invested." });
+    }
     if (v.payBasis !== "NONE" && (v.payAmount == null || !v.currencyCode)) {
       ctx.addIssue({ code: "custom", path: ["payAmount"], message: "Enter the amount and currency, or choose No pay." });
     }
@@ -155,10 +170,15 @@ function invalid(error: z.ZodError): { ok: false; error: string; fieldErrors: Re
   return { ok: false, error: error.issues[0]?.message ?? "Check the highlighted fields.", fieldErrors };
 }
 
-/** Terms as the columns store them: a permanent contract is always a year. */
+/**
+ * Terms as the columns store them: a permanent contract is always a year, a
+ * co-founder agreement has no end, and only a co-founder agreement keeps the
+ * equity fields.
+ */
 function termsRow(t: z.infer<typeof termsSchema>) {
-  const tenureMonths = t.contractType === "PERMANENT" ? 12 : t.tenureMonths;
-  const endDate = t.contractType === "PERMANENT" || !t.endDate ? termEndDate(t.startDate, tenureMonths) : t.endDate;
+  const cofounder = t.contractType === "COFOUNDER";
+  const tenureMonths = cofounder ? null : t.contractType === "PERMANENT" ? 12 : t.tenureMonths;
+  const endDate = cofounder ? null : t.contractType === "PERMANENT" || !t.endDate ? termEndDate(t.startDate, tenureMonths!) : t.endDate;
   const paid = t.payBasis !== "NONE";
   return {
     contractType: t.contractType,
@@ -178,6 +198,13 @@ function termsRow(t: z.infer<typeof termsSchema>) {
     otherTerms: t.otherTerms ?? null,
     noticeDays: t.noticeDays,
     templateId: t.templateId ?? null,
+    equityPercent: cofounder ? t.equityPercent ?? null : null,
+    responsibilities: cofounder ? t.responsibilities : [],
+    vestingMonths: cofounder ? t.vestingMonths ?? null : null,
+    cliffMonths: cofounder && t.vestingMonths ? t.cliffMonths ?? null : null,
+    capitalAmount: cofounder && t.capitalAmount ? t.capitalAmount : null,
+    capitalCurrency: cofounder && t.capitalAmount ? t.capitalCurrency ?? null : null,
+    profitSharePercent: cofounder ? t.profitSharePercent ?? null : null,
   };
 }
 
@@ -230,10 +257,15 @@ async function buildBody(contract: ReturnType<typeof termsRow> & { contractNumbe
     contractType: CONTRACT_TYPE_LABELS[contract.contractType as ContractType],
     tenure: tenureLabel(contract.tenureMonths),
     startDate: contractDate(contract.startDate),
-    endDate: contractDate(contract.endDate),
+    endDate: contract.endDate ? contractDate(contract.endDate) : "no fixed end date",
     hoursPerWeek: contract.hoursPerWeek != null ? String(contract.hoursPerWeek) : null,
     pay: payLabel(contract.payBasis, contract.payAmount, contract.currencyCode),
     benefits: benefitLines(contract.benefits),
+    equity: percentLabel(contract.equityPercent),
+    responsibilities: benefitLines(contract.responsibilities),
+    vesting: vestingLabel(contract.vestingMonths, contract.cliffMonths),
+    capital: capitalLabel(contract.capitalAmount, contract.capitalCurrency),
+    profitShare: percentLabel(contract.profitSharePercent, "in proportion to equity"),
     noticeDays: String(contract.noticeDays),
     otherTerms: contract.otherTerms ?? "None.",
   });
@@ -254,7 +286,7 @@ export interface PersonRow {
   phone: string | null;
   current: {
     id: string; contractNumber: string; contractType: string; status: string;
-    jobTitle: string; startDate: string; endDate: string; lastWorkingDay: string | null;
+    jobTitle: string; startDate: string; endDate: string | null; lastWorkingDay: string | null;
   } | null;
 }
 
@@ -284,7 +316,7 @@ export async function listPeople(filters: { search?: string; status?: string; ty
   if (filters.type) rows = rows.filter((r) => r.current?.contractType === filters.type);
   if (filters.ending) {
     const limit = Number(filters.ending) || 30;
-    rows = rows.filter((r) => r.current?.status === "ACTIVE" && Math.round((Date.parse(r.current.endDate) - Date.parse(today)) / 86_400_000) <= limit);
+    rows = rows.filter((r) => r.current?.status === "ACTIVE" && daysUntil(r.current.endDate, today) <= limit);
   }
   return rows;
 }
@@ -292,7 +324,7 @@ export async function listPeople(filters: { search?: string; status?: string; ty
 export async function getHiringOptions() {
   const me = await requireUser();
   if (!canReadPeople(me)) throw new Error("You do not have access to People.");
-  const [departments, users, roles, teams, currencies, benefits, templates] = await Promise.all([
+  const [departments, users, roles, teams, currencies, benefits, templates, areas, equity] = await Promise.all([
     db().from("department").select("id, name").eq("active", true).is("deletedAt", null).order("name"),
     db().from("app_user").select("id, fullName, jobTitle, email").eq("status", "ACTIVE").is("partnerId", null).is("deletedAt", null).or("userType.is.null,userType.eq.INTERNAL").order("fullName"),
     db().from("security_role").select("id, name, description, dataScope").eq("active", true).not("name", "in", "(Partner,Customer)").order("name"),
@@ -300,6 +332,10 @@ export async function getHiringOptions() {
     db().from("currency").select("code, isBase").eq("active", true).order("isBase", { ascending: false }).order("code"),
     db().from("picklist_value").select("label").eq("picklistKey", "hire_benefit").eq("active", true).order("sortOrder"),
     db().from("contract_template").select("id, name, contractType").eq("active", true).order("name"),
+    db().from("picklist_value").select("label").eq("picklistKey", "cofounder_area").eq("active", true).order("sortOrder"),
+    // Equity already given: running agreements and ones being signed.
+    db().from("employment_contract").select("id, equityPercent, staff:staff_profile ( fullName )")
+      .eq("contractType", "COFOUNDER").in("status", ["DRAFT", "SENT", "EMPLOYEE_SIGNED", "SIGNED", "ACTIVE"]),
   ]);
   return {
     departments: departments.data ?? [],
@@ -309,6 +345,12 @@ export async function getHiringOptions() {
     currencies: (currencies.data ?? []).map((c) => String(c.code).trim()),
     benefits: (benefits.data ?? []).map((b) => String(b.label)),
     templates: (templates.data ?? []) as { id: string; name: string; contractType: string }[],
+    cofounderAreas: (areas.data ?? []).map((a) => String(a.label)),
+    equityHeld: (equity.data ?? []).map((e) => ({
+      contractId: e.id as string,
+      fullName: (one(e.staff as never) as unknown as { fullName: string } | null)?.fullName ?? "",
+      percent: Number(e.equityPercent ?? 0),
+    })),
     canCreateLogins: can(me, PERMISSIONS.ADMIN),
   };
 }
@@ -323,7 +365,7 @@ export async function getPerson(id: string) {
   const isSelf = staff.userId === me.id;
   if (!canReadPeople(me) && !isSelf) return null;
   const { data: contracts } = await db().from("employment_contract")
-    .select("id, contractNumber, contractType, status, jobTitle, startDate, endDate, tenureMonths, payBasis, payAmount, currencyCode, lastWorkingDay, previousContractId, signMethod, signedOn")
+    .select("id, contractNumber, contractType, status, jobTitle, startDate, endDate, tenureMonths, payBasis, payAmount, currencyCode, lastWorkingDay, previousContractId, signMethod, signedOn, equityPercent")
     .eq("staffId", id).order("startDate", { ascending: false }).order("createdAt", { ascending: false });
   const user = one(staff.user as never) as { id: string; fullName: string; email: string; status: string; role: unknown } | null;
   return {
@@ -376,7 +418,9 @@ export async function getContract(id: string) {
       successors: (successors.data ?? []) as { id: string; contractNumber: string; contractType: string; status: string }[],
     } as Record<string, unknown> & {
       id: string; contractNumber: string; status: string; contractType: string; body: string; bodyHash: string | null;
-      startDate: string; endDate: string; tenureMonths: number; jobTitle: string; payBasis: string; payAmount: string | null;
+      startDate: string; endDate: string | null; tenureMonths: number | null; jobTitle: string;
+      equityPercent: string | null; responsibilities: string[]; vestingMonths: number | null; cliffMonths: number | null;
+      capitalAmount: string | null; capitalCurrency: string | null; profitSharePercent: string | null; payBasis: string; payAmount: string | null;
       currencyCode: string | null; benefits: string[]; teamIds: string[]; noticeDays: number; hoursPerWeek: string | null;
       signTokenExpiresAt: string | null; employeeSignature: string | null; companySignature: string | null;
       employeeSignedName: string | null; employeeSignedAt: string | null; companySignedName: string | null; companySignedAt: string | null;
@@ -597,7 +641,7 @@ export async function sendForSigning(id: string, options: { email?: boolean } = 
       summary: [
         { label: "Position", value: contract.jobTitle },
         { label: "From", value: contractDate(contract.startDate) },
-        { label: "To", value: contractDate(contract.endDate) },
+        { label: "To", value: contract.endDate ? contractDate(contract.endDate) : "No end date" },
       ],
       action: { label: "Read and sign", url: link },
       senderName: auth.user.fullName,
@@ -710,7 +754,7 @@ export async function endContractEarly(id: string, input: { kind: "TERMINATED" |
   if ("error" in loaded) return { ok: false, error: loaded.error! };
   if (loaded.staff.userId === auth.user.id) return { ok: false, error: "Someone else has to record the end of your own contract." };
   if (parsed.data.lastWorkingDay < loaded.contract.startDate) return { ok: false, error: "The last working day is before the contract started." };
-  if (parsed.data.lastWorkingDay > loaded.contract.endDate) return { ok: false, error: "The last working day is after the contract ends anyway. Let it end instead." };
+  if (loaded.contract.endDate && parsed.data.lastWorkingDay > loaded.contract.endDate) return { ok: false, error: "The last working day is after the contract ends anyway. Let it end instead." };
 
   const { error } = await db().from("employment_contract").update({
     status: parsed.data.kind, lastWorkingDay: parsed.data.lastWorkingDay, noticeGivenOn: parsed.data.noticeGivenOn ?? null,
@@ -753,7 +797,7 @@ export async function getSigningContext(token: string) {
     fullName: contract.staff.fullName,
     jobTitle: contract.jobTitle as string,
     startDate: contract.startDate as string,
-    endDate: contract.endDate as string,
+    endDate: contract.endDate as string | null,
     signedName: contract.employeeSignedName as string | null,
     signedAt: contract.employeeSignedAt as string | null,
     companyName: (company?.companyName as string) ?? "BabulTech",
@@ -901,5 +945,5 @@ export async function suggestedNextStart(contractId: string): Promise<string | n
   const auth = await authorizeAny(PERMISSIONS.PEOPLE_WRITE);
   if (!auth.ok) return null;
   const { data } = await db().from("employment_contract").select("endDate").eq("id", contractId).maybeSingle();
-  return data ? dayAfter(data.endDate as string) : null;
+  return data?.endDate ? dayAfter(data.endDate as string) : null;
 }

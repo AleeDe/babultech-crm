@@ -66,6 +66,17 @@ export interface TermsState {
   otherTerms: string;
   noticeDays: number;
   templateId: string;
+  // Co-founder agreements only.
+  equityPercent: string;
+  responsibilities: string[];
+  vestingMonths: string;
+  cliffMonths: string;
+  capitalAmount: string;
+  capitalCurrency: string;
+  profitSharePercent: string;
+  /** Not saved: the agreement a revision replaces, or the draft being edited. */
+  replacesContractId?: string;
+  editingContractId?: string;
 }
 
 export function emptyTerms(currency = "PKR"): TermsState {
@@ -74,6 +85,7 @@ export function emptyTerms(currency = "PKR"): TermsState {
     contractType: "INTERNSHIP", tenureMonths: 3, startDate: start, endDate: termEndDate(start, 3),
     jobTitle: "", departmentId: "", reportsToUserId: "", roleId: "", teamIds: [], hoursPerWeek: "40",
     payBasis: "NONE", payAmount: "", currencyCode: currency, benefits: [], otherTerms: "", noticeDays: 14, templateId: "",
+    equityPercent: "", responsibilities: [], vestingMonths: "", cliffMonths: "", capitalAmount: "", capitalCurrency: currency, profitSharePercent: "",
   };
 }
 
@@ -82,7 +94,7 @@ export function termsState(row: Record<string, unknown>): TermsState {
   const s = (k: string) => (row[k] == null ? "" : String(row[k]));
   return {
     contractType: s("contractType") || "INTERNSHIP",
-    tenureMonths: Number(row.tenureMonths ?? 3),
+    tenureMonths: Number(row.tenureMonths ?? 12),
     startDate: s("startDate"),
     endDate: s("endDate"),
     jobTitle: s("jobTitle"),
@@ -98,6 +110,13 @@ export function termsState(row: Record<string, unknown>): TermsState {
     otherTerms: s("otherTerms"),
     noticeDays: Number(row.noticeDays ?? 14),
     templateId: s("templateId"),
+    equityPercent: s("equityPercent"),
+    responsibilities: (row.responsibilities as string[]) ?? [],
+    vestingMonths: s("vestingMonths"),
+    cliffMonths: s("cliffMonths"),
+    capitalAmount: s("capitalAmount"),
+    capitalCurrency: s("capitalCurrency") || s("currencyCode") || "PKR",
+    profitSharePercent: s("profitSharePercent"),
   };
 }
 
@@ -111,5 +130,13 @@ export function termsInput(t: TermsState) {
     reportsToUserId: t.reportsToUserId || null,
     roleId: t.roleId || null,
     templateId: t.templateId || null,
+    equityPercent: t.equityPercent || null,
+    vestingMonths: t.vestingMonths || null,
+    cliffMonths: t.cliffMonths || null,
+    capitalAmount: t.capitalAmount || null,
+    capitalCurrency: t.capitalAmount ? t.capitalCurrency : null,
+    profitSharePercent: t.profitSharePercent || null,
+    replacesContractId: undefined,
+    editingContractId: undefined,
   };
 }

@@ -8,6 +8,7 @@ import { listDocuments } from "@/server/documents";
 import { getContract } from "@/server/people";
 import {
   CONTRACT_TYPE_LABELS, CONTRACT_STATUS_LABELS, contractTone, payLabel, tenureLabel, contractDate, daysUntil,
+  isCofounder, percentLabel, vestingLabel, capitalLabel,
   type ContractStatus, type ContractType,
 } from "@/lib/people";
 import { formatDateTime, cn } from "@/lib/utils";
@@ -29,7 +30,8 @@ export default async function ContractPage({ params, searchParams }: { params: P
   const { contract: c, canWrite, canCreateLogins } = data;
   const documents = await listDocuments("EmploymentContract", id);
   const status = c.status as ContractStatus;
-  const left = status === "ACTIVE" ? daysUntil(c.endDate) : null;
+  const left = status === "ACTIVE" && c.endDate ? daysUntil(c.endDate) : null;
+  const cofounder = isCofounder(c.contractType);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -91,14 +93,23 @@ export default async function ContractPage({ params, searchParams }: { params: P
           {canWrite && <ContractActions contract={{
             id, status, contractNumber: c.contractNumber, startDate: c.startDate, endDate: c.endDate,
             personalEmail: c.staff.personalEmail, staffId: c.staff.id, signTokenExpiresAt: c.signTokenExpiresAt,
-            hasSuccessor: c.successors.length > 0,
+            hasSuccessor: c.successors.length > 0, contractType: c.contractType,
           }} />}
 
           <Card>
             <CardHeader><CardTitle>Terms</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">
               <DetailRow label="Kind">{CONTRACT_TYPE_LABELS[c.contractType as ContractType]}, {tenureLabel(c.tenureMonths)}</DetailRow>
-              <DetailRow label="Dates">{contractDate(c.startDate)} to {contractDate(c.endDate)}</DetailRow>
+              <DetailRow label="Dates">{c.endDate ? `${contractDate(c.startDate)} to ${contractDate(c.endDate)}` : `From ${contractDate(c.startDate)}, no end date`}</DetailRow>
+              {cofounder && (
+                <>
+                  <DetailRow label="Equity">{percentLabel(c.equityPercent)}</DetailRow>
+                  <DetailRow label="Responsible for">{c.responsibilities.join(", ") || "—"}</DetailRow>
+                  <DetailRow label="Vesting">{vestingLabel(c.vestingMonths, c.cliffMonths)}</DetailRow>
+                  <DetailRow label="Capital invested">{capitalLabel(c.capitalAmount, c.capitalCurrency)}</DetailRow>
+                  <DetailRow label="Profit share">{percentLabel(c.profitSharePercent, "In proportion to equity")}</DetailRow>
+                </>
+              )}
               {left != null && <DetailRow label="Ends in">{left === 0 ? "Today" : `${left} day${left === 1 ? "" : "s"}`}</DetailRow>}
               <DetailRow label="Job title">{c.jobTitle}</DetailRow>
               <DetailRow label="Department">{c.department?.name ?? "—"}</DetailRow>
@@ -106,7 +117,7 @@ export default async function ContractPage({ params, searchParams }: { params: P
               <DetailRow label="CRM role">{c.role?.name ?? "—"}</DetailRow>
               <DetailRow label="Teams">{c.teams.map((t) => t.name).join(", ") || "—"}</DetailRow>
               <DetailRow label="Hours a week">{c.hoursPerWeek ?? "—"}</DetailRow>
-              <DetailRow label="Pay">{payLabel(c.payBasis, c.payAmount, c.currencyCode)}</DetailRow>
+              <DetailRow label={cofounder ? "Salary or drawings" : "Pay"}>{payLabel(c.payBasis, c.payAmount, c.currencyCode)}</DetailRow>
               <DetailRow label="Benefits">{c.benefits.join(", ") || "—"}</DetailRow>
               <DetailRow label="Notice">{c.noticeDays} days</DetailRow>
               {c.signedOn && <DetailRow label="Signed">{contractDate(c.signedOn)}{c.signMethod === "MANUAL" ? " (by hand)" : " (digitally)"}</DetailRow>}

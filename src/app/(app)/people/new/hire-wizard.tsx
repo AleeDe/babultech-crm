@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Check } from "lucide-react";
 import { Alert, Button, Card, CardContent, DetailRow, Field, Select } from "@/components/ui";
 import { createHire, type HiringOptions } from "@/server/people";
-import { CONTRACT_TYPE_LABELS, payLabel, tenureLabel, contractDate, type ContractType } from "@/lib/people";
+import { CONTRACT_TYPE_LABELS, payLabel, tenureLabel, contractDate, percentLabel, vestingLabel, capitalLabel, type ContractType } from "@/lib/people";
 import { cn } from "@/lib/utils";
 import { PersonalFields, BackgroundFields, PositionFields, CompensationFields } from "../person-forms";
 import { EMPTY_PROFILE, emptyTerms, termsInput, type ProfileState, type TermsState } from "@/lib/people-forms";
@@ -13,7 +13,7 @@ const STEPS = [
   { key: "personal", label: "Personal details" },
   { key: "background", label: "Education & experience" },
   { key: "position", label: "Position & term" },
-  { key: "pay", label: "Compensation" },
+  { key: "pay", label: "Compensation" }, // "Financials" for a co-founder
   { key: "review", label: "Review" },
 ] as const;
 
@@ -31,6 +31,9 @@ export function HireWizard({ options }: { options: HiringOptions }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
+  const cofounder = terms.contractType === "COFOUNDER";
+  const stepLabel = (i: number) => (i === 3 && cofounder ? "Financials" : STEPS[i].label);
+
   // The checks each step can make before moving on; the server checks it all again.
   function problem(at: number): string | null {
     if (at === 0) {
@@ -45,8 +48,12 @@ export function HireWizard({ options }: { options: HiringOptions }) {
     }
     if (at === 2) {
       if (!terms.jobTitle.trim()) return "Enter the job title.";
-      if (!terms.startDate || !terms.endDate) return "Choose the start date.";
-      if (terms.endDate < terms.startDate) return "The end date is before the start date.";
+      if (!terms.startDate || (!cofounder && !terms.endDate)) return "Choose the start date.";
+      if (!cofounder && terms.endDate < terms.startDate) return "The end date is before the start date.";
+    }
+    if (at === 3 && cofounder) {
+      if (!(Number(terms.equityPercent) > 0)) return "Enter the co-founder's equity, more than 0%.";
+      if (!terms.responsibilities.length) return "Tick at least one area they are responsible for.";
     }
     if (at === 3 && terms.payBasis !== "NONE" && !terms.payAmount) return "Enter the pay amount, or choose No pay.";
     return null;
@@ -93,7 +100,7 @@ export function HireWizard({ options }: { options: HiringOptions }) {
               <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full border text-xs", i < step && "border-primary bg-primary text-primary-foreground")}>
                 {i < step ? <Check className="h-3.5 w-3.5" /> : i + 1}
               </span>
-              {s.label}
+              {stepLabel(i)}
             </button>
           </li>
         ))}
@@ -103,7 +110,7 @@ export function HireWizard({ options }: { options: HiringOptions }) {
 
       <Card>
         <CardContent className="p-6">
-          <h2 className="mb-1 text-lg font-semibold">{STEPS[step].label}</h2>
+          <h2 className="mb-1 text-lg font-semibold">{stepLabel(step)}</h2>
           {step === 0 && (
             <>
               <p className="mb-5 text-sm text-muted-foreground">Who they are. Only the name is needed now; the rest can be filled in later.</p>
@@ -138,7 +145,9 @@ export function HireWizard({ options }: { options: HiringOptions }) {
           )}
           {step === 3 && (
             <>
-              <p className="mb-5 text-sm text-muted-foreground">What they get: benefits, pay, or both, or neither.</p>
+              <p className="mb-5 text-sm text-muted-foreground">{cofounder
+                ? "Their equity and what they are responsible for, with any vesting, capital invested, profit share, salary and benefits."
+                : "What they get: benefits, pay, or both, or neither."}</p>
               <CompensationFields value={terms} onChange={setTerms} options={options} errors={errors} />
             </>
           )}
@@ -154,14 +163,23 @@ export function HireWizard({ options }: { options: HiringOptions }) {
                 <DetailRow label="Skills">{profile.skills.join(", ") || "—"}</DetailRow>
               </div>
               <div className="space-y-2">
-                <h3 className="font-semibold">{CONTRACT_TYPE_LABELS[terms.contractType as ContractType]}, {tenureLabel(terms.tenureMonths)}</h3>
-                <DetailRow label="Dates">{contractDate(terms.startDate)} to {contractDate(terms.endDate)}</DetailRow>
+                <h3 className="font-semibold">{CONTRACT_TYPE_LABELS[terms.contractType as ContractType]}{cofounder ? " agreement" : `, ${tenureLabel(terms.tenureMonths)}`}</h3>
+                <DetailRow label="Dates">{cofounder ? `From ${contractDate(terms.startDate)}, no end date` : `${contractDate(terms.startDate)} to ${contractDate(terms.endDate)}`}</DetailRow>
+                {cofounder && (
+                  <>
+                    <DetailRow label="Equity">{percentLabel(terms.equityPercent)}</DetailRow>
+                    <DetailRow label="Responsible for">{terms.responsibilities.join(", ") || "—"}</DetailRow>
+                    <DetailRow label="Vesting">{vestingLabel(terms.vestingMonths, terms.cliffMonths)}</DetailRow>
+                    <DetailRow label="Capital invested">{capitalLabel(terms.capitalAmount, terms.capitalCurrency)}</DetailRow>
+                    <DetailRow label="Profit share">{percentLabel(terms.profitSharePercent, "In proportion to equity")}</DetailRow>
+                  </>
+                )}
                 <DetailRow label="Job title">{terms.jobTitle}</DetailRow>
                 <DetailRow label="Department">{dept ?? "—"}</DetailRow>
                 <DetailRow label="Reports to">{manager ?? "—"}</DetailRow>
                 <DetailRow label="CRM role">{role ?? "Chosen when the login is created"}</DetailRow>
                 <DetailRow label="Teams">{teams.join(", ") || "—"}</DetailRow>
-                <DetailRow label="Pay">{payLabel(terms.payBasis, terms.payAmount, terms.currencyCode)}</DetailRow>
+                <DetailRow label={cofounder ? "Salary or drawings" : "Pay"}>{payLabel(terms.payBasis, terms.payAmount, terms.currencyCode)}</DetailRow>
                 <DetailRow label="Benefits">{terms.benefits.join(", ") || "—"}</DetailRow>
               </div>
               <p className="text-muted-foreground md:col-span-2">

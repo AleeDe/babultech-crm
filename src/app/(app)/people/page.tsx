@@ -20,6 +20,7 @@ export default async function PeoplePage({
 
   const active = everyone.filter((p) => p.current?.status === "ACTIVE");
   const ending = active.filter((p) => daysUntil(p.current!.endDate) <= 30);
+  const cofounders = active.filter((p) => p.current!.contractType === "COFOUNDER");
   const signing = everyone.filter((p) => ["DRAFT", "SENT", "EMPLOYEE_SIGNED", "SIGNED"].includes(p.current?.status ?? ""));
 
   return (
@@ -31,7 +32,7 @@ export default async function PeoplePage({
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Working now" value={String(active.length)} sublabel="On an active contract" />
-        <StatTile label="Interns and trainees" value={String(active.filter((p) => ["INTERNSHIP", "TRAINING"].includes(p.current!.contractType)).length)} sublabel="Active" />
+        <StatTile label="Interns and trainees" value={String(active.filter((p) => ["INTERNSHIP", "TRAINING"].includes(p.current!.contractType)).length)} sublabel={`Active · ${cofounders.length} co-founder${cofounders.length === 1 ? "" : "s"}`} />
         <StatTile label="Ending in 30 days" value={String(ending.length)} sublabel="Renew, convert or let end" tone={ending.length ? "warning" : "neutral"} href="/people?ending=30" />
         <StatTile label="Being signed" value={String(signing.length)} sublabel="Draft, sent or waiting to start" tone="info" />
       </div>
@@ -81,7 +82,7 @@ export default async function PeoplePage({
             <TBody>
               {people.map((p) => {
                 const c = p.current;
-                const left = c?.status === "ACTIVE" ? daysUntil(c.endDate) : null;
+                const left = c?.status === "ACTIVE" && c.endDate ? daysUntil(c.endDate) : null;
                 return (
                   <TR key={p.id}>
                     <TD>
@@ -94,7 +95,7 @@ export default async function PeoplePage({
                       {c && <p className="text-xs text-muted-foreground">{c.contractNumber}</p>}
                     </TD>
                     <TD className="text-sm">
-                      {c ? `${formatDate(c.startDate)} – ${formatDate(c.endDate)}` : "—"}
+                      {c ? `${formatDate(c.startDate)} – ${c.endDate ? formatDate(c.endDate) : "no end date"}` : "—"}
                       {left != null && left <= 30 && (
                         <p className={left <= 7 ? "text-xs text-red-600 dark:text-red-400" : "text-xs text-amber-600 dark:text-amber-400"}>
                           {left === 0 ? "Ends today" : `Ends in ${left} day${left === 1 ? "" : "s"}`}
