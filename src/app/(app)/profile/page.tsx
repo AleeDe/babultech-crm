@@ -9,6 +9,10 @@ import { formatDateTime, humanize } from "@/lib/utils";
 import { ChangePasswordForm } from "./profile-client";
 import { listLoginEvents } from "@/server/security";
 import { LoginHistory } from "@/components/login-history";
+import Link from "next/link";
+import { getMyEmployment } from "@/server/people";
+import { CONTRACT_TYPE_LABELS, CONTRACT_STATUS_LABELS, contractTone, type ContractStatus, type ContractType } from "@/lib/people";
+import { formatDate } from "@/lib/utils";
 
 const SCOPE_EXPLAINER: Record<string, string> = {
   OWN: "Only records you own",
@@ -41,7 +45,10 @@ export default async function ProfilePage() {
     .single();
 
   if (!row) throw new Error("Your account could not be loaded.");
-  const signIns = await listLoginEvents({ userId: session.id, limit: 10 });
+  const [signIns, employment] = await Promise.all([
+    listLoginEvents({ userId: session.id, limit: 10 }),
+    getMyEmployment(),
+  ]);
 
   const me = {
     ...row,
@@ -106,6 +113,27 @@ export default async function ProfilePage() {
               </div>
             </CardContent>
           </Card>
+
+          {employment && employment.contracts.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>My contract</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {employment.contracts.map((c) => (
+                  <div key={c.id} className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <Link href={`/people/contracts/${c.id}`} className="font-medium hover:underline">
+                        {CONTRACT_TYPE_LABELS[c.contractType as ContractType]} · {c.jobTitle}
+                      </Link>
+                      <p className="text-xs text-muted-foreground">{c.contractNumber} · {formatDate(c.startDate)} to {formatDate(c.endDate)}</p>
+                    </div>
+                    <Badge tone={contractTone(c.status)}>{CONTRACT_STATUS_LABELS[c.status as ContractStatus]}</Badge>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           <ChangePasswordForm />
 

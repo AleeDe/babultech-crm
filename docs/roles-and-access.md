@@ -2,6 +2,47 @@
 
 How access is decided in this system, and the rules to follow when changing it.
 
+## 5 October 2026: job roles, teams, and People
+
+**A role is access, not a job title.** The job is described by the job title,
+department, teams and Reports to on the user, and whether someone is an intern
+or an employee is their contract (People). An intern in marketing and a
+full-time marketer get the same role.
+
+Starting roles added by `20261005000000_people_and_contracts.sql`, all editable
+in Settings › Roles:
+
+| Role | Scope | For |
+| --- | --- | --- |
+| Marketing | OWN | Campaigns and leads, their time and expense claims |
+| Marketing Lead | DEPARTMENT | The same for everyone reporting to them, plus content review and time approval |
+| Sales | OWN | Leads, customers and deals, their time and expense claims |
+| Sales Lead | DEPARTMENT | The same for their reports, plus quotation approval, contracts and time approval |
+| Delivery Lead | DEPARTMENT | Projects, cases, content review and time approval for their reports |
+
+Consultant stays the delivery role (development, QA, content, tickets). Lead
+roles see through **Reports to**; the hiring wizard sets it for every new hire.
+
+**Someone doing two jobs** still holds one role. Settings › Roles › Combine
+makes a new role with both roles' permissions, seeing as narrowly as the
+narrower of the two until changed. They join every team for the work they do,
+with their part in each (`team_member.roleInTeam`); team types are the
+editable `team_type` list, now including Development, QA, Content and Training.
+
+**People** (`people:read`, `people:write`) is its own pair, not part of
+`admin:*`, because it shows pay. Holders see every profile, contract and the
+files on them; `people:write` hires, prepares, signs for the company, renews,
+converts, terminates and records resignations, and hears when contracts end.
+Everyone else sees only their own contract, under My account. The tables are
+service-role only, and `people_document_boundary` (restrictive) keeps CVs, ID
+documents and signed scans on profiles and contracts to holders and the person.
+Creating a login from a profile needs `admin:*`, since it assigns a role. Nobody
+signs, terminates or records a resignation on their own contract.
+
+The daily job (`people_contract_tick`) switches a login off the day after the
+last contract ends, and back on when a new one starts. It never switches off an
+administrator's login; it tells the People managers instead.
+
 ## 4 October 2026: administrators' expense claims
 
 An administrator's claims are approved without a second person: on entry

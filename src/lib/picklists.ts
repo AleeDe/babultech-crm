@@ -42,7 +42,9 @@ export type PicklistKey =
   | "business_type" | "company_size"
   | "call_outcome" | "webinar_outcome"
   // How a campaign member reached us, and what kind of activity was carried out.
-  | "member_source" | "activity_log_kind";
+  | "member_source" | "activity_log_kind"
+  // People: the kinds of team, and what a hire gets besides pay.
+  | "team_type" | "hire_benefit";
 
 /**
  * A value from an open, enum-backed list. Administrators can add values in

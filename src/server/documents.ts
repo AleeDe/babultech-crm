@@ -28,6 +28,9 @@ const ENTITY_TYPES = [
   "Account", "Contact", "Lead", "Opportunity", "Quotation", "Contract",
   "SupportCase", "Project", "Invoice", "Partner", "Campaign", "Product",
   "Expense", "VendorBill", "ProjectTask",
+  // People: visible only to people:read holders and the person themselves
+  // (people_document_boundary in 20261005000000_people_and_contracts.sql).
+  "StaffProfile", "EmploymentContract",
 ] as const;
 
 /**

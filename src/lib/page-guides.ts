@@ -128,6 +128,17 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
       "Only an Active partner gets commission records. Changing a partner's rate applies to their new deals, not ones already running.",
   },
 
+  "/people": {
+    purpose: "Everyone hired: their profile, every contract they have had, and what happens when the current one ends.",
+    needs: ["The People permissions (Settings › Roles); creating a login also needs an administrator"],
+    feeds: [
+      "The login gets its role, job title, manager, teams and hourly cost from the contract",
+      "A signed contract starts on its start date; the login is switched off the day after the last one ends",
+    ],
+    watchOut:
+      "A contract's wording is frozen once sent. To change it, withdraw it back to draft first. Renew or convert before the end date, or the login goes off.",
+  },
+
   "/commissions": {
     purpose: "One record per partner deal - what the partner is owed on it, and whether it has been paid.",
     needs: ["A deal credited to an Active partner"],

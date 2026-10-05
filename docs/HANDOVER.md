@@ -305,7 +305,10 @@ Scheduled database jobs: `babultech-jobs-tick` (every minute),
 `babultech-due-reminders` (03:00 UTC), `babultech-jobs-housekeeping` (22:15 UTC),
 `babultech-recycle-purge` (22:30 UTC), `babultech-notification-housekeeping`
 (22:45 UTC: read notifications 7 days after reading, email-only ones 7 days
-after sending, overdue reminders after 31 days; unread ones are kept).
+after sending, overdue reminders after 31 days; unread ones are kept),
+`babultech-people-contracts` (19:05 UTC, 00:05 Karachi: starts signed contracts,
+ends lapsed ones, reminds at 30/14/7 days, switches off the logins of people
+whose last contract is over; see docs/roles-and-access.md, 5 October 2026).
 
 ### Marketing: prospects, tracking, forms, attribution, scoring
 

@@ -22,6 +22,9 @@ export const NOTIFICATION_KINDS = [
   { kind: "REPORT_READY", label: "Scheduled reports", description: "A report you asked for weekly or monthly is ready.", emailByDefault: true },
   { kind: "JOB_FINISHED", label: "Background work finished", description: "A mass email or import you started has finished.", emailByDefault: false },
   { kind: "RECORD_CORRECTED", label: "Records corrected", description: "An administrator corrects a record of yours that was already approved, issued, paid or closed, and says why.", emailByDefault: false },
+  { kind: "CONTRACT_SIGNED", label: "Contract signed by a hire", description: "A new hire signs their contract through the link, and it needs signing for the company.", emailByDefault: false },
+  { kind: "CONTRACT_ENDING", label: "Contracts ending", description: "A contract you manage, or of someone reporting to you, ends in 30, 14 or 7 days.", emailByDefault: false },
+  { kind: "CONTRACT_ENDED", label: "Contracts over", description: "Someone's last contract is over and their login was switched off.", emailByDefault: false },
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]["kind"];

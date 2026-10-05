@@ -420,6 +420,10 @@ export const PERMISSIONS = {
   // SECRET_READ lists and reveals; SECRET_WRITE adds, edits and revokes.
   SECRET_READ: "secret:read",
   SECRET_WRITE: "secret:write",
+  // People: hiring profiles, employment contracts and pay. Confidential, so a
+  // pair of its own rather than part of admin:*.
+  PEOPLE_READ: "people:read",
+  PEOPLE_WRITE: "people:write",
   // Admin
   ADMIN: "admin:*",
 } as const;

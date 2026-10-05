@@ -46,6 +46,25 @@ export function RolesPanel({ roles }: { roles: RoleRow[] }) {
 
   const covered = useMemo(() => effectivePermissions([...granted]), [granted]);
 
+  // For someone doing two jobs: one role with both roles' permissions. It sees
+  // as narrowly as the narrower of the two until someone chooses otherwise,
+  // so combining never quietly widens what a person can read.
+  const [combineA, setCombineA] = useState("");
+  const [combineB, setCombineB] = useState("");
+  const SCOPE_ORDER = ["OWN", "TEAM", "DEPARTMENT", "ALL"];
+  function combine() {
+    const a = roles.find((r) => r.id === combineA);
+    const b = roles.find((r) => r.id === combineB);
+    if (!a || !b || a.id === b.id) return;
+    setError(null);
+    setNotice(null);
+    setEditing("new");
+    setName(`${a.name} + ${b.name}`);
+    setDescription(`Does both jobs: ${a.name} and ${b.name}.`);
+    setScope(SCOPE_ORDER[Math.min(SCOPE_ORDER.indexOf(a.dataScope), SCOPE_ORDER.indexOf(b.dataScope))] ?? "OWN");
+    setGranted(new Set([...a.permissions, ...b.permissions].filter((p) => p !== "*")));
+  }
+
   function toggle(value: string) {
     setGranted((prev) => {
       const next = new Set(prev);
@@ -103,6 +122,24 @@ export function RolesPanel({ roles }: { roles: RoleRow[] }) {
       <CardContent className="space-y-4">
         {error && <Alert tone="danger">{error}</Alert>}
         {notice && <Alert tone="success">{notice}</Alert>}
+
+        {editing === null && (
+          <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed p-3" data-combine-roles>
+            <div className="min-w-0 flex-1 text-sm">
+              <p className="font-medium">Someone doing two jobs?</p>
+              <p className="text-xs text-muted-foreground">Combine two roles into a new one with both sets of permissions. Each person still holds one role.</p>
+            </div>
+            <Select aria-label="First role" className="w-44" value={combineA} onChange={(e) => setCombineA(e.target.value)}>
+              <option value="">First role</option>
+              {roles.filter((r) => !r.permissions.includes("*")).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </Select>
+            <Select aria-label="Second role" className="w-44" value={combineB} onChange={(e) => setCombineB(e.target.value)}>
+              <option value="">Second role</option>
+              {roles.filter((r) => !r.permissions.includes("*") && r.id !== combineA).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </Select>
+            <Button type="button" variant="outline" disabled={!combineA || !combineB} onClick={combine}>Combine</Button>
+          </div>
+        )}
 
         {editing === null ? (
           <ul className="divide-y rounded-md border">
