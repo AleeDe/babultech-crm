@@ -97,8 +97,8 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
     ],
   },
   {
-    name: "People",
-    description: "Hiring, employment contracts and pay. Confidential: grant it to whoever handles HR.",
+    name: "HR",
+    description: "People, hiring, employment contracts and pay. Confidential: grant it to whoever handles HR.",
     permissions: [
       { value: "people:read", label: "See employee contracts and pay", help: "Open People: every hire's profile, documents, contracts and what they are paid.", sensitive: true },
       { value: "people:write", label: "Hire and manage contracts", help: "Onboard new hires, prepare and send contracts, sign for the company, renew, convert, terminate and record resignations. Hears when a contract is about to end.", sensitive: true },

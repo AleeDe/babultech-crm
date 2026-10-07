@@ -125,9 +125,9 @@ const NAV: NavGroup[] = [
     ],
   },
   {
-    // Hiring and contracts. Pay is confidential, so this is its own pair of
-    // permissions rather than part of Admin.
-    label: "People",
+    // Human resources: hiring and contracts. Pay is confidential, so this is
+    // its own pair of permissions rather than part of Admin.
+    label: "HR",
     items: [
       { href: "/people", label: "People", icon: IdCard, permissions: ["people:read", "people:write"] },
       { href: "/people/templates", label: "Contract templates", icon: ScrollText, permissions: ["people:write"] },
