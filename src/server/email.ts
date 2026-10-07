@@ -252,6 +252,7 @@ export async function previewEmail(kind: "quotation" | "invoice"): Promise<strin
             { label: "Outstanding", value: "Rs 1,486,800", emphasis: true },
           ],
     senderName: me.fullName,
+    senderTitle: me.jobTitle,
   });
 
   return html;
@@ -427,6 +428,7 @@ export async function sendQuotation(
       { label: "Total", value: formatMoney(quote.totalAmount, quote.currencyCode), emphasis: true },
     ],
     senderName: me.fullName,
+    senderTitle: me.jobTitle,
   });
 
   const result = await deliver({
@@ -511,6 +513,7 @@ export async function sendInvoice(
       },
     ],
     senderName: me.fullName,
+    senderTitle: me.jobTitle,
   });
 
   const result = await deliver({

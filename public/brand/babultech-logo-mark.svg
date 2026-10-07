@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2912" height="3036" viewBox="795 570 2912 3036" role="img" aria-label="BabulTech logo icon">
+  <title>BabulTech logo mark</title>
+  <defs>
+    <linearGradient id="emerald" x1="1040" y1="640" x2="2450" y2="3400" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#34D399"/>
+      <stop offset="1" stop-color="#10B981"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Pixel marks -->
+  <rect x="840" y="700" width="168" height="168" rx="24" fill="#F8FAFC"/>
+  <rect x="1048" y="570" width="220" height="220" rx="32" fill="#10B981"/>
+  <rect x="1000" y="878" width="176" height="176" rx="28" fill="#10B981"/>
+  <rect x="795" y="1118" width="240" height="240" rx="34" fill="#F8FAFC"/>
+
+  <!-- Main emerald b/u form -->
+  <path fill="url(#emerald)" d="M1288 850h442v1630c0 390 265 680 650 680 405 0 720-315 720-720 0-398-310-700-704-700-156 0-298 45-418 123v-470c140-56 288-84 448-84 650 0 1168 500 1168 1131 0 662-520 1166-1200 1166-665 0-1106-484-1106-1132V850z"/>
+
+  <!-- Navy inner cut for b counter -->
+  <path fill="#0F172A" d="M1992 2440c0-252 197-444 454-444 256 0 453 192 453 444 0 253-197 446-453 446-257 0-454-193-454-446z"/>
+  <circle cx="2446" cy="2440" r="190" fill="#10B981"/>
+
+  <!-- White speed crescent / outer blade -->
+  <path fill="#F8FAFC" d="M2028 1322c128-38 263-58 405-58 720 0 1274 514 1274 1180 0 562-378 1000-902 1156 206-204 333-499 333-823 0-607-464-1070-1078-1070h-32v-385z"/>
+</svg>

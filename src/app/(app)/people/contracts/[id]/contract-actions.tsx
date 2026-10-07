@@ -17,6 +17,9 @@ interface ContractSummary {
   startDate: string;
   endDate: string | null;
   contractType: string;
+  /** Who is signed in, to fill the company signature form. */
+  signerName: string;
+  signerTitle: string | null;
   personalEmail: string | null;
   staffId: string;
   signTokenExpiresAt: string | null;
@@ -86,10 +89,15 @@ export function ContractActions({ contract: c }: { contract: ContractSummary }) 
             <p className="font-medium">They have signed. Sign for the company.</p>
             <form className="space-y-3" onSubmit={(e) => {
               e.preventDefault();
-              const name = String(new FormData(e.currentTarget).get("companySignerName") ?? "");
-              run(() => signForCompany(c.id, { name, signature: signature ?? "" }));
+              const form = new FormData(e.currentTarget);
+              const name = String(form.get("companySignerName") ?? "");
+              const title = String(form.get("companySignerTitle") ?? "");
+              run(() => signForCompany(c.id, { name, signature: signature ?? "", title }));
             }}>
-              <Field label="Your full name" required><Input name="companySignerName" required /></Field>
+              <Field label="Your full name" required><Input name="companySignerName" defaultValue={c.signerName} required /></Field>
+              <Field label="Your designation" hint={'Shown with your signature, e.g. "Hasan Shamsi (CEO)". From your job title under Users.'}>
+                <Input name="companySignerTitle" defaultValue={c.signerTitle ?? ""} placeholder="CEO" maxLength={150} />
+              </Field>
               <SignaturePad onChange={setSignature} label="Company signature" />
               <Button type="submit" disabled={pending || !signature}>Sign for the company</Button>
             </form>

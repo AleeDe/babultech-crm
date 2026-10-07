@@ -11,7 +11,8 @@ import {
   isCofounder, percentLabel, vestingLabel, capitalLabel,
   type ContractStatus, type ContractType,
 } from "@/lib/people";
-import { formatDateTime, cn } from "@/lib/utils";
+import { formatDateTime, cn, withTitle } from "@/lib/utils";
+import { Letterhead } from "@/components/letterhead";
 import { ContractActions, ContractTextEditor } from "./contract-actions";
 
 const STAGES = [
@@ -22,7 +23,7 @@ const STAGES = [
 ];
 
 export default async function ContractPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ new?: string }> }) {
-  await requireUser();
+  const me = await requireUser();
   const { id } = await params;
   const { new: justCreated } = await searchParams;
   const data = await getContract(id);
@@ -72,6 +73,7 @@ export default async function ContractPage({ params, searchParams }: { params: P
           <Card>
             <CardHeader><CardTitle>The contract</CardTitle></CardHeader>
             <CardContent>
+              <Letterhead companyName={c.companyName} className="mb-4" />
               {canWrite && status === "DRAFT" ? (
                 <ContractTextEditor contractId={id} body={c.body} />
               ) : (
@@ -79,8 +81,8 @@ export default async function ContractPage({ params, searchParams }: { params: P
               )}
               {(c.employeeSignature || c.companySignature || c.signMethod === "MANUAL") && (
                 <div className="mt-6 grid gap-6 sm:grid-cols-2">
-                  <Signature label={`Signed by ${c.staff.fullName}`} image={c.employeeSignature} name={c.employeeSignedName} at={c.employeeSignedAt} manual={c.signMethod === "MANUAL"} />
-                  <Signature label="Signed for the company" image={c.companySignature} name={c.companySignedName} at={c.companySignedAt} manual={c.signMethod === "MANUAL"} />
+                  <Signature label={`Signed by ${c.staff.fullName}`} image={c.employeeSignature} name={c.employeeSignedName ? withTitle(c.employeeSignedName, c.jobTitle) : null} at={c.employeeSignedAt} manual={c.signMethod === "MANUAL"} />
+                  <Signature label="Signed for the company" image={c.companySignature} name={c.companySignedName ? withTitle(c.companySignedName, c.companySignedTitle) : null} at={c.companySignedAt} manual={c.signMethod === "MANUAL"} />
                 </div>
               )}
               {c.bodyHash && <p className="mt-4 break-all text-xs text-muted-foreground">Fingerprint of the text as sent: {c.bodyHash}</p>}
@@ -94,6 +96,7 @@ export default async function ContractPage({ params, searchParams }: { params: P
             id, status, contractNumber: c.contractNumber, startDate: c.startDate, endDate: c.endDate,
             personalEmail: c.staff.personalEmail, staffId: c.staff.id, signTokenExpiresAt: c.signTokenExpiresAt,
             hasSuccessor: c.successors.length > 0, contractType: c.contractType,
+            signerName: me.fullName, signerTitle: me.jobTitle ?? null,
           }} />}
 
           <Card>

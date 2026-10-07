@@ -99,6 +99,8 @@ export interface DocumentEmail {
   /** Optional call to action, e.g. a link back to a portal. */
   action?: { label: string; url: string };
   senderName: string;
+  /** The sender's designation, signed as "Hasan Shamsi (CEO)". */
+  senderTitle?: string | null;
 }
 
 const escape = (value: string): string =>
@@ -135,8 +137,9 @@ function paragraphs(text: string, color: string): string {
 /**
  * The masthead.
  *
- * A logo is used when one is configured and reachable over http(s); otherwise
- * a wordmark in the brand colour. The fallback is not a degradation — many
+ * The logo, when one is configured and reachable over http(s), is a small
+ * square icon beside the company name; otherwise the name alone, in the brand
+ * colour. The fallback is not a degradation — many
  * recipients block images by default, so the text version is what a large
  * share of readers see either way.
  */
@@ -144,11 +147,15 @@ function masthead(b: EmailBranding): string {
   const logo = safeUrl(b.logoUrl);
   const site = safeUrl(b.websiteUrl);
 
+  const name = `<span style="display:inline-block;font-size:20px;font-weight:700;letter-spacing:-0.3px;color:${b.brandColorDark};">${escape(
+    b.companyName,
+  )}</span>`;
   const inner = logo
-    ? `<img src="${escape(logo)}" alt="${escape(b.companyName)}" width="140" style="display:block;border:0;max-width:140px;height:auto;">`
-    : `<span style="display:inline-block;font-size:20px;font-weight:700;letter-spacing:-0.3px;color:${b.brandColorDark};">${escape(
-        b.companyName,
-      )}</span>`;
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+        <td style="vertical-align:middle;"><img src="${escape(logo)}" alt="" width="36" height="36" style="display:block;border:0;width:36px;height:36px;border-radius:8px;"></td>
+        <td style="vertical-align:middle;padding-left:10px;">${name}</td>
+      </tr></table>`
+    : name;
 
   return site
     ? `<a href="${escape(site)}" style="text-decoration:none;">${inner}</a>`
@@ -156,7 +163,8 @@ function masthead(b: EmailBranding): string {
 }
 
 export function renderDocumentEmail(input: DocumentEmail): { html: string; text: string } {
-  const { branding: b, documentTitle, message, summary, action, senderName } = input;
+  const { branding: b, documentTitle, message, summary, action, senderName, senderTitle } = input;
+  const signedBy = senderTitle?.trim() ? `${senderName} (${senderTitle.trim()})` : senderName;
 
   const summaryRows = summary
     .map(
@@ -242,7 +250,7 @@ export function renderDocumentEmail(input: DocumentEmail): { html: string; text:
     }
 
     <tr><td style="padding:22px 32px 28px;">
-      <p style="margin:0;font-size:14px;line-height:1.6;color:${b.textColor};">Kind regards,<br><strong>${escape(senderName)}</strong></p>
+      <p style="margin:0;font-size:14px;line-height:1.6;color:${b.textColor};">Kind regards,<br><strong>${escape(signedBy)}</strong></p>
       <p style="margin:4px 0 0;font-size:13px;color:${b.mutedColor};">${escape(b.companyName)}</p>
     </td></tr>
 
@@ -270,7 +278,7 @@ export function renderDocumentEmail(input: DocumentEmail): { html: string; text:
     action && actionUrl ? `\n${action.label}: ${actionUrl}` : "",
     "",
     `Kind regards,`,
-    senderName,
+    signedBy,
     b.companyName,
     "",
     [b.supportEmail, b.supportPhone, b.websiteUrl].filter(Boolean).join(" · "),

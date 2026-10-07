@@ -227,3 +227,10 @@ export function serialize<T>(value: T): T {
     }),
   );
 }
+
+/** "Hasan Shamsi (CEO)", or the name alone when there is no title. */
+export function withTitle(name: string | null | undefined, title: string | null | undefined): string {
+  const n = (name ?? "").trim();
+  const t = (title ?? "").trim();
+  return t ? `${n} (${t})` : n;
+}

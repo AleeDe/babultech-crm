@@ -128,8 +128,11 @@ try {
   await adm.locator('select[name="roleId"]').selectOption(marketing.id);
   await adm.locator(`input[name="teamIds"][value="${ids.team}"]`).check();
   await adm.getByRole("button", { name: "Next" }).click();
-  await adm.locator('input[name="benefits"][value="Training"]').check();
-  await adm.locator('input[name="benefits"][value="Weekly lunch"]').check();
+  // Whichever benefits the list holds today: it is edited in Settings.
+  const benefitBoxes = adm.locator('input[name="benefits"]');
+  const firstBenefit = await benefitBoxes.first().getAttribute("value");
+  await benefitBoxes.nth(0).check();
+  await benefitBoxes.nth(1).check();
   await adm.locator('input[name="extraBenefit"]').fill(`Laptop ${run}`);
   await adm.locator('input[name="extraBenefit"]').press("Enter");
   await adm.locator('select[name="payBasis"]').selectOption("MONTHLY");
@@ -152,7 +155,7 @@ try {
   assert.equal(first.endDate, endShown, "The end date saved is the one shown");
   assert.equal(first.reportsToUserId, manager.id);
   assert.deepEqual(first.teamIds, [ids.team]);
-  assert.ok(first.benefits.includes(`Laptop ${run}`) && first.benefits.includes("Training"));
+  assert.ok(first.benefits.includes(`Laptop ${run}`) && first.benefits.includes(firstBenefit));
   assert.equal(Number(first.payAmount), 52000);
   assert.ok(first.body.includes(name) && first.body.includes("35202-0000000-1") && first.body.includes("PKR 52,000 per month"), "The template is filled in");
   pass("The wizard saves the profile and a draft contract filled in from the template");
@@ -174,6 +177,7 @@ try {
   await publicPage.getByText("This signing link is not valid").waitFor();
   await publicPage.goto(link.replace(/^https?:\/\/[^/]+/, base));
   await publicPage.getByText(`QA extra clause ${run}`).waitFor();
+  assert.ok(await publicPage.locator("[data-letterhead] img").evaluate((img) => img.complete && img.naturalWidth > 0), "The logo loads");
   assert.equal(await publicPage.getByRole("button", { name: "Sign the contract" }).isDisabled(), true, "Cannot sign without a signature");
   await draw(publicPage);
   await publicPage.locator('input[name="agree"]').check();
@@ -189,11 +193,16 @@ try {
   const hrPage = await signedIn(hr);
   await until(async () => (await db.from("notification").select("id").eq("userId", hr.id).eq("kind", "CONTRACT_SIGNED")).data?.length, "signed notification");
   await hrPage.goto(`${base}/people/contracts/${first.id}`, { waitUntil: "networkidle" });
-  await hrPage.locator('input[name="companySignerName"]').fill(`QA HR ${run}`);
+  assert.equal(await hrPage.locator('input[name="companySignerName"]').inputValue(), `QA hr ${run}`, "Their own name is filled in");
+  await hrPage.locator('input[name="companySignerTitle"]').fill("Head of HR");
   await draw(hrPage);
   await hrPage.getByRole("button", { name: "Sign for the company" }).click();
   await until(async () => (await contract(first.id)).status === "ACTIVE", "contract active");
-  pass("Whoever manages contracts is told, signs for the company, and a contract starting today starts");
+  assert.equal((await contract(first.id)).companySignedTitle, "Head of HR");
+  await hrPage.getByText(`QA hr ${run} (Head of HR)`).waitFor({ timeout: 30000 });
+  await hrPage.getByText(`${name} (Marketing Intern)`).waitFor();
+  assert.ok(await hrPage.locator("[data-letterhead] img").evaluate((img) => img.complete && img.naturalWidth > 0), "The logo loads");
+  pass("Whoever manages contracts is told, signs for the company with their designation, and a contract starting today starts");
 
   await hrPage.goto(`${base}/people/${staff.id}`, { waitUntil: "networkidle" });
   await hrPage.getByText("An administrator creates it from this page").waitFor();
@@ -234,8 +243,11 @@ try {
 
   await adm.goto(`${base}/print/contracts/${first.id}`, { waitUntil: "networkidle" });
   await adm.getByRole("button", { name: "Print or save as PDF" }).waitFor();
-  assert.equal(await adm.locator("img").count(), 2, "Both signatures on the printout");
-  pass("The printout carries the text and both signatures");
+  assert.equal(await adm.locator("[data-letterhead]").count(), 1, "The letterhead");
+  assert.ok(await adm.locator("[data-letterhead] img").evaluate((img) => img.complete && img.naturalWidth > 0), "The logo loads");
+  assert.equal(await adm.locator("img").count(), 3, "The logo and both signatures on the printout");
+  await adm.getByText(`QA hr ${run} (Head of HR)`).waitFor();
+  pass("The printout carries the letterhead, the text, and both signatures with designations");
 
   // --- Renewal, signed by hand, starting when the first ends ---------------
   await adm.goto(`${base}/people/contracts/${first.id}`, { waitUntil: "networkidle" });

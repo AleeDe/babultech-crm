@@ -292,6 +292,17 @@ export async function sendNextLeadEmails(batchId: string): Promise<{ processed: 
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const from = process.env.EMAIL_FROM ?? "BabulTech <onboarding@resend.dev>";
+
+  // The company's icon and name at the top, as on every other email.
+  const { data: brand } = await admin.from("email_settings").select("logoUrl, companyName").limit(1).maybeSingle();
+  const brandName = String(brand?.companyName ?? "BabulTech").replace(/[<>&"]/g, "");
+  const logo = typeof brand?.logoUrl === "string" && /^https:\/\//.test(brand.logoUrl) ? brand.logoUrl.replace(/"/g, "") : null;
+  const header = logo
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px"><tr>` +
+      `<td style="vertical-align:middle"><img src="${logo}" alt="" width="32" height="32" style="display:block;border:0;width:32px;height:32px;border-radius:7px"></td>` +
+      `<td style="vertical-align:middle;padding-left:9px;font-family:system-ui,sans-serif;font-size:16px;font-weight:700;color:#0F172A">${brandName}</td>` +
+      `</tr></table>`
+    : "";
   const fromName = batchRow.fromName as string | null;
   // The chosen sender address when it is on the verified domain, which was
   // checked when the send was made; otherwise the system address.
@@ -314,7 +325,7 @@ export async function sendNextLeadEmails(batchId: string): Promise<{ processed: 
       to: row.toAddress as string,
       replyTo: (batchRow.replyTo as string | null) ?? undefined,
       subject: fill(batchRow.subject as string, lead as never, fromName),
-      html: textToHtml(body) + footer,
+      html: header + textToHtml(body) + footer,
       text: `${body}
 
 ---

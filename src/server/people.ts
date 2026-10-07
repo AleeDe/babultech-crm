@@ -399,16 +399,18 @@ export async function getContract(id: string) {
   if (!canReadPeople(me) && !isSelf) return null;
   // The contract this one follows: a separate read, as the API does not embed
   // a table in itself.
-  const [teams, successors, previous] = await Promise.all([
+  const [teams, successors, previous, company] = await Promise.all([
     (contract.teamIds as string[]).length ? db().from("team").select("id, name").in("id", contract.teamIds as string[]) : Promise.resolve({ data: [] }),
     db().from("employment_contract").select("id, contractNumber, contractType, status").eq("previousContractId", id).neq("status", "CANCELLED"),
     contract.previousContractId
       ? db().from("employment_contract").select("id, contractNumber, contractType").eq("id", contract.previousContractId).maybeSingle()
       : Promise.resolve({ data: null }),
+    db().from("company_setting").select("companyName").maybeSingle(),
   ]);
   return {
     contract: {
       ...contract,
+      companyName: (company.data?.companyName as string | undefined) ?? "BabulTech",
       staff,
       department: one(contract.department as never) as { name: string } | null,
       reportsTo: one(contract.reportsTo as never) as { fullName: string } | null,
@@ -426,6 +428,7 @@ export async function getContract(id: string) {
       currencyCode: string | null; benefits: string[]; teamIds: string[]; noticeDays: number; hoursPerWeek: string | null;
       signTokenExpiresAt: string | null; employeeSignature: string | null; companySignature: string | null;
       employeeSignedName: string | null; employeeSignedAt: string | null; companySignedName: string | null; companySignedAt: string | null;
+      companySignedTitle: string | null; companyName: string;
       lastWorkingDay: string | null; signMethod: string | null; signedOn: string | null;
       noticeGivenOn: string | null; endReason: string | null;
       staff: typeof staff;
@@ -647,6 +650,7 @@ export async function sendForSigning(id: string, options: { email?: boolean } = 
       ],
       action: { label: "Read and sign", url: link },
       senderName: auth.user.fullName,
+      senderTitle: auth.user.jobTitle,
     });
     const resend = new Resend(process.env.RESEND_API_KEY);
     const sent = await resend.emails.send({
@@ -681,7 +685,7 @@ const signatureSchema = z.object({
   signature: z.string().regex(/^data:image\/png;base64,[A-Za-z0-9+/=]+$/, "Draw your signature.").max(300_000, "That signature is too large. Clear it and draw it again."),
 });
 
-export async function signForCompany(id: string, input: { name: string; signature: string }): Promise<ActionResult> {
+export async function signForCompany(id: string, input: { name: string; signature: string; title?: string | null }): Promise<ActionResult> {
   const auth = await authorize(PERMISSIONS.PEOPLE_WRITE);
   if (!auth.ok) return auth;
   const parsed = signatureSchema.safeParse(input);
@@ -691,6 +695,7 @@ export async function signForCompany(id: string, input: { name: string; signatur
   if (loaded.staff.userId === auth.user.id) return { ok: false, error: "Someone else has to sign your own contract for the company." };
   const { error } = await db().from("employment_contract").update({
     status: "SIGNED", signMethod: "DIGITAL", companySignedById: auth.user.id, companySignedName: parsed.data.name,
+    companySignedTitle: (input.title ?? auth.user.jobTitle ?? "").trim().slice(0, 150) || null,
     companySignature: parsed.data.signature, companySignedAt: now(), signedOn: karachiToday(),
     signTokenHash: null, updatedAt: now(),
   }).eq("id", id).eq("status", "EMPLOYEE_SIGNED");

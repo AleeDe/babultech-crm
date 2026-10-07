@@ -31,6 +31,8 @@ export interface SessionUser {
   id: string;
   fullName: string;
   email: string;
+  /** Their designation, shown beside their name where they sign: "Hasan Shamsi (CEO)". */
+  jobTitle?: string | null;
   roleName: string;
   dataScope: DataScope;
   permissions: string[];
@@ -137,7 +139,7 @@ async function loadUser(): Promise<SessionUser> {
   const { data: user, error } = await profileDb
     .from("app_user")
     .select(
-      `id, fullName, email, status, deletedAt, departmentId, partnerId,
+      `id, fullName, email, jobTitle, status, deletedAt, departmentId, partnerId,
        userType, contactId, portalScope, portalRole,
        contact:contact!app_user_contactId_fkey ( accountId ),
        role:security_role!inner ( name, dataScope, permissions ),
@@ -167,6 +169,7 @@ async function loadUser(): Promise<SessionUser> {
     id: user.id,
     fullName: user.fullName,
     email: user.email,
+    jobTitle: (user as { jobTitle?: string | null }).jobTitle ?? null,
     roleName: role.name,
     dataScope: role.dataScope as DataScope,
     permissions: role.permissions,

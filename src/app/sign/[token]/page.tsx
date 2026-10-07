@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getSigningContext } from "@/server/people";
 import { contractDate } from "@/lib/people";
 import { SignForm } from "./sign-form";
+import { Letterhead } from "@/components/letterhead";
 
 // A signing link must never reach a search index.
 export const metadata: Metadata = { title: "Sign your contract", robots: { index: false, follow: false } };
@@ -27,7 +28,7 @@ export default async function SignContractPage({ params }: { params: Promise<{ t
 
   return (
     <Shell>
-      <p className="text-sm text-gray-500">{context.companyName}</p>
+      <Letterhead companyName={context.companyName} className="mb-4" />
       <h1 className="mt-1 text-2xl font-semibold">{context.contractType === "Co-founder" ? "Co-founder agreement" : `${context.contractType} contract`} for {context.fullName}</h1>
       <p className="mt-2 text-gray-600">
         {context.jobTitle}, {context.endDate ? `${contractDate(context.startDate)} to ${contractDate(context.endDate)}` : `from ${contractDate(context.startDate)}`} · {context.contractNumber}
