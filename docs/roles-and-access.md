@@ -47,7 +47,7 @@ a revised agreement replaces it when it starts. Equity is as confidential as
 pay. A co-founder who already has a login is linked to it in the wizard, and
 their role is not changed.
 
-**Deleting a person** (`20261007000000_people_recycle_bin.sql`) is for administrators, from the HR list. The profile and its contracts go to the recycle bin for 90 days; any signing link stops working. Someone with a signed or running contract is refused until it is ended or cancelled. Their login is never deleted.
+**Deleting a person** (`20261007000000_people_recycle_bin.sql`) is for administrators, from the HR list. The profile and its contracts go to the recycle bin for 90 days; any signing link stops working. Someone whose contract is in force (signed by both sides, running, or leaving on a later day) is refused until it is ended or cancelled; a contract still being signed does not hold a delete back (20261007000001). Their login is never deleted.
 
 The daily job (`people_contract_tick`) switches a login off the day after the
 last contract ends, and back on when a new one starts. It never switches off an

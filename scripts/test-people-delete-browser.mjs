@@ -81,10 +81,10 @@ try {
     endDate: "2099-01-01", jobTitle: "Intern", status, body: "QA contract", updatedAt: now(), ...extra,
   });
   await must(db.from("employment_contract").insert([
-    contract(ids.draftContract, ids.draftStaff, "SENT", { signTokenHash: randomBytes(32).toString("hex"), signTokenExpiresAt: "2099-01-01T00:00:00" }),
+    contract(ids.draftContract, ids.draftStaff, "EMPLOYEE_SIGNED", { signTokenHash: randomBytes(32).toString("hex"), signTokenExpiresAt: "2099-01-01T00:00:00" }),
     contract(ids.activeContract, ids.activeStaff, "ACTIVE", { signTokenHash: null, signTokenExpiresAt: null }),
   ]), "Contracts");
-  pass("An administrator, an HR person, a hire with a contract out for signing, and one already working");
+  pass("An administrator, an HR person, a hire who has signed but the company has not, and one already working");
 
   browser = await chromium.launch({ headless: true });
 
@@ -106,19 +106,19 @@ try {
   await row.getByRole("button", { name: `Yes, delete ${draftName}` }).click();
   await until(async () => (await db.from("staff_profile").select("deletedAt").eq("id", ids.draftStaff).single()).data.deletedAt, "deleted");
   assert.equal((await db.from("employment_contract").select("signTokenHash").eq("id", ids.draftContract).single()).data.signTokenHash, null, "The signing link stops working");
+  // The list reloads itself after a delete.
+  await adm.locator(`[data-row-actions="${draftName}"]`).waitFor({ state: "detached", timeout: 30000 });
   await adm.waitForLoadState("networkidle");
-  await adm.goto(`${base}/people?search=${run}`, { waitUntil: "networkidle" });
-  assert.equal(await adm.getByText(draftName).count(), 0, "Gone from the list");
   await adm.goto(`${base}/people/${ids.draftStaff}`, { waitUntil: "networkidle" });
   assert.equal(await adm.getByRole("heading", { name: draftName }).count(), 0, "Their page no longer opens");
-  pass("An administrator deletes a profile from the list; it disappears and its signing link stops working");
+  pass("An administrator deletes someone whose contract is still being signed; it disappears and its signing link stops working");
 
   // Someone working here is refused.
   await adm.goto(`${base}/people?search=${run}`, { waitUntil: "networkidle" });
   const working = adm.locator(`[data-row-actions="${activeName}"]`);
   await working.getByRole("button", { name: `Delete ${activeName}` }).click();
   await working.getByRole("button", { name: `Yes, delete ${activeName}` }).click();
-  await working.getByText("They have a signed or running contract").waitFor();
+  await working.getByText("Their contract has been signed by both sides or is running").waitFor();
   assert.equal((await db.from("staff_profile").select("deletedAt").eq("id", ids.activeStaff).single()).data.deletedAt, null);
   pass("Someone with a running contract cannot be deleted until it is ended, and the list says why");
 
