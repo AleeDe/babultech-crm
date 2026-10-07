@@ -15,12 +15,15 @@ export function RowActions({
   id,
   name,
   editHref,
+  openHref,
   canDelete,
 }: {
   type: RecycleType;
   id: string;
   name: string;
   editHref?: string | null;
+  /** For lists whose name column does not already open the record. */
+  openHref?: string | null;
   canDelete: boolean;
 }) {
   const [asking, setAsking] = useState(false);
@@ -53,6 +56,7 @@ export function RowActions({
       ) : (
         <span className="flex items-center gap-3 whitespace-nowrap">
           {editHref && <Link href={editHref} className={link}>Edit</Link>}
+          {openHref && <Link href={openHref} className={link}>Open</Link>}
           {canDelete && (
             <button type="button" className="text-sm font-medium text-destructive hover:underline" onClick={() => { setError(null); setAsking(true); }} aria-label={`Delete ${name}`}>
               Delete

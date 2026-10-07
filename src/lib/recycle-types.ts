@@ -6,6 +6,10 @@
  * (and offers Restore there); the others are restored from the recycle bin.
  * Why a record cannot be deleted is recycle_blocker() in the database
  * (20261004000001_recycle_bin_more_types.sql).
+ *
+ * `serviceOnly` marks tables the browser's session cannot read at all (HR,
+ * which holds pay); the recycle bin reads those with the service role after
+ * checking the permission, which for them is always admin:*.
  */
 export const RECYCLE_TYPES = {
   Lead: { table: "lead", permission: "lead:delete", label: "Lead", path: "/leads/", select: "firstName, lastName, companyName", opensWhenDeleted: true },
@@ -27,7 +31,13 @@ export const RECYCLE_TYPES = {
   VendorBill: { table: "vendor_bill", permission: "payable:approve", label: "Supplier bill", path: "/vendor-bills/", select: "billNumber", opensWhenDeleted: false },
   Payment: { table: "payment", permission: "payment:write", label: "Payment", path: "/payments/", select: "paymentNumber", opensWhenDeleted: false },
   Expense: { table: "expense", permission: "admin:*", label: "Expense claim", path: "/expenses/", select: "expenseNumber, description", opensWhenDeleted: false },
+  StaffProfile: { table: "staff_profile", permission: "admin:*", label: "Person (HR)", path: "/people/", select: "profileNumber, fullName", opensWhenDeleted: false, serviceOnly: true },
 } as const;
+
+/** Whether this kind is read with the service role (see above). */
+export function isServiceOnly(type: RecycleType): boolean {
+  return "serviceOnly" in RECYCLE_TYPES[type];
+}
 
 export type RecycleType = keyof typeof RECYCLE_TYPES;
 
@@ -62,6 +72,8 @@ export function recycleLabel(type: RecycleType, row: Record<string, unknown>): s
       return s("paymentNumber");
     case "Expense":
       return pair("expenseNumber", "description");
+    case "StaffProfile":
+      return pair("profileNumber", "fullName");
     default:
       return s("name");
   }

@@ -295,6 +295,7 @@ export async function listPeople(filters: { search?: string; status?: string; ty
   if (!canReadPeople(me)) return [];
   let query = db().from("staff_profile")
     .select("id, profileNumber, fullName, status, userId, personalEmail, phone, contracts:employment_contract ( id, contractNumber, contractType, status, jobTitle, startDate, endDate, lastWorkingDay )")
+    .is("deletedAt", null)
     .order("fullName").limit(500);
   if (filters.search) {
     const term = filters.search.replace(/[%_,()]/g, " ").trim();
@@ -334,8 +335,8 @@ export async function getHiringOptions() {
     db().from("contract_template").select("id, name, contractType").eq("active", true).order("name"),
     db().from("picklist_value").select("label").eq("picklistKey", "cofounder_area").eq("active", true).order("sortOrder"),
     // Equity already given: running agreements and ones being signed.
-    db().from("employment_contract").select("id, equityPercent, staff:staff_profile ( fullName )")
-      .eq("contractType", "COFOUNDER").in("status", ["DRAFT", "SENT", "EMPLOYEE_SIGNED", "SIGNED", "ACTIVE"]),
+    db().from("employment_contract").select("id, equityPercent, staff:staff_profile!inner ( fullName )")
+      .eq("contractType", "COFOUNDER").is("staff.deletedAt", null).in("status", ["DRAFT", "SENT", "EMPLOYEE_SIGNED", "SIGNED", "ACTIVE"]),
   ]);
   return {
     departments: departments.data ?? [],
@@ -361,7 +362,7 @@ export async function getPerson(id: string) {
   if (!z.string().uuid().safeParse(id).success) return null;
   const { data: staff, error: staffError } = await db().from("staff_profile").select("*, user:app_user!staff_profile_userId_fkey ( id, fullName, email, status, role:security_role ( name ) )").eq("id", id).maybeSingle();
   if (staffError) throw new Error(staffError.message);
-  if (!staff) return null;
+  if (!staff || staff.deletedAt) return null;
   const isSelf = staff.userId === me.id;
   if (!canReadPeople(me) && !isSelf) return null;
   const { data: contracts } = await db().from("employment_contract")
@@ -385,14 +386,15 @@ export async function getContract(id: string) {
   const me = await requireUser();
   if (!z.string().uuid().safeParse(id).success) return null;
   const { data: contract, error: contractError } = await db().from("employment_contract")
-    .select(`*, staff:staff_profile ( id, fullName, profileNumber, userId, personalEmail, status ),
+    .select(`*, staff:staff_profile ( id, fullName, profileNumber, userId, personalEmail, status, deletedAt ),
              department:department ( name ), reportsTo:app_user!employment_contract_reportsToUserId_fkey ( fullName ),
              role:security_role ( name ), companySigner:app_user!employment_contract_companySignedById_fkey ( fullName ),
              template:contract_template ( name )`)
     .eq("id", id).maybeSingle();
   if (contractError) throw new Error(contractError.message);
   if (!contract) return null;
-  const staff = one(contract.staff as never) as unknown as { id: string; fullName: string; profileNumber: string; userId: string | null; personalEmail: string | null; status: string };
+  const staff = one(contract.staff as never) as unknown as { id: string; fullName: string; profileNumber: string; userId: string | null; personalEmail: string | null; status: string; deletedAt: string | null };
+  if (staff.deletedAt) return null;
   const isSelf = staff.userId === me.id;
   if (!canReadPeople(me) && !isSelf) return null;
   // The contract this one follows: a separate read, as the API does not embed
@@ -442,7 +444,7 @@ export async function getContract(id: string) {
 /** The signed-in person's own profile and contracts, for My account. */
 export async function getMyEmployment() {
   const me = await requireUser();
-  const { data: staff } = await db().from("staff_profile").select("id, profileNumber, status").eq("userId", me.id).maybeSingle();
+  const { data: staff } = await db().from("staff_profile").select("id, profileNumber, status").eq("userId", me.id).is("deletedAt", null).maybeSingle();
   if (!staff) return null;
   const { data: contracts } = await db().from("employment_contract")
     .select("id, contractNumber, contractType, status, startDate, endDate, jobTitle")
@@ -472,7 +474,7 @@ export async function createHire(input: { profile: ProfileInput; terms: TermsInp
       db().from("staff_profile").select("id").eq("userId", userId).maybeSingle(),
     ]);
     if (!user) return { ok: false, error: "Choose an existing staff login." };
-    if (taken) return { ok: false, error: "That login already has a profile." };
+    if (taken) return { ok: false, error: "That login already has a profile. If it was deleted, restore it from the recycle bin." };
   }
 
   const row = termsRow(terms.data);
@@ -902,7 +904,7 @@ export async function linkLogin(staffId: string, userId: string): Promise<Action
     db().from("staff_profile").select("id").eq("userId", userId).maybeSingle(),
   ]);
   if (!user) return { ok: false, error: "Choose an existing staff login." };
-  if (taken) return { ok: false, error: "That login already has a profile." };
+  if (taken) return { ok: false, error: "That login already has a profile. If it was deleted, restore it from the recycle bin." };
   const { error } = await db().from("staff_profile").update({ userId, updatedAt: now() }).eq("id", staffId).is("userId", null);
   if (error) return { ok: false, error: error.message };
   refresh(staffId);

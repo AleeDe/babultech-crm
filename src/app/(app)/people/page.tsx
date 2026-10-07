@@ -4,6 +4,8 @@ import {
   PageHeader, Button, Card, Table, THead, TBody, TR, TH, TD, Badge, EmptyState, StatTile, Input, Select, Forbidden,
 } from "@/components/ui";
 import { listPeople } from "@/server/people";
+import { RowActions } from "@/components/row-actions";
+import { RECYCLE_TYPES } from "@/lib/recycle-types";
 import { CONTRACT_TYPES, CONTRACT_TYPE_LABELS, CONTRACT_STATUS_LABELS, contractTone, daysUntil, type ContractStatus, type ContractType } from "@/lib/people";
 import { formatDate, humanize } from "@/lib/utils";
 
@@ -15,6 +17,7 @@ export default async function PeoplePage({
   const me = await requireUser();
   if (!canAny(me, PERMISSIONS.PEOPLE_READ, PERMISSIONS.PEOPLE_WRITE)) return <Forbidden what="People" />;
   const canWrite = can(me, PERMISSIONS.PEOPLE_WRITE);
+  const canDelete = can(me, RECYCLE_TYPES.StaffProfile.permission);
   const params = await searchParams;
   const [people, everyone] = await Promise.all([listPeople(params), listPeople({})]);
 
@@ -106,11 +109,8 @@ export default async function PeoplePage({
                     <TD>
                       {c ? <Badge tone={contractTone(c.status)}>{CONTRACT_STATUS_LABELS[c.status as ContractStatus] ?? humanize(c.status)}</Badge> : <Badge tone="neutral">{humanize(p.status)}</Badge>}
                     </TD>
-                    <TD className="text-right text-sm">
-                      <span className="inline-flex gap-3">
-                        {canWrite && <Link href={`/people/${p.id}/edit`} className="text-primary hover:underline">Edit</Link>}
-                        <Link href={`/people/${p.id}`} className="text-primary hover:underline">Open</Link>
-                      </span>
+                    <TD className="text-right">
+                      <RowActions type="StaffProfile" id={p.id} name={p.fullName} editHref={canWrite ? `/people/${p.id}/edit` : null} openHref={`/people/${p.id}`} canDelete={canDelete} />
                     </TD>
                   </TR>
                 );

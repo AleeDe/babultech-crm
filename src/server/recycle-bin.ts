@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase";
 import { authorize, requireUser, can, PERMISSIONS } from "@/lib/authz";
-import { RECYCLE_TYPES, recycleLabel, type RecycleType } from "@/lib/recycle-types";
+import { RECYCLE_TYPES, isServiceOnly, recycleLabel, type RecycleType } from "@/lib/recycle-types";
 import type { ActionResult } from "./partners";
 import { deleteGate } from "./corrections";
 
@@ -48,7 +48,7 @@ export async function getRecycleState(type: RecycleType, id: string): Promise<{ 
   const config = RECYCLE_TYPES[type];
   const canDelete = can(user, config.permission);
   if (!canDelete) return { deleted: false, blocker: null, canDelete };
-  const db = await supabaseServer();
+  const db = isServiceOnly(type) ? supabaseAdmin() : await supabaseServer();
   const { data } = await db.from(config.table).select("deletedAt, deletedById").eq("id", id).maybeSingle();
   const deleted = Boolean(data?.deletedAt && data?.deletedById);
   if (deleted) return { deleted, blocker: null, canDelete };
@@ -63,7 +63,7 @@ export async function deleteToRecycleBin(type: RecycleType, id: string): Promise
   const auth = await authorize(config.permission);
   if (!auth.ok) return { ok: false, error: auth.error };
 
-  const db = await supabaseServer();
+  const db = isServiceOnly(type) ? supabaseAdmin() : await supabaseServer();
   const { data: seen } = await db.from(config.table).select("id, deletedAt").eq("id", id).maybeSingle();
   if (!seen) return { ok: false, error: "That record could not be found." };
   if (seen.deletedAt) return { ok: false, error: "It is already deleted." };
@@ -90,6 +90,10 @@ export async function deleteToRecycleBin(type: RecycleType, id: string): Promise
   if (type === "Opportunity") {
     await admin.from("quotation").update({ deletedAt: stamp, updatedAt: stamp }).eq("opportunityId", id).is("deletedAt", null);
   }
+  // A signing link out for one of their contracts stops working.
+  if (type === "StaffProfile") {
+    await admin.from("employment_contract").update({ signTokenHash: null, signTokenExpiresAt: null, updatedAt: stamp }).eq("staffId", id).not("signTokenHash", "is", null);
+  }
 
   await audit(type, id, auth.user.id, null, stamp);
   revalidate(type, id);
@@ -103,7 +107,7 @@ export async function restoreFromRecycleBin(type: RecycleType, id: string): Prom
   const auth = await authorize(config.permission);
   if (!auth.ok) return { ok: false, error: auth.error };
 
-  const db = await supabaseServer();
+  const db = isServiceOnly(type) ? supabaseAdmin() : await supabaseServer();
   const { data: row } = await db.from(config.table).select("id, deletedAt, deletedById").eq("id", id).maybeSingle();
   if (!row || !row.deletedById) return { ok: false, error: "That record is not in the recycle bin." };
 
@@ -156,7 +160,8 @@ export async function listRecycleBin(): Promise<RecycleItem[]> {
   const lists = await Promise.all(
     types.map(async (type) => {
       const config = RECYCLE_TYPES[type];
-      const { data } = await db
+      const reader = isServiceOnly(type) ? supabaseAdmin() : db;
+      const { data } = await reader
         .from(config.table)
         .select(`id, deletedAt, deletedById, ${config.select}`)
         .not("deletedById", "is", null)
