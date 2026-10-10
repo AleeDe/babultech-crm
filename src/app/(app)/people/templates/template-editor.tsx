@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Alert, Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Select, Textarea } from "@/components/ui";
 import { saveTemplate } from "@/server/people";
+import { BoldButton } from "@/components/bold-button";
 import { CONTRACT_TYPES, CONTRACT_TYPE_LABELS, TEMPLATE_PLACEHOLDERS, type ContractType } from "@/lib/people";
 
 type Template = { id: string; name: string; contractType: string; body: string; active: boolean };
@@ -42,7 +43,11 @@ export function TemplateEditor({ templates }: { templates: Template[] }) {
                 </Select>
               </Field>
             </div>
-            <Field label="Wording" required hint="Plain text. Blank lines separate paragraphs.">
+            <div className="flex items-center gap-2">
+              <BoldButton target={() => document.querySelector<HTMLTextAreaElement>('textarea[name="templateBody"]')} />
+              <span className="text-xs text-muted-foreground">Select words and press Bold; they print in bold on every contract made from this template.</span>
+            </div>
+            <Field label="Wording" required hint="Plain text. Blank lines separate paragraphs. **Double asterisks** make words bold.">
               <Textarea name="templateBody" rows={26} className="font-serif text-sm" defaultValue={editing.body} required />
             </Field>
             <div className="rounded-md border bg-muted/30 p-3 text-xs">

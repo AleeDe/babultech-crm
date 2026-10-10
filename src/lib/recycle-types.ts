@@ -32,6 +32,7 @@ export const RECYCLE_TYPES = {
   Payment: { table: "payment", permission: "payment:write", label: "Payment", path: "/payments/", select: "paymentNumber", opensWhenDeleted: false },
   Expense: { table: "expense", permission: "admin:*", label: "Expense claim", path: "/expenses/", select: "expenseNumber, description", opensWhenDeleted: false },
   StaffProfile: { table: "staff_profile", permission: "admin:*", label: "Person (HR)", path: "/people/", select: "profileNumber, fullName", opensWhenDeleted: false, serviceOnly: true },
+  EmploymentContract: { table: "employment_contract", permission: "admin:*", label: "Contract (HR)", path: "/people/contracts/", select: "contractNumber, jobTitle", opensWhenDeleted: false, serviceOnly: true },
 } as const;
 
 /** Whether this kind is read with the service role (see above). */
@@ -74,6 +75,8 @@ export function recycleLabel(type: RecycleType, row: Record<string, unknown>): s
       return pair("expenseNumber", "description");
     case "StaffProfile":
       return pair("profileNumber", "fullName");
+    case "EmploymentContract":
+      return pair("contractNumber", "jobTitle");
     default:
       return s("name");
   }

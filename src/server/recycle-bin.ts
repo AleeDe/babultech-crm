@@ -91,6 +91,9 @@ export async function deleteToRecycleBin(type: RecycleType, id: string): Promise
     await admin.from("quotation").update({ deletedAt: stamp, updatedAt: stamp }).eq("opportunityId", id).is("deletedAt", null);
   }
   // A signing link out for one of their contracts stops working.
+  if (type === "EmploymentContract") {
+    await admin.from("employment_contract").update({ signTokenHash: null, signTokenExpiresAt: null }).eq("id", id);
+  }
   if (type === "StaffProfile") {
     await admin.from("employment_contract").update({ signTokenHash: null, signTokenExpiresAt: null, updatedAt: stamp }).eq("staffId", id).not("signTokenHash", "is", null);
   }

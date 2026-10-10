@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import { BoldButton } from "@/components/bold-button";
+import { ContractText } from "@/components/contract-text";
+import { deleteToRecycleBin } from "@/server/recycle-bin";
 import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Select, Textarea } from "@/components/ui";
 import { SignaturePad } from "@/components/signature-pad";
 import {
@@ -204,22 +207,72 @@ export function ContractActions({ contract: c }: { contract: ContractSummary }) 
   );
 }
 
-/** The contract wording, editable while a draft. */
-export function ContractTextEditor({ contractId, body }: { contractId: string; body: string }) {
+/**
+ * The contract wording and its special notes, editable while a draft. Bold is
+ * **double asterisks**; the preview shows the contract as it will be read.
+ */
+export function ContractTextEditor({ contractId, body, notes }: { contractId: string; body: string; notes: string | null }) {
   const [text, setText] = useState(body);
+  const [special, setSpecial] = useState(notes ?? "");
+  const [saved, setSaved] = useState({ text: body, special: notes ?? "" });
+  const [preview, setPreview] = useState(false);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
+  const changed = text !== saved.text || special !== saved.special;
   return (
-    <div className="space-y-2">
-      <Textarea name="contractBody" rows={24} className="font-serif text-sm leading-relaxed" value={text} onChange={(e) => { setText(e.target.value); setMessage(null); }} />
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <BoldButton target={() => (document.activeElement === notesRef.current ? notesRef.current : bodyRef.current)} />
+        <Button type="button" variant="outline" size="sm" onClick={() => setPreview(!preview)}>{preview ? "Edit" : "Preview"}</Button>
+        <span className="text-xs text-muted-foreground">Select words and press Bold. They show as **words** here and in bold on the contract.</span>
+      </div>
+      {preview ? (
+        <ContractText body={text} notes={special} className="rounded-md border bg-muted/30 p-4 font-serif text-sm leading-relaxed" />
+      ) : (
+        <>
+          <Textarea ref={bodyRef} name="contractBody" rows={24} className="font-serif text-sm leading-relaxed" value={text} onChange={(e) => { setText(e.target.value); setMessage(null); }} />
+          <Field label="Special notes" hint="Optional. Printed in a highlighted section above the signatures, and part of what is signed. Bold works here too.">
+            <Textarea ref={notesRef} name="specialNotes" rows={4} maxLength={4000} placeholder="e.g. **Probation of one month applies.**" value={special} onChange={(e) => { setSpecial(e.target.value); setMessage(null); }} />
+          </Field>
+        </>
+      )}
       {message && <Alert tone={message.tone}>{message.text}</Alert>}
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">Change the wording freely while it is a draft. Once sent, it is frozen.</p>
-        <Button type="button" size="sm" disabled={pending || text === body} onClick={() => start(async () => {
-          const r = await updateContractText(contractId, text);
+        <p className="text-xs text-muted-foreground">Change the wording and notes freely while it is a draft. Once sent, both are frozen.</p>
+        <Button type="button" size="sm" disabled={pending || !changed} onClick={() => start(async () => {
+          const r = await updateContractText(contractId, text, special);
+          if (r.ok) setSaved({ text, special });
           setMessage(r.ok ? { tone: "success", text: "Saved." } : { tone: "danger", text: r.error });
         })}>Save wording</Button>
       </div>
     </div>
+  );
+}
+
+/** Delete, for an administrator: asks on the page, then goes back to the person. */
+export function ContractDeleteButton({ contractId, name, staffId, blocker }: { contractId: string; name: string; staffId: string; blocker: string | null }) {
+  const [asking, setAsking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  if (blocker) {
+    return <Button type="button" variant="outline" disabled title={`Cannot be deleted: ${blocker}`} className="text-destructive">Delete</Button>;
+  }
+  if (!asking) {
+    return <Button type="button" variant="outline" className="text-destructive hover:text-destructive" onClick={() => setAsking(true)}>Delete</Button>;
+  }
+  return (
+    <span className="flex flex-wrap items-center gap-2 text-sm" data-contract-delete>
+      <span className="text-muted-foreground">Delete {name}? It goes to the recycle bin for 90 days.</span>
+      <Button type="button" variant="destructive" size="sm" disabled={pending} onClick={() => start(async () => {
+        setError(null);
+        const r = await deleteToRecycleBin("EmploymentContract", contractId);
+        if (!r.ok) { setError(r.error); return; }
+        window.location.href = `/people/${staffId}`;
+      })}>{pending ? "Deleting…" : "Yes, delete"}</Button>
+      <Button type="button" variant="outline" size="sm" onClick={() => setAsking(false)}>No</Button>
+      {error && <span className="w-full text-xs text-destructive" role="alert">{error}</span>}
+    </span>
   );
 }

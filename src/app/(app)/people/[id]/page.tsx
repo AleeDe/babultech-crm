@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ExternalLink } from "lucide-react";
-import { requireUser } from "@/lib/authz";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { RowActions } from "@/components/row-actions";
 import {
   PageHeader, Button, Card, CardHeader, CardTitle, CardContent, DetailRow, Badge, Table, THead, TBody, TR, TH, TD, Alert,
 } from "@/components/ui";
@@ -13,12 +14,13 @@ import { formatDate, humanize } from "@/lib/utils";
 import { LoginPanel } from "./login-panel";
 
 export default async function PersonPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireUser();
+  const me = await requireUser();
   const { id } = await params;
   const data = await getPerson(id);
   if (!data) notFound();
   const { staff, contracts, canWrite, canCreateLogins } = data;
   const documents = await listDocuments("StaffProfile", id);
+  const canDeleteContracts = can(me, PERMISSIONS.ADMIN);
 
   const running = contracts.find((c) => c.status === "ACTIVE");
   const pending = contracts.find((c) => ["DRAFT", "SENT", "EMPLOYEE_SIGNED", "SIGNED"].includes(c.status));
@@ -66,7 +68,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
               <CardContent className="text-sm text-muted-foreground">No contracts.</CardContent>
             ) : (
               <Table>
-                <THead><TR><TH>Contract</TH><TH>Position</TH><TH>Term</TH><TH>Pay or equity</TH><TH>Status</TH></TR></THead>
+                <THead><TR><TH>Contract</TH><TH>Position</TH><TH>Term</TH><TH>Pay or equity</TH><TH>Status</TH>{canDeleteContracts && <TH><span className="sr-only">Actions</span></TH>}</TR></THead>
                 <TBody>
                   {contracts.map((c) => (
                     <TR key={c.id}>
@@ -78,6 +80,11 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
                       <TD className="text-sm">{formatDate(c.startDate)} – {c.endDate ? formatDate(c.endDate) : "no end date"}{c.lastWorkingDay && <p className="text-xs text-muted-foreground">Last day {formatDate(c.lastWorkingDay)}</p>}</TD>
                       <TD className="text-sm">{isCofounder(c.contractType) ? `${percentLabel(c.equityPercent)} equity` : payLabel(c.payBasis, c.payAmount, c.currencyCode)}</TD>
                       <TD><Badge tone={contractTone(c.status)}>{CONTRACT_STATUS_LABELS[c.status as ContractStatus]}</Badge></TD>
+                      {canDeleteContracts && (
+                        <TD className="text-right">
+                          <RowActions type="EmploymentContract" id={c.id} name={c.contractNumber} canDelete />
+                        </TD>
+                      )}
                     </TR>
                   ))}
                 </TBody>

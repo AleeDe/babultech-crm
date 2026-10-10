@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Check, Printer } from "lucide-react";
-import { requireUser } from "@/lib/authz";
+import { requireUser, can, PERMISSIONS } from "@/lib/authz";
+import { ContractText } from "@/components/contract-text";
 import { PageHeader, Button, Card, CardHeader, CardTitle, CardContent, DetailRow, Badge, Alert } from "@/components/ui";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { listDocuments } from "@/server/documents";
-import { getContract } from "@/server/people";
+import { getContract, contractDeleteBlocker } from "@/server/people";
 import {
   CONTRACT_TYPE_LABELS, CONTRACT_STATUS_LABELS, contractTone, payLabel, tenureLabel, contractDate, daysUntil,
   isCofounder, percentLabel, vestingLabel, capitalLabel,
@@ -13,7 +14,7 @@ import {
 } from "@/lib/people";
 import { formatDateTime, cn, withTitle } from "@/lib/utils";
 import { Letterhead } from "@/components/letterhead";
-import { ContractActions, ContractTextEditor } from "./contract-actions";
+import { ContractActions, ContractTextEditor, ContractDeleteButton } from "./contract-actions";
 
 const STAGES = [
   { label: "Prepared", done: ["SENT", "EMPLOYEE_SIGNED", "SIGNED", "ACTIVE", "ENDED", "RENEWED", "CONVERTED", "TERMINATED", "RESIGNED"] },
@@ -29,7 +30,11 @@ export default async function ContractPage({ params, searchParams }: { params: P
   const data = await getContract(id);
   if (!data) notFound();
   const { contract: c, canWrite, canCreateLogins } = data;
-  const documents = await listDocuments("EmploymentContract", id);
+  const canDelete = can(me, PERMISSIONS.ADMIN);
+  const [documents, deleteBlocker] = await Promise.all([
+    listDocuments("EmploymentContract", id),
+    canDelete ? contractDeleteBlocker(id) : Promise.resolve(null),
+  ]);
   const status = c.status as ContractStatus;
   const left = status === "ACTIVE" && c.endDate ? daysUntil(c.endDate) : null;
   const cofounder = isCofounder(c.contractType);
@@ -45,6 +50,7 @@ export default async function ContractPage({ params, searchParams }: { params: P
         <Badge tone={contractTone(status)}>{CONTRACT_STATUS_LABELS[status]}</Badge>
         <Button asChild variant="outline"><Link href={`/print/contracts/${id}`} target="_blank"><Printer className="h-4 w-4" /> Print</Link></Button>
         {canWrite && status === "DRAFT" && <Button asChild variant="outline"><Link href={`/people/contracts/${id}/edit`}>Edit terms</Link></Button>}
+        {canDelete && <ContractDeleteButton contractId={id} name={c.contractNumber} staffId={c.staff.id} blocker={deleteBlocker} />}
       </PageHeader>
 
       {justCreated && (
@@ -75,9 +81,9 @@ export default async function ContractPage({ params, searchParams }: { params: P
             <CardContent>
               <Letterhead companyName={c.companyName} className="mb-4" />
               {canWrite && status === "DRAFT" ? (
-                <ContractTextEditor contractId={id} body={c.body} />
+                <ContractTextEditor contractId={id} body={c.body} notes={c.specialNotes} />
               ) : (
-                <div className="whitespace-pre-wrap rounded-md border bg-muted/30 p-4 font-serif text-sm leading-relaxed" data-contract-text>{c.body}</div>
+                <ContractText body={c.body} notes={c.specialNotes} className="rounded-md border bg-muted/30 p-4 font-serif text-sm leading-relaxed" />
               )}
               {(c.employeeSignature || c.companySignature || c.signMethod === "MANUAL") && (
                 <div className="mt-6 grid gap-6 sm:grid-cols-2">

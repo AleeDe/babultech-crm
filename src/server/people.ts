@@ -35,7 +35,12 @@ import type { ActionResult } from "./partners";
 const db = () => supabaseAdmin();
 const now = () => new Date().toISOString();
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
-const hashBody = (body: string) => createHash("sha256").update(body.replace(/\r\n/g, "\n")).digest("hex");
+// The fingerprint of what is signed: the wording, and the special notes when
+// there are any (so a contract without notes keeps the fingerprint it had).
+const hashBody = (body: string, notes?: string | null) => {
+  const signed = notes?.trim() ? `${body}\n\nSpecial notes:\n${notes.trim()}` : body;
+  return createHash("sha256").update(signed.replace(/\r\n/g, "\n")).digest("hex");
+};
 
 function canReadPeople(user: SessionUser) {
   return canAny(user, PERMISSIONS.PEOPLE_READ, PERMISSIONS.PEOPLE_WRITE);
@@ -294,7 +299,7 @@ export async function listPeople(filters: { search?: string; status?: string; ty
   const me = await requireUser();
   if (!canReadPeople(me)) return [];
   let query = db().from("staff_profile")
-    .select("id, profileNumber, fullName, status, userId, personalEmail, phone, contracts:employment_contract ( id, contractNumber, contractType, status, jobTitle, startDate, endDate, lastWorkingDay )")
+    .select("id, profileNumber, fullName, status, userId, personalEmail, phone, contracts:employment_contract ( id, contractNumber, contractType, status, jobTitle, startDate, endDate, lastWorkingDay, deletedAt )")
     .is("deletedAt", null)
     .order("fullName").limit(500);
   if (filters.search) {
@@ -307,7 +312,7 @@ export async function listPeople(filters: { search?: string; status?: string; ty
   const today = karachiToday();
   const rank = (s: string) => ({ ACTIVE: 0, TERMINATED: 1, RESIGNED: 1, SIGNED: 2, EMPLOYEE_SIGNED: 3, SENT: 4, DRAFT: 5 } as Record<string, number>)[s] ?? 9;
   let rows: PersonRow[] = (data ?? []).map((p) => {
-    const contracts = ((p.contracts ?? []) as PersonRow["current"][]).filter((c) => c && c.status !== "CANCELLED");
+    const contracts = ((p.contracts ?? []) as (PersonRow["current"] & { deletedAt?: string | null })[]).filter((c) => c && c.status !== "CANCELLED" && !c.deletedAt);
     const live = contracts
       .filter((c) => !["ENDED", "RENEWED", "CONVERTED"].includes(c!.status) && !(["TERMINATED", "RESIGNED"].includes(c!.status) && (c!.lastWorkingDay ?? "") < today))
       .sort((a, b) => rank(a!.status) - rank(b!.status) || b!.startDate.localeCompare(a!.startDate));
@@ -336,7 +341,7 @@ export async function getHiringOptions() {
     db().from("picklist_value").select("label").eq("picklistKey", "cofounder_area").eq("active", true).order("sortOrder"),
     // Equity already given: running agreements and ones being signed.
     db().from("employment_contract").select("id, equityPercent, staff:staff_profile!inner ( fullName )")
-      .eq("contractType", "COFOUNDER").is("staff.deletedAt", null).in("status", ["DRAFT", "SENT", "EMPLOYEE_SIGNED", "SIGNED", "ACTIVE"]),
+      .eq("contractType", "COFOUNDER").is("staff.deletedAt", null).is("deletedAt", null).in("status", ["DRAFT", "SENT", "EMPLOYEE_SIGNED", "SIGNED", "ACTIVE"]),
   ]);
   return {
     departments: departments.data ?? [],
@@ -367,7 +372,7 @@ export async function getPerson(id: string) {
   if (!canReadPeople(me) && !isSelf) return null;
   const { data: contracts } = await db().from("employment_contract")
     .select("id, contractNumber, contractType, status, jobTitle, startDate, endDate, tenureMonths, payBasis, payAmount, currencyCode, lastWorkingDay, previousContractId, signMethod, signedOn, equityPercent")
-    .eq("staffId", id).order("startDate", { ascending: false }).order("createdAt", { ascending: false });
+    .eq("staffId", id).is("deletedAt", null).order("startDate", { ascending: false }).order("createdAt", { ascending: false });
   const user = one(staff.user as never) as { id: string; fullName: string; email: string; status: string; role: unknown } | null;
   return {
     staff: { ...staff, user: user ? { ...user, role: one(user.role as never) as { name: string } | null } : null } as Record<string, unknown> & {
@@ -392,7 +397,7 @@ export async function getContract(id: string) {
              template:contract_template ( name )`)
     .eq("id", id).maybeSingle();
   if (contractError) throw new Error(contractError.message);
-  if (!contract) return null;
+  if (!contract || contract.deletedAt) return null;
   const staff = one(contract.staff as never) as unknown as { id: string; fullName: string; profileNumber: string; userId: string | null; personalEmail: string | null; status: string; deletedAt: string | null };
   if (staff.deletedAt) return null;
   const isSelf = staff.userId === me.id;
@@ -401,7 +406,7 @@ export async function getContract(id: string) {
   // a table in itself.
   const [teams, successors, previous, company] = await Promise.all([
     (contract.teamIds as string[]).length ? db().from("team").select("id, name").in("id", contract.teamIds as string[]) : Promise.resolve({ data: [] }),
-    db().from("employment_contract").select("id, contractNumber, contractType, status").eq("previousContractId", id).neq("status", "CANCELLED"),
+    db().from("employment_contract").select("id, contractNumber, contractType, status").eq("previousContractId", id).neq("status", "CANCELLED").is("deletedAt", null),
     contract.previousContractId
       ? db().from("employment_contract").select("id, contractNumber, contractType").eq("id", contract.previousContractId).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -428,7 +433,7 @@ export async function getContract(id: string) {
       currencyCode: string | null; benefits: string[]; teamIds: string[]; noticeDays: number; hoursPerWeek: string | null;
       signTokenExpiresAt: string | null; employeeSignature: string | null; companySignature: string | null;
       employeeSignedName: string | null; employeeSignedAt: string | null; companySignedName: string | null; companySignedAt: string | null;
-      companySignedTitle: string | null; companyName: string;
+      companySignedTitle: string | null; companyName: string; specialNotes: string | null;
       lastWorkingDay: string | null; signMethod: string | null; signedOn: string | null;
       noticeGivenOn: string | null; endReason: string | null;
       staff: typeof staff;
@@ -451,7 +456,7 @@ export async function getMyEmployment() {
   if (!staff) return null;
   const { data: contracts } = await db().from("employment_contract")
     .select("id, contractNumber, contractType, status, startDate, endDate, jobTitle")
-    .eq("staffId", staff.id).neq("status", "CANCELLED").order("startDate", { ascending: false });
+    .eq("staffId", staff.id).neq("status", "CANCELLED").is("deletedAt", null).order("startDate", { ascending: false });
   return { staff, contracts: contracts ?? [] };
 }
 
@@ -538,7 +543,7 @@ export async function createContract(staffId: string, input: TermsInput, previou
     const { data: previous } = await db().from("employment_contract").select("id, staffId, status").eq("id", previousContractId).maybeSingle();
     if (!previous || previous.staffId !== staffId) return { ok: false, error: "The contract being renewed is not this person's." };
     if (!["ACTIVE", "ENDED", "SIGNED"].includes(previous.status)) return { ok: false, error: "Only a current or recently ended contract can be renewed or converted." };
-    const { data: open } = await db().from("employment_contract").select("contractNumber").eq("previousContractId", previousContractId).neq("status", "CANCELLED").limit(1);
+    const { data: open } = await db().from("employment_contract").select("contractNumber").eq("previousContractId", previousContractId).neq("status", "CANCELLED").is("deletedAt", null).limit(1);
     if (open?.length) return { ok: false, error: `${open[0].contractNumber} already follows this contract. Open it, or cancel it first.` };
   }
   const row = termsRow(parsed.data);
@@ -558,7 +563,7 @@ export async function createContract(staffId: string, input: TermsInput, previou
 }
 
 async function loadForChange(id: string, allowed: string[]) {
-  const { data } = await db().from("employment_contract").select("*, staff:staff_profile ( * )").eq("id", id).maybeSingle();
+  const { data } = await db().from("employment_contract").select("*, staff:staff_profile ( * )").eq("id", id).is("deletedAt", null).maybeSingle();
   if (!data) return { error: "That contract no longer exists." } as const;
   if (!allowed.includes(data.status)) return { error: `This contract is ${String(data.status).toLowerCase().replace(/_/g, " ")}, so that cannot be done.` } as const;
   return { contract: data, staff: one(data.staff as never) as unknown as Record<string, unknown> & { id: string; userId: string | null; fullName: string; personalEmail: string | null } } as const;
@@ -587,14 +592,18 @@ export async function updateContractTerms(id: string, input: TermsInput, rebuild
   return { ok: true, data: { id } };
 }
 
-export async function updateContractText(id: string, body: string): Promise<ActionResult> {
+export async function updateContractText(id: string, body: string, specialNotes?: string | null): Promise<ActionResult> {
   const auth = await authorize(PERMISSIONS.PEOPLE_WRITE);
   if (!auth.ok) return auth;
   const parsed = z.string().trim().min(20, "The contract text is too short.").max(100_000).safeParse(body);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  const notes = z.string().max(4000, "Keep the special notes under 4,000 characters.").safeParse(specialNotes ?? "");
+  if (!notes.success) return { ok: false, error: notes.error.issues[0].message };
   const loaded = await loadForChange(id, ["DRAFT"]);
   if ("error" in loaded) return { ok: false, error: loaded.error! };
-  const { error } = await db().from("employment_contract").update({ body: parsed.data, updatedAt: now() }).eq("id", id).eq("status", "DRAFT");
+  const { error } = await db().from("employment_contract").update({
+    body: parsed.data, specialNotes: notes.data.trim() || null, updatedAt: now(),
+  }).eq("id", id).eq("status", "DRAFT");
   if (error) return { ok: false, error: error.message };
   refresh(loaded.staff.id, id);
   return { ok: true, data: undefined };
@@ -630,7 +639,7 @@ export async function sendForSigning(id: string, options: { email?: boolean } = 
   const expiresAt = new Date(Date.now() + SIGNING_LINK_DAYS * 86_400_000).toISOString();
   const { error } = await db().from("employment_contract").update({
     status: "SENT", signTokenHash: hashToken(token), signTokenExpiresAt: expiresAt,
-    bodyHash: hashBody(contract.body), sentAt: now(), updatedAt: now(),
+    bodyHash: hashBody(contract.body, contract.specialNotes), sentAt: now(), updatedAt: now(),
   }).eq("id", id).in("status", ["DRAFT", "SENT"]);
   if (error) return { ok: false, error: error.message };
   if (contract.status === "DRAFT") await audit("EmploymentContract", id, "status", "DRAFT", "SENT", auth.user.id);
@@ -716,7 +725,7 @@ export async function markSignedByHand(id: string, input: { signedOn: string }):
   const loaded = await loadForChange(id, ["DRAFT", "SENT", "EMPLOYEE_SIGNED"]);
   if ("error" in loaded) return { ok: false, error: loaded.error! };
   const { error } = await db().from("employment_contract").update({
-    status: "SIGNED", signMethod: "MANUAL", signedOn: parsed.data.signedOn, bodyHash: hashBody(loaded.contract.body),
+    status: "SIGNED", signMethod: "MANUAL", signedOn: parsed.data.signedOn, bodyHash: hashBody(loaded.contract.body, loaded.contract.specialNotes),
     signTokenHash: null, signTokenExpiresAt: null, companySignedById: auth.user.id, updatedAt: now(),
   }).eq("id", id);
   if (error) return { ok: false, error: error.message };
@@ -784,9 +793,9 @@ export async function endContractEarly(id: string, input: { kind: "TERMINATED" |
 async function contractByToken(token: string) {
   if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) return null;
   const { data } = await db().from("employment_contract")
-    .select("id, contractNumber, contractType, status, body, bodyHash, jobTitle, startDate, endDate, signTokenExpiresAt, employeeSignedName, employeeSignedAt, staff:staff_profile ( id, fullName )")
+    .select("id, contractNumber, contractType, status, body, specialNotes, bodyHash, jobTitle, startDate, endDate, signTokenExpiresAt, employeeSignedName, employeeSignedAt, deletedAt, staff:staff_profile ( id, fullName )")
     .eq("signTokenHash", hashToken(token)).maybeSingle();
-  if (!data) return null;
+  if (!data || data.deletedAt) return null;
   if (data.signTokenExpiresAt && Date.parse(`${data.signTokenExpiresAt}Z`) < Date.now()) return null;
   return { ...data, staff: one(data.staff as never) as unknown as { id: string; fullName: string } };
 }
@@ -801,6 +810,7 @@ export async function getSigningContext(token: string) {
     contractType: CONTRACT_TYPE_LABELS[contract.contractType as ContractType],
     status: contract.status as string,
     body: contract.body as string,
+    specialNotes: (contract.specialNotes as string | null) ?? null,
     fullName: contract.staff.fullName,
     jobTitle: contract.jobTitle as string,
     startDate: contract.startDate as string,
@@ -818,7 +828,7 @@ export async function signAsEmployee(token: string, input: { name: string; signa
   const contract = await contractByToken(token);
   if (!contract || contract.status !== "SENT") return { ok: false, error: "This signing link is no longer valid." };
   // The words they read are the words that were sent.
-  if (contract.bodyHash && contract.bodyHash !== hashBody(contract.body as string)) return { ok: false, error: "This contract changed after it was sent. Ask for a new link." };
+  if (contract.bodyHash && contract.bodyHash !== hashBody(contract.body as string, contract.specialNotes as string | null)) return { ok: false, error: "This contract changed after it was sent. Ask for a new link." };
   const h = await headers();
   const { data, error } = await db().from("employment_contract").update({
     status: "EMPLOYEE_SIGNED", employeeSignedName: parsed.data.name, employeeSignature: parsed.data.signature,
@@ -850,7 +860,7 @@ export async function signAsEmployee(token: string, input: { name: string; signa
 
 /** The contract a login is set up from: the running one, else the latest. */
 async function contractForLogin(staffId: string) {
-  const { data } = await db().from("employment_contract").select("*").eq("staffId", staffId).neq("status", "CANCELLED")
+  const { data } = await db().from("employment_contract").select("*").eq("staffId", staffId).neq("status", "CANCELLED").is("deletedAt", null)
     .order("startDate", { ascending: false }).limit(10);
   const rows = data ?? [];
   return rows.find((c) => c.status === "ACTIVE") ?? rows.find((c) => ["SIGNED", "EMPLOYEE_SIGNED", "SENT", "DRAFT"].includes(c.status)) ?? rows[0] ?? null;
@@ -953,4 +963,12 @@ export async function suggestedNextStart(contractId: string): Promise<string | n
   if (!auth.ok) return null;
   const { data } = await db().from("employment_contract").select("endDate").eq("id", contractId).maybeSingle();
   return data?.endDate ? dayAfter(data.endDate as string) : null;
+}
+
+/** Why a contract cannot be deleted now, or null if an administrator may. */
+export async function contractDeleteBlocker(id: string): Promise<string | null> {
+  const auth = await authorize(PERMISSIONS.ADMIN);
+  if (!auth.ok) return "Only an administrator can delete a contract.";
+  const { data } = await db().rpc("recycle_blocker", { p_entity_type: "EmploymentContract", p_id: id });
+  return (data as string | null) ?? null;
 }
