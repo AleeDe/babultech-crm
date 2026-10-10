@@ -167,6 +167,12 @@ try {
   // The price book, found by typing.
   const bookBox = page.getByRole("combobox", { name: "Price book" });
   await bookBox.click();
+  // The open list is solid: the form underneath must not show through it.
+  const openList = page.getByRole("listbox").first();
+  await openList.waitFor();
+  const listBackground = await openList.evaluate((el) => getComputedStyle(el).backgroundColor);
+  assert.ok(!/transparent|rgba([^)]*,s*0)/.test(listBackground), `The list has a solid background, not ${listBackground}`);
+  if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
   await bookBox.fill(`QA Rates ${run}`);
   await page.getByRole("option", { name: new RegExp(`QA Rates ${run}`) }).click();
 

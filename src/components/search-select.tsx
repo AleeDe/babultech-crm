@@ -128,7 +128,8 @@ export function SearchSelect({
         <ul
           id={listId}
           role="listbox"
-          className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-popover py-1 text-sm shadow-md"
+          // bg-card: a solid surface, so the form underneath never shows through.
+          className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-card py-1 text-sm text-card-foreground shadow-lg"
         >
           {matches.length === 0 ? (
             <li className="px-3 py-2 text-muted-foreground">Nothing matches.</li>
