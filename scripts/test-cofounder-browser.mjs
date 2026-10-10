@@ -68,7 +68,8 @@ try {
     id: ids.otherContract, contractNumber: `QA-COF-${run}`, staffId: ids.otherStaff, contractType: "COFOUNDER", startDate: today(),
     jobTitle: "Co-founder", equityPercent: 60, responsibilities: ["Sales"], status: "ACTIVE", body: "QA", updatedAt: now(),
   }), "Other agreement");
-  const realHeld = ((await db.from("employment_contract").select("equityPercent").eq("contractType", "COFOUNDER")
+  // As the app counts it: agreements not deleted, of people not deleted.
+  const realHeld = ((await db.from("employment_contract").select("equityPercent, staff:staff_profile!inner ( deletedAt )").eq("contractType", "COFOUNDER").is("deletedAt", null).is("staff.deletedAt", null)
     .in("status", ["DRAFT", "SENT", "EMPLOYEE_SIGNED", "SIGNED", "ACTIVE"]).neq("id", ids.otherContract)).data ?? [])
     .reduce((sum, c) => sum + Number(c.equityPercent), 0);
   const fmt = (n) => `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 3 }).format(n)}%`;

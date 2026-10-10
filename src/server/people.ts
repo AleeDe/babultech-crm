@@ -967,8 +967,8 @@ export async function suggestedNextStart(contractId: string): Promise<string | n
 
 /** Why a contract cannot be deleted now, or null if an administrator may. */
 export async function contractDeleteBlocker(id: string): Promise<string | null> {
-  const auth = await authorize(PERMISSIONS.ADMIN);
-  if (!auth.ok) return "Only an administrator can delete a contract.";
-  const { data } = await db().rpc("recycle_blocker", { p_entity_type: "EmploymentContract", p_id: id });
+  const auth = await authorize(PERMISSIONS.RECORD_DELETE);
+  if (!auth.ok) return "Only the Super Admin can delete a contract.";
+  const { data } = await db().rpc("recycle_hard_blocker", { p_entity_type: "EmploymentContract", p_id: id });
   return (data as string | null) ?? null;
 }

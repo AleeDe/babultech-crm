@@ -2,6 +2,20 @@
 
 How access is decided in this system, and the rules to follow when changing it.
 
+## 10 October 2026: one Super Admin deletes; CRM Admins do everything else
+
+`20261010000001_super_admin_deletes.sql`.
+
+| Role | Holds | Who |
+| --- | --- | --- |
+| Super Admin | `*` | One login (admin@babultech.com) |
+| CRM Admin | `all:except-delete` | Hasan Shamsi, Muhammad Ali, and anyone later |
+
+- **`record:delete`** is the only permission that deletes, restores or erases a record, of every kind (all of `RECYCLE_TYPES` and the older per-kind delete actions, which now call the recycle bin). The per-kind grants (`lead:delete`, `account:delete` ...) were removed from every role. Managers and everyone else no longer delete; they edit, cancel or close.
+- **A Super Admin's delete ignores status and stage.** It still goes to the recycle bin for 90 days, and asks for a reason, kept as a `deleteReason` row in `audit_history`. Deleting an account takes its contacts, deals (with their quotes) and support cases, stamped the same so a restore brings them back; its projects, invoices and payments stay. The only refusals are about the books, `recycle_hard_blocker()`: anything dated in a closed month, and an invoice or payment still tied by a payment allocation. `recycle_blocker()` is no longer used.
+- **`role:manage`** creates and changes roles, and is required to give or take away any role holding `*`, `all:except-delete`, `record:delete` or `role:manage`, or to edit or reset the password of a Super Admin login (`server/users.ts`).
+- **`all:except-delete`** is a grant, not a list: `holds()` (`lib/nav-permissions.ts`) and `app_grant_covers()` in the database treat it as every permission except `record:delete` and `role:manage`, so permissions added later reach CRM Admins without editing the role. Client components ask `useCan()` (`components/permissions.tsx`) before showing a Delete link.
+
 ## 5 October 2026: job roles, teams, and People
 
 **A role is access, not a job title.** The job is described by the job title,

@@ -30,7 +30,7 @@ export default async function ContractPage({ params, searchParams }: { params: P
   const data = await getContract(id);
   if (!data) notFound();
   const { contract: c, canWrite, canCreateLogins } = data;
-  const canDelete = can(me, PERMISSIONS.ADMIN);
+  const canDelete = can(me, PERMISSIONS.RECORD_DELETE);
   const [documents, deleteBlocker] = await Promise.all([
     listDocuments("EmploymentContract", id),
     canDelete ? contractDeleteBlocker(id) : Promise.resolve(null),

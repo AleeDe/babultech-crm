@@ -11,8 +11,17 @@
  * that computed visibility differently from the server would either hide a page
  * the user may open, or show one that refuses on arrival.
  */
+/**
+ * The CRM Admin grant: every permission except the two only a Super Admin
+ * holds. A grant rather than a list, so a permission added later reaches CRM
+ * Admins too. Mirrored by app_grant_covers() in the database.
+ */
+export const ALL_BUT_DELETE = "all:except-delete";
+export const SUPER_ADMIN_ONLY: readonly string[] = ["record:delete", "role:manage"];
+
 export function holds(permissions: string[], permission: string): boolean {
   if (permissions.includes("*")) return true;
+  if (permissions.includes(ALL_BUT_DELETE) && !SUPER_ADMIN_ONLY.includes(permission)) return true;
   if (permissions.includes(permission)) return true;
 
   const [entity, action] = permission.split(":");

@@ -122,25 +122,33 @@ try {
 
   // --- Deleting -------------------------------------------------------------
   await page.goto(`${base}/people/contracts/${ids.main}`, { waitUntil: "networkidle" });
-  const blocked = page.getByRole("button", { name: "Delete", exact: true });
-  assert.equal(await blocked.isDisabled(), true, "A contract being signed cannot be deleted");
-  assert.match(await blocked.getAttribute("title"), /being signed, signed or running/);
-  pass("A contract being signed cannot be deleted, and says why");
+  const mainNumber = `QA-${ids.main.slice(0, 8)}`;
+  await page.getByRole("button", { name: `Delete ${mainNumber}` }).click();
+  const confirm = page.locator("[data-delete-confirm]");
+  await confirm.getByText(`Delete ${mainNumber}?`).waitFor();
+  assert.equal(await page.getByRole("button", { name: `Yes, delete ${mainNumber}` }).isDisabled(), true, "Not without a reason");
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+  pass("The Super Admin can delete even a contract being signed, after giving a reason");
 
   await page.goto(`${base}/people/${ids.staff}`, { waitUntil: "networkidle" });
   const cancelledNumber = `QA-${ids.cancelled.slice(0, 8)}`;
   const row = page.locator(`[data-row-actions="${cancelledNumber}"]`);
   await row.getByRole("button", { name: `Delete ${cancelledNumber}` }).click();
+  await page.locator('input[name="deleteReason"]').fill("Cancelled, not needed");
   await row.getByRole("button", { name: `Yes, delete ${cancelledNumber}` }).click();
   await until(async () => (await contract(ids.cancelled)).deletedAt, "cancelled deleted");
   await page.locator(`[data-row-actions="${cancelledNumber}"]`).waitFor({ state: "detached", timeout: 30000 });
   pass("A cancelled contract is deleted from the person's page and leaves the list");
 
   await page.goto(`${base}/people/contracts/${ids.draft}`, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await page.getByRole("button", { name: "Yes, delete" }).click();
+  const draftNumber = `QA-${ids.draft.slice(0, 8)}`;
+  await page.getByRole("button", { name: `Delete ${draftNumber}` }).click();
+  await page.locator('input[name="deleteReason"]').fill("Draft made by mistake");
+  await page.getByRole("button", { name: `Yes, delete ${draftNumber}` }).click();
   await page.waitForURL(new RegExp(`/people/${ids.staff}$`), { timeout: 30000 });
   assert.ok((await contract(ids.draft)).deletedAt);
+  const reason = (await db.from("audit_history").select("newValue").eq("entityId", ids.draft).eq("fieldName", "deleteReason").maybeSingle()).data;
+  assert.equal(reason?.newValue, "Draft made by mistake", "The reason is kept in the history");
   await page.goto(`${base}/people/contracts/${ids.draft}`, { waitUntil: "networkidle" });
   assert.equal(await page.getByText("Second draft QA contract").count(), 0, "A deleted contract no longer opens");
   pass("A draft is deleted from its own page, which then goes back to the person");

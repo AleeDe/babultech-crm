@@ -52,7 +52,7 @@ export default async function SettingsPage() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <RolesPanel roles={roles} />
+        <RolesPanel roles={roles} canManage={can(me, PERMISSIONS.ROLE_MANAGE)} />
         <PicklistEditor lists={picklists} />
         <SlaPolicies policies={slaPolicies} businessHours={businessHours} />
         <EmailSettingsPanel values={emailSettings} />

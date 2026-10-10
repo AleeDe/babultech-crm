@@ -1,10 +1,10 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ authorize: vi.fn(), admin: vi.fn(), server: vi.fn() }));
+const mocks = vi.hoisted(() => ({ authorize: vi.fn(), admin: vi.fn(), server: vi.fn(), can: vi.fn(() => true) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-vi.mock("@/lib/authz", () => ({ authorize: mocks.authorize, requirePermission: vi.fn(), requireUser: vi.fn(), PERMISSIONS: { ADMIN: "admin" } }));
+vi.mock("@/lib/authz", () => ({ authorize: mocks.authorize, requirePermission: vi.fn(), requireUser: vi.fn(), can: mocks.can, PERMISSIONS: { ADMIN: "admin", ROLE_MANAGE: "role:manage" } }));
 vi.mock("@/lib/supabase", () => ({ supabaseAdmin: mocks.admin, supabaseServer: mocks.server, supabaseAnon: vi.fn() }));
 import { createUser, updateUser } from "@/server/users";
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => { vi.clearAllMocks(); mocks.can.mockReturnValue(true); });
 it("rejects non-admin creation before privileged database access", async () => {
   mocks.authorize.mockResolvedValue({ ok: false, error: "Forbidden" });
   expect(await createUser({} as never)).toEqual({ ok: false, error: "Forbidden" });
@@ -56,4 +56,15 @@ it("rejects external managers", async () => {
   queries([{ name: "Consultant", active: true }, { id: managerId, status: "ACTIVE", partnerId: targetId }]);
   expect((await createUser({ ...input, managerUserId: managerId })).ok).toBe(false);
   expect(mocks.admin).not.toHaveBeenCalled();
+});
+
+it("refuses a CRM Admin who tries to give someone the Super Admin role", async () => {
+  mocks.authorize.mockResolvedValue({ ok: true, user: { id: "actor" } });
+  mocks.can.mockReturnValue(false);
+  const query = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: { permissions: ["*"] }, error: null }) };
+  mocks.admin.mockReturnValue({ from: vi.fn().mockReturnValue(query) });
+  const result = await createUser(input);
+  expect(result.ok).toBe(false);
+  expect(result.ok ? "" : result.error).toMatch(/Only the Super Admin/);
+  expect(mocks.server).not.toHaveBeenCalled();
 });

@@ -1,5 +1,6 @@
 "use server";
 
+import { deleteToRecycleBin } from "./recycle-bin";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase";
@@ -232,35 +233,9 @@ export async function copyPriceBook(
   return { ok: true, data: { id: created.id as string } };
 }
 
-export async function deletePriceBook(id: string): Promise<ActionResult> {
-  const auth = await authorize(PERMISSIONS.OPPORTUNITY_WRITE);
-  if (!auth.ok) return { ok: false, error: auth.error };
-
-  const db = await supabaseServer();
-
-  // A book deals were priced from is retired, not deleted: those deals still
-  // point at it, and "where did this price come from" should keep an answer.
-  const { count } = await db
-    .from("opportunity")
-    .select("id", { count: "exact", head: true })
-    .eq("priceBookId", id)
-    .is("deletedAt", null);
-
-  if (count && count > 0) {
-    return {
-      ok: false,
-      error: `${count} deal(s) were priced from this book. Mark it inactive instead, so it stops being offered but those deals keep their history.`,
-    };
-  }
-
-  const { error } = await db
-    .from("price_book")
-    .update({ deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
-    .eq("id", id);
-
-  if (error) return { ok: false, error: error.message };
-  revalidatePath("/price-books");
-  return { ok: true, data: undefined };
+/** Only the Super Admin deletes; this is the recycle bin's delete, kept for its callers. */
+export async function deletePriceBook(id: string, reason?: string | null): Promise<ActionResult> {
+  return deleteToRecycleBin("PriceBook", id, reason) as never;
 }
 
 // ---------------------------------------------------------------------------

@@ -42,7 +42,7 @@ let browser;
 
 try {
   await must(db.from("security_role").insert({
-    id: ids.role, name: `QA Views ${run}`, permissions: ["lead:read", "lead:write", "lead:delete", "account:read"], dataScope: "OWN", updatedAt: now(),
+    id: ids.role, name: `QA Views ${run}`, permissions: ["lead:read", "lead:write", "record:delete", "account:read"], dataScope: "OWN", updatedAt: now(),
   }), "Create the role");
   const email = `views-qa-${run.toLowerCase()}@example.com`;
   const password = randomBytes(24).toString("base64url");
@@ -112,7 +112,9 @@ try {
 
   // --- Recycle bin ------------------------------------------------------------
   await page.goto(`${base}/leads/${ids.open}`, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("button", { name: /^Delete / }).first().click();
+  await page.locator('input[name="deleteReason"]').fill("QA test lead");
+  await page.getByRole("button", { name: /^Yes, delete/ }).click();
   await page.waitForURL((u) => u.pathname === "/leads", { timeout: 20000 });
   const hidden = await must(db.from("lead").select("deletedAt, deletedById").eq("id", ids.open).single(), "Read lead");
   assert.ok(hidden.deletedAt && hidden.deletedById === ids.user, "Hidden, with who deleted it");
@@ -131,15 +133,17 @@ try {
   assert.deepEqual(back, { deletedAt: null, deletedById: null });
   const trail = await must(db.from("audit_history").select("oldValue, newValue").eq("entityId", ids.open).eq("fieldName", "deletedAt"), "Audit");
   assert.equal(trail.length, 2, "Delete and restore are both in the history");
+  const why = await must(db.from("audit_history").select("newValue").eq("entityId", ids.open).eq("fieldName", "deleteReason"), "Reason");
+  assert.equal(why[0]?.newValue, "QA test lead", "And why it was deleted");
   pass("The recycle bin lists it with days left, and Restore brings it back");
 
   await must(db.from("lead").update({ convertedAt: now(), status: "CONVERTED" }).eq("id", ids.contacted), "Mark converted");
   await page.goto(`${base}/leads/${ids.contacted}`, { waitUntil: "networkidle" });
-  const del = page.getByRole("button", { name: "Delete" });
-  await del.waitFor({ timeout: 15000 });
-  assert.equal(await del.isDisabled(), true, "A converted lead cannot be deleted");
-  assert.match(await del.getAttribute("title"), /converted/);
-  pass("A converted lead cannot be deleted, and the button says why");
+  await page.getByRole("button", { name: /^Delete / }).first().click();
+  const confirmBox = page.locator("[data-delete-confirm]");
+  await confirmBox.getByText(/^Delete .*\?$/).waitFor({ timeout: 15000 });
+  assert.equal(await confirmBox.getByText("cannot be deleted yet").count(), 0, "Even a converted lead can be deleted by the Super Admin");
+  pass("A converted lead can be deleted by the Super Admin, whatever its status");
 
   assert.equal(errors.length, 0, `Browser errors:\n${errors.map((e) => `  ${e.url}: ${e.message.slice(0, 200)}`).join("\n")}`);
   pass("No browser runtime errors");

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { BoldButton } from "@/components/bold-button";
 import { ContractText } from "@/components/contract-text";
-import { deleteToRecycleBin } from "@/server/recycle-bin";
+import { DeleteConfirm } from "@/components/delete-confirm";
 import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Select, Textarea } from "@/components/ui";
 import { SignaturePad } from "@/components/signature-pad";
 import {
@@ -251,28 +251,7 @@ export function ContractTextEditor({ contractId, body, notes }: { contractId: st
   );
 }
 
-/** Delete, for an administrator: asks on the page, then goes back to the person. */
-export function ContractDeleteButton({ contractId, name, staffId, blocker }: { contractId: string; name: string; staffId: string; blocker: string | null }) {
-  const [asking, setAsking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, start] = useTransition();
-  if (blocker) {
-    return <Button type="button" variant="outline" disabled title={`Cannot be deleted: ${blocker}`} className="text-destructive">Delete</Button>;
-  }
-  if (!asking) {
-    return <Button type="button" variant="outline" className="text-destructive hover:text-destructive" onClick={() => setAsking(true)}>Delete</Button>;
-  }
-  return (
-    <span className="flex flex-wrap items-center gap-2 text-sm" data-contract-delete>
-      <span className="text-muted-foreground">Delete {name}? It goes to the recycle bin for 90 days.</span>
-      <Button type="button" variant="destructive" size="sm" disabled={pending} onClick={() => start(async () => {
-        setError(null);
-        const r = await deleteToRecycleBin("EmploymentContract", contractId);
-        if (!r.ok) { setError(r.error); return; }
-        window.location.href = `/people/${staffId}`;
-      })}>{pending ? "Deleting…" : "Yes, delete"}</Button>
-      <Button type="button" variant="outline" size="sm" onClick={() => setAsking(false)}>No</Button>
-      {error && <span className="w-full text-xs text-destructive" role="alert">{error}</span>}
-    </span>
-  );
+/** Delete, for the Super Admin: the shared confirmation, then back to the person. */
+export function ContractDeleteButton({ contractId, name, staffId }: { contractId: string; name: string; staffId: string; blocker?: string | null }) {
+  return <DeleteConfirm type="EmploymentContract" id={contractId} name={name} variant="button" onDone={() => { window.location.href = `/people/${staffId}`; }} />;
 }

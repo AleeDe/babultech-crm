@@ -1,5 +1,6 @@
 "use server";
 
+import { deleteToRecycleBin } from "./recycle-bin";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import Decimal from "decimal.js";
@@ -289,43 +290,9 @@ export async function updateProject(
  * Refused once money has been raised against it - an invoice pointing at a
  * vanished project is a hole in the books. Cancel the project instead.
  */
-export async function deleteProject(id: string): Promise<ActionResult> {
-  const _auth = await authorize(PERMISSIONS.PROJECT_MANAGE);
-  if (!_auth.ok) return { ok: false, error: _auth.error };
-  const user = _auth.user;
-
-  try {
-    const db = await supabaseServer();
-
-    const { data: project } = await db
-      .from("project")
-      .select("id, deletedAt")
-      .eq("id", id)
-      .maybeSingle();
-    if (!project || project.deletedAt) return { ok: false, error: "That project no longer exists." };
-
-    const { count: invoices } = await db
-      .from("invoice")
-      .select("id", { count: "exact", head: true })
-      .eq("projectId", id)
-      .is("deletedAt", null)
-      .neq("status", "CANCELLED");
-
-    if ((invoices ?? 0) > 0) {
-      return {
-        ok: false,
-        error: `${invoices} invoice(s) were raised on this project, so it cannot be deleted. Set its status to Cancelled instead.`,
-      };
-    }
-
-    await updateRecord("project", id, { deletedAt: new Date().toISOString() }, "Project", user.id);
-
-    revalidatePath("/projects");
-    revalidatePath("/opportunities");
-    return { ok: true, data: undefined };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Could not delete the project." };
-  }
+/** Only the Super Admin deletes; this is the recycle bin's delete, kept for its callers. */
+export async function deleteProject(id: string, reason?: string | null): Promise<ActionResult> {
+  return deleteToRecycleBin("Project", id, reason) as never;
 }
 
 export async function listProjects(filters?: {

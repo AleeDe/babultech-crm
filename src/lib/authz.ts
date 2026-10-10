@@ -427,6 +427,11 @@ export const PERMISSIONS = {
   // pair of its own rather than part of admin:*.
   PEOPLE_READ: "people:read",
   PEOPLE_WRITE: "people:write",
+  // Only the Super Admin: deleting records of any kind (and restoring and
+  // erasing them), and changing roles or handing out the Super Admin and CRM
+  // Admin roles. A CRM Admin holds everything else (see nav-permissions.ts).
+  RECORD_DELETE: "record:delete",
+  ROLE_MANAGE: "role:manage",
   // Admin
   ADMIN: "admin:*",
 } as const;

@@ -113,3 +113,25 @@ describe("co-founder agreements", () => {
     expect(text).toBe("40% · - Development\n- Research");
   });
 });
+
+describe("Super Admin and CRM Admin", () => {
+  it("lets a CRM Admin do everything except delete and manage roles", async () => {
+    const { holds, ALL_BUT_DELETE } = await import("@/lib/nav-permissions");
+    const crm = [ALL_BUT_DELETE];
+    expect(holds(crm, "admin:*")).toBe(true);
+    expect(holds(crm, "invoice:approve")).toBe(true);
+    expect(holds(crm, "people:write")).toBe(true);
+    expect(holds(crm, "some:future-permission")).toBe(true);
+    expect(holds(crm, "record:delete")).toBe(false);
+    expect(holds(crm, "role:manage")).toBe(false);
+  });
+
+  it("keeps deleting with the Super Admin alone", async () => {
+    const { holds } = await import("@/lib/nav-permissions");
+    const { RECYCLE_TYPES } = await import("@/lib/recycle-types");
+    expect(holds(["*"], "record:delete")).toBe(true);
+    // A Manager's wide grants no longer reach a delete.
+    expect(holds(["lead:*", "account:*", "opportunity:*", "case:*", "project:*"], "record:delete")).toBe(false);
+    for (const config of Object.values(RECYCLE_TYPES)) expect(config.permission).toBe("record:delete");
+  });
+});

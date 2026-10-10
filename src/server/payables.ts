@@ -1,5 +1,6 @@
 "use server";
 
+import { deleteToRecycleBin } from "./recycle-bin";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { picklistCode } from "@/lib/picklists";
@@ -492,51 +493,10 @@ export async function updateExpense(
  * history with who did it. The same locks as editing apply: once approved or
  * paid, the expense is part of the books and has to be rejected back first.
  */
-export async function deleteExpense(id: string): Promise<ActionResult<{ id: string }>> {
-  const _auth = await authorize(PERMISSIONS.EXPENSE_WRITE);
-  if (!_auth.ok) return { ok: false, error: _auth.error };
-  const user = _auth.user;
-
-  const db = await supabaseServer();
-  const { data: before, error: readError } = await db
-    .from("expense")
-    .select("id, approvalStatus, paymentStatus, deletedAt")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (readError) {
-    if (readError.code === "22P02") return { ok: false, error: "That expense no longer exists." };
-    return { ok: false, error: `Could not load the expense: ${readError.message}` };
-  }
-  if (!before || before.deletedAt) return { ok: false, error: "That expense no longer exists." };
-
-  if (before.approvalStatus === "APPROVED") {
-    return {
-      ok: false,
-      error: "Approved expenses are locked. Ask an approver to reject it back to draft before deleting it.",
-    };
-  }
-  if (before.paymentStatus === "PAID") {
-    return { ok: false, error: "This expense has already been paid, so it cannot be deleted." };
-  }
-  if (before.approvalStatus === "SUBMITTED" && !can(user, PERMISSIONS.EXPENSE_APPROVE)) {
-    return {
-      ok: false,
-      error: "This claim is waiting on approval. Ask your approver to reject it back to you before deleting it.",
-    };
-  }
-
-  try {
-    await updateRecord("expense", id, { deletedAt: new Date().toISOString() }, "Expense", user.id);
-    revalidatePath("/expenses");
-    revalidatePath(`/expenses/${id}`);
-    return { ok: true, data: { id } };
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "Could not delete the expense.",
-    };
-  }
+/** Only the Super Admin deletes; this is the recycle bin's delete, kept for its callers. */
+export async function deleteExpense(id: string, reason?: string | null): Promise<ActionResult<{ id: string }>> {
+  const result = await deleteToRecycleBin("Expense", id, reason);
+  return result.ok ? { ok: true, data: { id } } : result;
 }
 
 export async function getExpense(id: string) {

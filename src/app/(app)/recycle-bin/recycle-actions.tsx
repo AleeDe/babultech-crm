@@ -12,8 +12,12 @@ export function RecycleActions({ type, id, name, canErase }: { type: RecycleType
   const act = (fn: () => Promise<{ ok: boolean; error?: string }>) =>
     start(async () => {
       const result = await fn();
-      if (!result.ok && "error" in result) window.alert(result.error);
-      router.refresh();
+      if (!result.ok && "error" in result) {
+        window.alert(result.error);
+        router.refresh();
+        return;
+      }
+      window.location.reload();
     });
 
   return (

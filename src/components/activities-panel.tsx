@@ -3,14 +3,16 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Mail, CalendarDays, NotebookPen, Plus, Trash2,
+  Mail, CalendarDays, NotebookPen, Plus,
   MailOpen, MousePointerClick, MailX, AlertTriangle,
 } from "lucide-react";
 import {
   Alert, Badge, Button, Card, CardContent, CardHeader, CardTitle,
   EmptyState, Field, Input, Select, Textarea, statusTone,
 } from "@/components/ui";
-import { saveActivity, deleteActivity, type ActivityRow } from "@/server/activities";
+import { saveActivity, type ActivityRow } from "@/server/activities";
+import { DeleteConfirm } from "./delete-confirm";
+import { useCan } from "./permissions";
 import { formatDateTime, humanize } from "@/lib/utils";
 
 /**
@@ -36,6 +38,7 @@ export function ActivitiesPanel({
   canWrite: boolean;
 }) {
   const router = useRouter();
+  const canDelete = useCan("record:delete");
   const [pending, start] = useTransition();
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,15 +71,6 @@ export function ActivitiesPanel({
     });
   }
 
-  function remove(id: string, subject: string) {
-    if (!window.confirm(`Remove "${subject}" from the history?`)) return;
-    setError(null);
-    start(async () => {
-      const result = await deleteActivity(id);
-      if (result.ok) router.refresh();
-      else setError(result.error);
-    });
-  }
 
   const icon = (type: string) => {
     if (type === "EMAIL") return <Mail className="h-4 w-4 text-muted-foreground" />;
@@ -202,17 +196,8 @@ export function ActivitiesPanel({
                   )}
                 </div>
 
-                {canWrite && a.activityType !== "EMAIL" && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => remove(a.id, a.subject)}
-                    disabled={pending}
-                    className="shrink-0 text-muted-foreground hover:text-destructive"
-                    aria-label={`Remove ${a.subject}`}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                {canDelete && a.activityType !== "EMAIL" && (
+                  <span className="shrink-0"><DeleteConfirm type="Activity" id={a.id} name={a.subject} onDone={() => router.refresh()} /></span>
                 )}
               </li>
             ))}

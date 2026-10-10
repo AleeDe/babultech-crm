@@ -135,15 +135,12 @@ try {
   pass("A Manager sees an approved claim as read-only, with no Correct button");
 
   await open(mgr, `${base}/cases?search=${run}`);
-  await mgr.getByRole("button", { name: `Delete QA Closed case ${run}`, exact: true }).click();
-  await mgr.getByRole("button", { name: `Yes, delete QA Closed case ${run}`, exact: true }).click();
-  await mgr.getByRole("alert").filter({ hasText: "Only an administrator can delete this case now" }).waitFor({ timeout: 20000 });
+  await mgr.getByText(`QA Closed case ${run}`).first().waitFor({ timeout: 20000 });
+  assert.equal(await mgr.getByRole("button", { name: `Delete QA Closed case ${run}`, exact: true }).count(), 0);
   await open(mgr, `${base}/opportunities?search=${run}`);
-  await mgr.getByRole("button", { name: `Delete QA Lost deal ${run}`, exact: true }).click();
-  await mgr.getByRole("button", { name: `Yes, delete QA Lost deal ${run}`, exact: true }).click();
-  await mgr.getByRole("alert").filter({ hasText: "Only an administrator can delete this deal now" }).waitFor({ timeout: 20000 });
-  assert.equal((await must(db.from("support_case").select("deletedAt").eq("id", ids.caseId).single(), "Case")).deletedAt, null);
-  pass("A Manager cannot delete a closed case or a lost deal; the reason shows on the row");
+  await mgr.getByText(`QA Lost deal ${run}`).first().waitFor({ timeout: 20000 });
+  assert.equal(await mgr.getByRole("button", { name: `Delete QA Lost deal ${run}`, exact: true }).count(), 0);
+  pass("A Manager has no Delete at all: only the Super Admin deletes");
 
   // A draft supplier bill is the Manager's to edit, directly.
   await open(mgr, `${base}/vendor-bills/${ids.billDraft}/edit`);
@@ -227,9 +224,10 @@ try {
   // The administrator may delete a processed record.
   await open(adm, `${base}/cases?search=${run}`);
   await adm.getByRole("button", { name: `Delete QA Closed case ${run}`, exact: true }).click();
+  await adm.locator('input[name="deleteReason"]').fill("Raised in error");
   await adm.getByRole("button", { name: `Yes, delete QA Closed case ${run}`, exact: true }).click();
   await until(async () => (await db.from("support_case").select("deletedById").eq("id", ids.caseId).single()).data?.deletedById === admin.id, "case deleted");
-  pass("An administrator deletes the closed case the Manager could not");
+  pass("The Super Admin deletes the closed case");
 
   assert.equal(errors.length, 0, `Browser errors:\n${errors.map((e) => `  ${e.url}: ${e.message.slice(0, 200)}`).join("\n")}`);
   pass("No browser runtime errors");

@@ -2,15 +2,16 @@
 
 import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { DeleteConfirm } from "@/components/delete-confirm";
+import { useCan } from "@/components/permissions";
 import Link from "next/link";
-import { Check, X, Send, Banknote, Receipt, Pencil, Trash2 } from "lucide-react";
+import { Check, X, Send, Banknote, Receipt, Pencil } from "lucide-react";
 import {
   Table, THead, TBody, TR, TH, TD, Badge, statusTone, Button, Alert,
 } from "@/components/ui";
 import { formatMoney, formatDate, humanize } from "@/lib/utils";
-import { deleteToRecycleBin } from "@/server/recycle-bin";
 import {
-  setExpenseApprovalBulk, markExpensePaidBulk, deleteExpense,
+  setExpenseApprovalBulk, markExpensePaidBulk, 
 } from "@/server/payables";
 
 type Expense = Record<string, any>;
@@ -42,6 +43,7 @@ export function ExpenseBulkTable({
   canAdminDelete?: boolean;
   currentUserId: string;
 }) {
+  const canDelete = useCan("record:delete");
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, start] = useTransition();
@@ -135,24 +137,6 @@ export function ExpenseBulkTable({
     return null;
   }
 
-  function remove(e: Expense) {
-    if (!window.confirm(`Delete ${e.expenseNumber}? It goes to the recycle bin, where it can be restored for 90 days.`)) return;
-    setMessage(null);
-    start(async () => {
-      const result = canAdminDelete ? await deleteToRecycleBin("Expense", e.id) : await deleteExpense(e.id);
-      if (!result.ok) {
-        setMessage({ tone: "danger", text: result.error ?? "Could not delete the expense." });
-        return;
-      }
-      setMessage({ tone: "success", text: `${e.expenseNumber} deleted.` });
-      setSelected((prev) => {
-        const next = new Set(prev);
-        next.delete(e.id);
-        return next;
-      });
-      router.refresh();
-    });
-  }
 
   // Of the rows just acted on, which are now sitting approved and unpaid.
   // Approving is only half the job — the money still has to go out — so the
@@ -309,7 +293,6 @@ export function ExpenseBulkTable({
                 <TD>
                   {(() => {
                     const locked = lockedReason(e);
-                    const deleteLocked = canAdminDelete ? null : locked;
                     return (
                       <div className="flex items-center gap-1">
                         {locked && !canAdminDelete ? (
@@ -323,17 +306,7 @@ export function ExpenseBulkTable({
                             </Link>
                           </Button>
                         )}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={pending || Boolean(deleteLocked)}
-                          title={deleteLocked ?? "Delete"}
-                          aria-label={`Delete ${e.expenseNumber}`}
-                          onClick={() => remove(e)}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {canDelete && <DeleteConfirm type="Expense" id={e.id} name={e.expenseNumber} onDone={() => window.location.reload()} />}
                       </div>
                     );
                   })()}

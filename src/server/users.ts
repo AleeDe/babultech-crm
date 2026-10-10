@@ -7,7 +7,7 @@ import { supabaseServer, supabaseAdmin, supabaseAnon } from "@/lib/supabase";
 import { LIST_LIMIT } from "@/lib/db";
 import { one, toDecimal, type Decimal } from "@/lib/decimal";
 import { MEMBER_PUBLIC_COLUMNS } from "@/lib/rate-snapshots";
-import { PERMISSIONS, authorize, requirePermission, requireUser } from "@/lib/authz";
+import { PERMISSIONS, authorize, requirePermission, requireUser, can } from "@/lib/authz";
 import { writeAudit } from "@/lib/audit";
 import type { ActionResult } from "./partners";
 
@@ -29,6 +29,24 @@ import type { ActionResult } from "./partners";
  */
 
 const PARTNER_ROLE = "Partner";
+
+/**
+ * Roles only the Super Admin hands out: Super Admin itself ('*'), CRM Admin,
+ * and anything carrying a Super Admin permission. Without this a CRM Admin
+ * could make themselves Super Admin from the user form.
+ */
+async function isTopRole(roleId: string | null | undefined): Promise<boolean> {
+  if (!roleId) return false;
+  const { data } = await supabaseAdmin().from("security_role").select("permissions").eq("id", roleId).maybeSingle();
+  const permissions = (data?.permissions as string[] | undefined) ?? [];
+  return permissions.some((p) => ["*", "all:except-delete", "record:delete", "role:manage"].includes(p));
+}
+
+async function isSuperAdminLogin(userId: string): Promise<boolean> {
+  const { data } = await supabaseAdmin().from("app_user").select("security_role ( permissions )").eq("id", userId).maybeSingle();
+  const role = (Array.isArray(data?.security_role) ? data?.security_role[0] : data?.security_role) as { permissions?: string[] } | null;
+  return Boolean(role?.permissions?.includes("*"));
+}
 const BCRYPT_ROUNDS = 10;
 
 const passwordRules = z
@@ -148,6 +166,10 @@ export async function createUser(
   }
   const { password, ...data } = parsed.data;
 
+  if (!can(_auth.user, PERMISSIONS.ROLE_MANAGE) && (await isTopRole(data.roleId))) {
+    return { ok: false, error: "Only the Super Admin can give someone the Super Admin or CRM Admin role.", fieldErrors: { roleId: ["Choose another role."] } };
+  }
+
   const invalid = await validateAgainstRole(data);
   if (invalid) return invalid;
 
@@ -243,6 +265,14 @@ export async function updateUser(
     return { ok: false, error: "Please correct the highlighted fields.", fieldErrors: parsed.error.flatten().fieldErrors };
   }
   const data = parsed.data;
+
+  if (!can(actor, PERMISSIONS.ROLE_MANAGE)) {
+    if (await isSuperAdminLogin(id)) return { ok: false, error: "Only the Super Admin can change the Super Admin's login." };
+    const { data: current } = await supabaseAdmin().from("app_user").select("roleId").eq("id", id).maybeSingle();
+    if (current?.roleId !== data.roleId && ((await isTopRole(data.roleId)) || (await isTopRole(current?.roleId as string | null)))) {
+      return { ok: false, error: "Only the Super Admin can give or take away the Super Admin or CRM Admin role.", fieldErrors: { roleId: ["Ask the Super Admin."] } };
+    }
+  }
 
   const invalid = await validateAgainstRole(data, id);
   if (invalid) return invalid;
@@ -356,6 +386,9 @@ export async function updateUser(
 export async function setUserPassword(id: string, password: string): Promise<ActionResult> {
   const _auth = await authorize(PERMISSIONS.ADMIN);
   if (!_auth.ok) return { ok: false, error: _auth.error };
+  if (!can(_auth.user, PERMISSIONS.ROLE_MANAGE) && (await isSuperAdminLogin(id))) {
+    return { ok: false, error: "Only the Super Admin can reset the Super Admin's password." };
+  }
   const actor = _auth.user;
 
   const parsed = passwordRules.safeParse(password);

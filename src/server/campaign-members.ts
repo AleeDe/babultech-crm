@@ -1,5 +1,6 @@
 "use server";
 
+import { deleteToRecycleBin } from "./recycle-bin";
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -258,19 +259,9 @@ export async function saveCampaignMember(
 }
 
 /** Soft delete, as everywhere else — the campaigns they were in still ran. */
-export async function deleteCampaignMember(id: string): Promise<ActionResult> {
-  const auth = await authorize(PERMISSIONS.LEAD_WRITE);
-  if (!auth.ok) return { ok: false, error: auth.error };
-
-  const db = await supabaseServer();
-  const { error } = await db
-    .from("campaign_member")
-    .update({ deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
-    .eq("id", id);
-
-  if (error) return { ok: false, error: error.message };
-  revalidatePath("/campaign-members");
-  return { ok: true, data: undefined };
+/** Only the Super Admin deletes; this is the recycle bin's delete, kept for its callers. */
+export async function deleteCampaignMember(id: string, reason?: string | null): Promise<ActionResult> {
+  return deleteToRecycleBin("CampaignMember", id, reason) as never;
 }
 
 /**

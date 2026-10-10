@@ -20,7 +20,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
   if (!data) notFound();
   const { staff, contracts, canWrite, canCreateLogins } = data;
   const documents = await listDocuments("StaffProfile", id);
-  const canDeleteContracts = can(me, PERMISSIONS.ADMIN);
+  const canDeleteContracts = can(me, PERMISSIONS.RECORD_DELETE);
 
   const running = contracts.find((c) => c.status === "ACTIVE");
   const pending = contracts.find((c) => ["DRAFT", "SENT", "EMPLOYEE_SIGNED", "SIGNED"].includes(c.status));

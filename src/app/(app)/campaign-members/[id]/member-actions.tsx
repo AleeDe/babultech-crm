@@ -3,10 +3,12 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { MailCheck, MailX, Trash2, UserPlus } from "lucide-react";
+import { MailCheck, MailX, UserPlus } from "lucide-react";
 import { Alert, Button } from "@/components/ui";
+import { DeleteConfirm } from "@/components/delete-confirm";
+import { useCan } from "@/components/permissions";
 import {
-  setEmailOptOut, deleteCampaignMember, convertMemberToLead, type MemberConversion,
+  setEmailOptOut, convertMemberToLead, type MemberConversion,
 } from "@/server/campaign-members";
 import { DUPLICATE_FIELD_LABEL } from "@/lib/duplicates";
 
@@ -32,6 +34,7 @@ export function MemberActions({
   /** The customer's contact this member was linked to on conversion. */
   linkedContactId?: string | null;
 }) {
+  const canDelete = useCan("record:delete");
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -88,17 +91,6 @@ export function MemberActions({
     });
   }
 
-  function remove() {
-    if (!window.confirm(`Remove ${name} from the campaign list?`)) return;
-    setError(null);
-    start(async () => {
-      const result = await deleteCampaignMember(id);
-      if (result.ok) {
-        router.push("/campaign-members");
-        router.refresh();
-      } else setError(result.error);
-    });
-  }
 
   return (
     <div className="space-y-2">
@@ -138,14 +130,9 @@ export function MemberActions({
             </>
           )}
         </Button>
-        <Button
-          variant="ghost"
-          onClick={remove}
-          disabled={pending}
-          className="text-destructive hover:text-destructive"
-        >
-          <Trash2 className="h-4 w-4" /> Remove
-        </Button>
+        {canDelete && (
+          <DeleteConfirm type="CampaignMember" id={id} name={name} variant="button" onDone={() => { window.location.href = "/campaign-members"; }} />
+        )}
       </div>
     </div>
   );

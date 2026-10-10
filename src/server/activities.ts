@@ -1,5 +1,6 @@
 "use server";
 
+import { deleteToRecycleBin } from "./recycle-bin";
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -188,19 +189,9 @@ export async function saveActivity(
   return { ok: true, data: { id: data.id as string } };
 }
 
-export async function deleteActivity(id: string): Promise<ActionResult> {
-  const auth = await authorize(PERMISSIONS.LEAD_WRITE);
-  if (!auth.ok) return { ok: false, error: auth.error };
-
-  const db = await supabaseServer();
-  const { error } = await db
-    .from("activity")
-    .update({ deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
-    .eq("id", id);
-
-  if (error) return { ok: false, error: error.message };
-  revalidatePath("/activities");
-  return { ok: true, data: undefined };
+/** Only the Super Admin deletes; this is the recycle bin's delete, kept for its callers. */
+export async function deleteActivity(id: string, reason?: string | null): Promise<ActionResult> {
+  return deleteToRecycleBin("Activity", id, reason) as never;
 }
 
 // ---------------------------------------------------------------------------

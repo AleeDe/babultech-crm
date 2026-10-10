@@ -133,7 +133,7 @@ export function UserForm({
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {options.roles.map((r) => {
               const selected = r.id === roleId;
-              const Icon = r.permissions.includes("*") ? ShieldCheck : Building2;
+              const Icon = r.permissions.includes("*") || r.permissions.includes("all:except-delete") ? ShieldCheck : Building2;
               return (
                 <button
                   key={r.id}
@@ -165,7 +165,9 @@ export function UserForm({
                 Sees: {SCOPE_EXPLAINER[role.dataScope] ?? role.dataScope} ·{" "}
                 {role.permissions.includes("*")
                   ? "every permission"
-                  : `${role.permissions.length} permission(s)`}
+                  : role.permissions.includes("all:except-delete")
+                    ? "everything except deleting records and managing roles"
+                    : `${role.permissions.length} permission(s)`}
               </p>
             </Alert>
           )}

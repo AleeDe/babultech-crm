@@ -120,6 +120,7 @@ try {
   async function deleteFromList(path, name) {
     await open(`${base}${path}?search=${encodeURIComponent(run)}`);
     await page.getByRole("button", { name: `Delete ${name}`, exact: true }).click();
+    await page.locator('input[name="deleteReason"]').fill("QA clean-up");
     await page.getByRole("button", { name: `Yes, delete ${name}`, exact: true }).click();
   }
 
@@ -139,15 +140,22 @@ try {
     pass(`${label}: deleted from its list row, gone from the list, in the recycle bin`);
   }
 
-  // --- An issued invoice is refused ---------------------------------------------------
+  // --- An issued invoice, with no payment against it, is the Super Admin's to delete -----
   await deleteFromList("/invoices", `QA-RI2-${run}`);
-  await page.getByRole("alert").filter({ hasText: "Only a draft invoice can be deleted" }).waitFor({ timeout: 15000 });
-  assert.equal((await must(db.from("invoice").select("deletedAt").eq("id", ids.sentInvoice).single(), "Sent invoice")).deletedAt, null);
-  pass("An issued invoice is refused, with the reason on the row");
+  let sent = null;
+  for (let i = 0; i < 20; i++) {
+    sent = (await db.from("invoice").select("deletedById").eq("id", ids.sentInvoice).single()).data;
+    if (sent?.deletedById) break;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  assert.equal(sent?.deletedById, ids.user);
+  pass("The Super Admin deletes even an issued invoice, when no payment is allocated to it");
 
   // --- An approved expense claim, by an administrator -----------------------------------
   await open(`${base}/expenses?search=${encodeURIComponent(run)}`);
   await page.getByRole("button", { name: `Delete QA-RE-${run}`, exact: true }).click();
+  await page.locator('input[name="deleteReason"]').fill("QA clean-up");
+  await page.getByRole("button", { name: `Yes, delete QA-RE-${run}`, exact: true }).click();
   let claim = null;
   for (let i = 0; i < 20; i++) {
     claim = (await db.from("expense").select("deletedById").eq("id", ids.expense).single()).data;
@@ -155,7 +163,7 @@ try {
     await new Promise((r) => setTimeout(r, 500));
   }
   assert.equal(claim?.deletedById, ids.user);
-  pass("An administrator deletes an approved expense claim to the recycle bin");
+  pass("The Super Admin deletes an approved expense claim to the recycle bin");
 
   // --- The recycle bin lists them, and restores one -------------------------------------
   await open(`${base}/recycle-bin`);

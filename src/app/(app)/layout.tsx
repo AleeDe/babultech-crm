@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { PermissionsProvider } from "@/components/permissions";
 import { AppShell } from "@/components/app-shell";
 import { PageGuide } from "@/components/page-guide";
 import { requireUser, can, AuthorizationError, PERMISSIONS, datePrefsFor } from "@/lib/authz";
@@ -42,7 +43,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             or the two would render different text and fail to hydrate. */}
         <CurrencyContextProvider value={currencies}>
           <DatePrefsProvider value={datePrefsFor(user)}>
-            <PicklistProvider value={picklists}>{children}</PicklistProvider>
+            <PermissionsProvider value={user.permissions}>
+              <PicklistProvider value={picklists}>{children}</PicklistProvider>
+            </PermissionsProvider>
           </DatePrefsProvider>
         </CurrencyContextProvider>
       </AppShell>

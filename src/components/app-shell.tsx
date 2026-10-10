@@ -54,7 +54,7 @@ const NAV: NavGroup[] = [
       { href: "/company", label: "Company information", icon: Landmark, adminOnly: true },
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/reports", label: "Reports", icon: BookOpen, permissions: ["opportunity:read", "lead:read", "case:read", "project:read"] },
-      { href: "/recycle-bin", label: "Recycle bin", icon: Trash2, permissions: ["lead:delete", "account:delete", "opportunity:delete", "case:delete", "campaign:delete"] },
+      { href: "/recycle-bin", label: "Recycle bin", icon: Trash2, permissions: ["record:delete"] },
     ],
   },
   {

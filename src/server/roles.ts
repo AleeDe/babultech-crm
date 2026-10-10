@@ -79,7 +79,7 @@ const roleSchema = z.object({
 });
 
 export async function saveRole(input: z.infer<typeof roleSchema>): Promise<ActionResult<{ id: string }>> {
-  const auth = await authorize(PERMISSIONS.ADMIN);
+  const auth = await authorize(PERMISSIONS.ROLE_MANAGE);
   if (!auth.ok) return { ok: false, error: auth.error };
 
   const parsed = roleSchema.safeParse(input);
@@ -150,7 +150,7 @@ export async function saveRole(input: z.infer<typeof roleSchema>): Promise<Actio
 }
 
 export async function deleteRole(id: string): Promise<ActionResult> {
-  const auth = await authorize(PERMISSIONS.ADMIN);
+  const auth = await authorize(PERMISSIONS.ROLE_MANAGE);
   if (!auth.ok) return { ok: false, error: auth.error };
 
   const admin = supabaseAdmin();

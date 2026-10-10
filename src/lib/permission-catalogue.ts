@@ -1,3 +1,5 @@
+import { ALL_BUT_DELETE, SUPER_ADMIN_ONLY } from "./nav-permissions";
+
 /**
  * Every permission a role can hold, in words an administrator can act on.
  *
@@ -36,14 +38,10 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
     permissions: [
       { value: "lead:read", label: "See leads", help: "Open the lead list and any lead their data scope allows." },
       { value: "lead:write", label: "Work on leads", help: "Create and edit leads, and convert them." },
-      { value: "lead:delete", label: "Delete leads", help: "Move leads they can see to the recycle bin, and restore them. Converted leads are kept." },
-      { value: "campaign:delete", label: "Delete campaigns", help: "Move campaigns with no results yet to the recycle bin, and restore them." },
       { value: "account:read", label: "See customers", help: "Open accounts and contacts." },
       { value: "account:write", label: "Edit customers", help: "Create and change accounts and contacts, and give a contact portal access." },
-      { value: "account:delete", label: "Delete customers", help: "Move accounts and contacts to the recycle bin, and restore them. Accounts with billing, deals or projects are kept." },
       { value: "opportunity:read", label: "See deals", help: "Open the pipeline and deal pages." },
       { value: "opportunity:write", label: "Work on deals", help: "Create and edit deals, move stages, and price them." },
-      { value: "opportunity:delete", label: "Delete deals", help: "Move open or lost deals to the recycle bin, and restore them. Won deals and deals with commission are kept." },
       { value: "quotation:approve", label: "Approve quotations", help: "Approve a quote so it can be sent to the customer." },
       { value: "contract:write", label: "Work on contracts", help: "Create and edit contracts and their renewal terms." },
     ],
@@ -70,7 +68,6 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
       { value: "content:review", label: "Review content", help: "Review and approve content items on content projects." },
       { value: "case:read", label: "See support cases", help: "Open the case list and case pages." },
       { value: "case:write", label: "Work on cases", help: "Create cases, reply to customers and close them." },
-      { value: "case:delete", label: "Delete cases", help: "Move cases to the recycle bin, and restore them." },
     ],
   },
   {
@@ -117,6 +114,18 @@ export const PERMISSION_CATALOGUE: PermissionGroup[] = [
         sensitive: true,
       },
       {
+        value: "record:delete",
+        label: "Delete records",
+        help: "Delete any record of any kind, whatever its status or stage, to the recycle bin; restore and erase. For the Super Admin only.",
+        sensitive: true,
+      },
+      {
+        value: "role:manage",
+        label: "Manage roles and administrators",
+        help: "Create and change roles, and give anyone the Super Admin or CRM Admin role. For the Super Admin only.",
+        sensitive: true,
+      },
+      {
         value: "admin:*",
         label: "Administer the system",
         help: "Users, roles, settings and every reference list. Holding this is close to holding everything.",
@@ -141,6 +150,7 @@ export type DataScopeValue = (typeof DATA_SCOPES)[number]["value"];
 export function effectivePermissions(permissions: string[]): Set<string> {
   const held = new Set(permissions);
   if (held.has("*")) return new Set(["*", ...ALL_PERMISSIONS]);
+  if (held.has(ALL_BUT_DELETE)) return new Set([ALL_BUT_DELETE, ...ALL_PERMISSIONS.filter((p) => !SUPER_ADMIN_ONLY.includes(p))]);
 
   for (const group of PERMISSION_CATALOGUE) {
     for (const permission of group.permissions) {

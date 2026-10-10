@@ -20,7 +20,11 @@ import { saveRole, deleteRole, type RoleRow } from "@/server/roles";
  * covered by a coarser one ticked above it is shown as included rather than
  * offered twice, because unticking it would change nothing.
  */
-export function RolesPanel({ roles }: { roles: RoleRow[] }) {
+/**
+ * Only the Super Admin (role:manage) creates or changes roles; everyone else
+ * with Settings sees them read-only.
+ */
+export function RolesPanel({ roles, canManage = false }: { roles: RoleRow[]; canManage?: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -114,16 +118,16 @@ export function RolesPanel({ roles }: { roles: RoleRow[] }) {
             everyone holding the role immediately.
           </CardDescription>
         </div>
-        <Button variant="secondary" onClick={() => open("new")}>
+        {canManage && <Button variant="secondary" onClick={() => open("new")}>
           <Plus className="h-4 w-4" /> Add role
-        </Button>
+        </Button>}
       </CardHeader>
 
       <CardContent className="space-y-4">
         {error && <Alert tone="danger">{error}</Alert>}
         {notice && <Alert tone="success">{notice}</Alert>}
 
-        {editing === null && (
+        {editing === null && canManage && (
           <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed p-3" data-combine-roles>
             <div className="min-w-0 flex-1 text-sm">
               <p className="font-medium">Someone doing two jobs?</p>
@@ -131,11 +135,11 @@ export function RolesPanel({ roles }: { roles: RoleRow[] }) {
             </div>
             <Select aria-label="First role" className="w-44" value={combineA} onChange={(e) => setCombineA(e.target.value)}>
               <option value="">First role</option>
-              {roles.filter((r) => !r.permissions.includes("*")).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              {roles.filter((r) => !r.permissions.includes("*") && !r.permissions.includes("all:except-delete")).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </Select>
             <Select aria-label="Second role" className="w-44" value={combineB} onChange={(e) => setCombineB(e.target.value)}>
               <option value="">Second role</option>
-              {roles.filter((r) => !r.permissions.includes("*") && r.id !== combineA).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              {roles.filter((r) => !r.permissions.includes("*") && !r.permissions.includes("all:except-delete") && r.id !== combineA).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </Select>
             <Button type="button" variant="outline" disabled={!combineA || !combineB} onClick={combine}>Combine</Button>
           </div>
@@ -160,7 +164,7 @@ export function RolesPanel({ roles }: { roles: RoleRow[] }) {
                       Sees: {DATA_SCOPES.find((s) => s.value === r.dataScope)?.label ?? r.dataScope}
                     </Badge>
                     <span>
-                      {r.permissions.includes("*") ? "every permission" : `${r.permissions.length} permission(s)`}
+                      {r.permissions.includes("*") ? "every permission" : r.permissions.includes("all:except-delete") ? "everything except deleting and roles" : `${r.permissions.length} permission(s)`}
                     </span>
                     <span className="flex items-center gap-1">
                       <Users className="h-3 w-3" /> {r.userCount}
@@ -169,9 +173,9 @@ export function RolesPanel({ roles }: { roles: RoleRow[] }) {
                 </div>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" onClick={() => open(r)}>
-                    {r.isSystem ? "View" : "Edit"}
+                    {r.isSystem || !canManage ? "View" : "Edit"}
                   </Button>
-                  {!r.isSystem && (
+                  {!r.isSystem && canManage && (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -227,7 +231,9 @@ export function RolesPanel({ roles }: { roles: RoleRow[] }) {
               </div>
             </div>
 
-            {role?.permissions.includes("*") ? (
+            {role?.permissions.includes("all:except-delete") ? (
+              <Alert tone="info">This role holds every permission except deleting records and managing roles, which only the Super Admin has. Permissions added to the system later are included automatically.</Alert>
+            ) : role?.permissions.includes("*") ? (
               <Alert tone="warning">This role holds every permission in the system.</Alert>
             ) : (
               <div className="space-y-4">

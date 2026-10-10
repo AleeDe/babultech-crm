@@ -103,6 +103,9 @@ try {
   await row.getByRole("link", { name: "Edit" }).waitFor();
   await row.getByRole("link", { name: "Open" }).waitFor();
   await row.getByRole("button", { name: `Delete ${draftName}` }).click();
+  await adm.locator("[data-delete-confirm]").getByText("1 contract").waitFor();
+  await adm.locator("[data-delete-confirm]").getByText("Their CRM login, which is only ever switched off").waitFor();
+  await adm.locator('input[name="deleteReason"]').fill("Did not join");
   await row.getByRole("button", { name: `Yes, delete ${draftName}` }).click();
   await until(async () => (await db.from("staff_profile").select("deletedAt").eq("id", ids.draftStaff).single()).data.deletedAt, "deleted");
   assert.equal((await db.from("employment_contract").select("signTokenHash").eq("id", ids.draftContract).single()).data.signTokenHash, null, "The signing link stops working");
@@ -117,12 +120,14 @@ try {
   await adm.goto(`${base}/people?search=${run}`, { waitUntil: "networkidle" });
   const working = adm.locator(`[data-row-actions="${activeName}"]`);
   await working.getByRole("button", { name: `Delete ${activeName}` }).click();
+  await adm.locator('input[name="deleteReason"]').fill("Entered by mistake");
   await working.getByRole("button", { name: `Yes, delete ${activeName}` }).click();
-  await working.getByText("Their contract has been signed by both sides or is running").waitFor();
-  assert.equal((await db.from("staff_profile").select("deletedAt").eq("id", ids.activeStaff).single()).data.deletedAt, null);
-  pass("Someone with a running contract cannot be deleted until it is ended, and the list says why");
+  await until(async () => (await db.from("staff_profile").select("deletedAt").eq("id", ids.activeStaff).single()).data.deletedAt, "working hire deleted");
+  pass("The Super Admin can delete even someone with a running contract, giving a reason");
 
-  // Restored from the recycle bin.
+  // Restored from the recycle bin, once the list has finished reloading.
+  await adm.locator(`[data-row-actions="${activeName}"]`).waitFor({ state: "detached", timeout: 30000 });
+  await adm.waitForLoadState("networkidle");
   await adm.goto(`${base}/recycle-bin`, { waitUntil: "networkidle" });
   const binRow = adm.locator("tr, li").filter({ hasText: draftName }).first();
   await binRow.waitFor();
