@@ -74,6 +74,10 @@ export function RecordLookup({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [highlight, setHighlight] = useState(0);
+  // Once someone has chosen (or cleared), the starting value no longer applies.
+  // Without this, picking a new project manager looked the old one up again
+  // and put them back, and clearing a field still submitted the old id.
+  const chosen = useRef(false);
 
   // A controlled parent can clear or change the selection underneath us.
   useEffect(() => {
@@ -82,10 +86,13 @@ export function RecordLookup({
     else if (value !== selected?.id && initial?.id === value) setSelected(initial);
   }, [value, initial, selected?.id]);
 
-  const currentId = value !== undefined ? (value ?? "") : (selected?.id ?? defaultValue ?? "");
+  const currentId = value !== undefined
+    ? (value ?? "")
+    : chosen.current ? (selected?.id ?? "") : (selected?.id ?? defaultValue ?? "");
 
   // A field given an id but no label names it once, on mount.
   useEffect(() => {
+    if (value === undefined && chosen.current) return;
     const id = value ?? defaultValue ?? null;
     if (!id || selected?.id === id || initial?.id === id) return;
     let cancelled = false;
@@ -135,6 +142,7 @@ export function RecordLookup({
   }, [open]);
 
   function choose(record: LookupRecord | null) {
+    chosen.current = true;
     setSelected(record);
     setOpen(false);
     setTerm("");
