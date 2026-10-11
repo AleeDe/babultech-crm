@@ -161,12 +161,14 @@ export function isValidDay(value: unknown): value is string {
 export function resolveRange(
   params: { range?: string; from?: string; to?: string; days?: string },
   today: string = iso(new Date()),
+  /** What an address with no period means. The dashboard: this month; a list: all time. */
+  fallback: RangePreset = DEFAULT_PRESET,
 ): DateRange {
   const requested = params.range as RangePreset | undefined;
   const preset: RangePreset =
     requested && RANGE_PRESETS.some((p) => p.value === requested)
       ? requested
-      : DEFAULT_PRESET;
+      : fallback;
 
   const build = (from: string, to: string, label: string, days: number | null = null): DateRange =>
     ({ preset, from, to, days, label });

@@ -1,3 +1,4 @@
+import { resolveRange } from "@/lib/date-range";
 import { NextRequest } from "next/server";
 import { toCsv, csvFilename, csvResponse, type CsvColumn } from "@/lib/csv";
 import { requireUser, can, PERMISSIONS, AuthorizationError } from "@/lib/authz";
@@ -290,6 +291,7 @@ const EXPORTS: Record<string, ExportDefinition> = {
           search: p.get("search") ?? undefined,
           approvalStatus: p.get("approvalStatus") ?? undefined,
           paymentStatus: p.get("paymentStatus") ?? undefined,
+          ...expensePeriod(p),
           page: 1,
           pageSize: LIST_LIMIT,
         })
@@ -455,4 +457,13 @@ export async function GET(
       { status: 500 },
     );
   }
+}
+
+/** The period on the expenses list, as the list resolves it: all time unless chosen. */
+function expensePeriod(p: URLSearchParams): { dateFrom: string | null; dateTo: string | null } {
+  const range = resolveRange({
+    range: p.get("range") ?? undefined, from: p.get("from") ?? undefined,
+    to: p.get("to") ?? undefined, days: p.get("days") ?? undefined,
+  }, undefined, "all");
+  return { dateFrom: range.from, dateTo: range.to };
 }

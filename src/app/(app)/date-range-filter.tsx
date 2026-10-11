@@ -23,7 +23,12 @@ import { RANGE_PRESETS, MAX_N_DAYS, type DateRange, type RangePreset } from "@/l
  * this app, logs the user out. See src/components/filter-form.tsx for the whole
  * account of that.
  */
-export function DateRangeFilter({ range, showSummary = true }: { range: DateRange; showSummary?: boolean }) {
+export function DateRangeFilter({ range, showSummary = true, keepOtherParams = false }: {
+  range: DateRange;
+  showSummary?: boolean;
+  /** On a list: keep its search and status filters when the period changes (and go back to page 1). */
+  keepOtherParams?: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -39,8 +44,17 @@ export function DateRangeFilter({ range, showSummary = true }: { range: DateRang
       const value = searchParams.get(key);
       if (value) next.set(key, value);
     }
+    if (keepOtherParams) {
+      for (const [key, value] of searchParams.entries()) {
+        if (!["range", "from", "to", "days", "page"].includes(key) && value && !next.has(key)) next.set(key, value);
+      }
+    }
     const qs = next.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    // A full navigation. The app router fetched the new period but never
+    // committed it in the production build (the request returned, the address
+    // and the page stayed put, and the dropdown snapped back), the same
+    // unreliability noted for router.refresh elsewhere in this project.
+    window.location.assign(qs ? `${pathname}?${qs}` : pathname);
   };
 
   const selectPreset = (preset: RangePreset) => {

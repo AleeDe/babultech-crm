@@ -236,3 +236,16 @@ describe("rangeToParams", () => {
     expect(roundN).toMatchObject({ days: 14, from: "2026-09-01", to: "2026-09-14" });
   });
 });
+
+describe("a screen's own default period", () => {
+  it("is all time on a list when the address names none", () => {
+    expect(resolveRange({}, "2026-10-11", "all")).toMatchObject({ preset: "all", from: null, to: null });
+  });
+  it("still honours a period that is named", () => {
+    expect(resolveRange({ range: "last_n_days", days: "30" }, "2026-10-11", "all")).toMatchObject({ preset: "last_n_days", to: "2026-10-11" });
+    expect(resolveRange({ range: "custom", from: "2026-09-01", to: "2026-09-30" }, "2026-10-11", "all")).toMatchObject({ from: "2026-09-01", to: "2026-09-30" });
+  });
+  it("leaves the dashboard on this month", () => {
+    expect(resolveRange({}, "2026-10-11").preset).toBe("this_month");
+  });
+});

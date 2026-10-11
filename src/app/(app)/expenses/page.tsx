@@ -10,6 +10,8 @@ import {
 } from "@/components/ui";
 import { formatMoney, formatMoneyTotal } from "@/lib/utils";
 import { ExpenseBulkTable } from "./expense-bulk-table";
+import { DateRangeFilter } from "../date-range-filter";
+import { resolveRange } from "@/lib/date-range";
 
 export default async function ExpensesPage({
   searchParams,
@@ -19,26 +21,35 @@ export default async function ExpensesPage({
     approvalStatus?: string;
     paymentStatus?: string;
     page?: string;
+    range?: string;
+    from?: string;
+    to?: string;
+    days?: string;
   }>;
 }) {
   const me = await requireUser();
   if (!can(me, PERMISSIONS.EXPENSE_READ)) return <Forbidden what="expenses" />;
 
   const params = await searchParams;
+  // The day the expense happened. All time unless a period is chosen, so the
+  // list opens as it always has.
+  const range = resolveRange(params, undefined, "all");
   const filters = {
     search: params.search,
     approvalStatus: params.approvalStatus,
     paymentStatus: params.paymentStatus,
   };
+  const periodParams = { range: params.range, from: params.from, to: params.to, days: params.days };
+  const dated = { ...filters, dateFrom: range.from, dateTo: range.to };
 
   const [expenses, totals, summary] = await Promise.all([
-    listExpenses({ ...filters, page: Number(params.page) || 1 }),
+    listExpenses({ ...dated, page: Number(params.page) || 1 }),
     // Totals span every matching row, so the tiles do not shrink as you page.
-    getExpenseTotals(filters),
+    getExpenseTotals(dated),
     getExpenseClaimSummary(),
   ]);
 
-  const filtered = Boolean(params.search || params.approvalStatus || params.paymentStatus);
+  const filtered = Boolean(params.search || params.approvalStatus || params.paymentStatus || range.preset !== "all");
 
   return (
     <>
@@ -46,7 +57,7 @@ export default async function ExpensesPage({
         title="Expenses"
         description="What the business spent, who is owed it, and whether the customer is paying for it."
       >
-        <ExportButton entity="expenses" params={filters} />
+        <ExportButton entity="expenses" params={{ ...filters, ...periodParams }} />
         {can(me, PERMISSIONS.INVOICE_READ) && (
           <Button asChild variant="outline">
             <Link href="/vendor-bills">Vendor bills</Link>
@@ -120,7 +131,14 @@ export default async function ExpensesPage({
               options: optionsFrom(["UNPAID", "PAID", "REIMBURSED"]),
             },
           ]}
-        />
+        >
+          {/* The period travels with a search or status change. */}
+          {Object.entries(periodParams).map(([key, value]) => (value ? <input key={key} type="hidden" name={key} value={value} /> : null))}
+        </ListFilters>
+        <div className="-mt-3 mb-6 flex flex-wrap items-center gap-3" data-expense-period>
+          <span className="text-sm font-medium text-muted-foreground">Date of expense</span>
+          <DateRangeFilter key={`${range.preset}-${range.from}-${range.to}-${range.days}`} range={range} keepOtherParams />
+        </div>
       </div>
 
       <Card>
@@ -129,7 +147,7 @@ export default async function ExpensesPage({
             title={filtered ? "No expenses match those filters" : "No expenses yet"}
             description={
               filtered
-                ? "Try a different status, or clear the search to see everything."
+                ? "Try a different status or period, or clear the filters to see everything."
                 : "Record what the business spends - rent, software, hardware, travel. Expenses on a project can be billed on to the customer."
             }
             action={
@@ -159,7 +177,7 @@ export default async function ExpensesPage({
               pageCount={expenses.pageCount}
               total={expenses.total}
               pageSize={expenses.pageSize}
-              params={filters}
+              params={{ ...filters, ...periodParams }}
             />
           </>
         )}

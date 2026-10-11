@@ -1,5 +1,6 @@
 "use server";
 
+import { isValidDay } from "@/lib/date-range";
 import { deleteToRecycleBin } from "./recycle-bin";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -82,6 +83,9 @@ export async function listExpenses(filters?: {
   approvalStatus?: string;
   paymentStatus?: string;
   projectId?: string;
+  /** The day the expense happened, both ends included: yyyy-mm-dd. */
+  dateFrom?: string | null;
+  dateTo?: string | null;
   page?: number;
   pageSize?: number;
 }) {
@@ -123,6 +127,8 @@ export async function listExpenses(filters?: {
   if (filters?.approvalStatus) query = query.eq("approvalStatus", filters.approvalStatus);
   if (filters?.paymentStatus) query = query.eq("paymentStatus", filters.paymentStatus);
   if (filters?.projectId) query = query.eq("projectId", filters.projectId);
+  if (filters?.dateFrom && isValidDay(filters.dateFrom)) query = query.gte("expenseDate", filters.dateFrom);
+  if (filters?.dateTo && isValidDay(filters.dateTo)) query = query.lte("expenseDate", filters.dateTo);
   query = applySearch(query, filters?.search, ["expenseNumber", "description"]);
 
   const { data, error, count } = await query.range(from, from + pageSize - 1);
@@ -157,6 +163,9 @@ export async function getExpenseTotals(filters?: {
   approvalStatus?: string;
   paymentStatus?: string;
   projectId?: string;
+  /** The day the expense happened, both ends included: yyyy-mm-dd. */
+  dateFrom?: string | null;
+  dateTo?: string | null;
 }) {
   const me = await requirePermission(PERMISSIONS.EXPENSE_READ);
 
@@ -176,6 +185,8 @@ export async function getExpenseTotals(filters?: {
   if (filters?.approvalStatus) query = query.eq("approvalStatus", filters.approvalStatus);
   if (filters?.paymentStatus) query = query.eq("paymentStatus", filters.paymentStatus);
   if (filters?.projectId) query = query.eq("projectId", filters.projectId);
+  if (filters?.dateFrom && isValidDay(filters.dateFrom)) query = query.gte("expenseDate", filters.dateFrom);
+  if (filters?.dateTo && isValidDay(filters.dateTo)) query = query.lte("expenseDate", filters.dateTo);
   query = applySearch(query, filters?.search, ["expenseNumber", "description"]);
 
   const { data, error } = await query.limit(LIST_LIMIT);
