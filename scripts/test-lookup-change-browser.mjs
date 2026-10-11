@@ -37,7 +37,7 @@ async function until(fn, what) {
   throw new Error(`Timed out waiting for ${what}`);
 }
 
-const ids = { role: randomUUID(), admin: null, other: null, project: randomUUID() };
+const ids = { role: randomUUID(), plainRole: randomUUID(), admin: null, other: null, gone: null, project: randomUUID(), goneProject: randomUUID() };
 let browser;
 
 async function makeLogin(name) {
@@ -53,12 +53,18 @@ try {
   await must(db.from("security_role").insert({ id: ids.role, name: `QA Lookup ${run}`, permissions: ["*"], dataScope: "ALL", updatedAt: now() }), "Role");
   const admin = await makeLogin("admin");
   const other = await makeLogin("manager");
-  Object.assign(ids, { admin: admin.id, other: other.id });
+  const gone = await makeLogin("former");
+  Object.assign(ids, { admin: admin.id, other: other.id, gone: gone.id });
+  await must(db.from("app_user").update({ status: "INACTIVE" }).eq("id", gone.id), "Switch off");
   await must(db.from("project").insert({
     id: ids.project, projectNumber: `QA-LKP-${run}`, name: `QA Lookup Project ${run}`, projectManagerId: admin.id,
     billingType: "FIXED", projectType: "INTERNAL", status: "ACTIVE", updatedAt: now(),
   }), "Project");
-  pass("A project managed by one person, and another person to hand it to");
+  await must(db.from("project").insert({
+    id: ids.goneProject, projectNumber: `QA-LKG-${run}`, name: `QA Former Manager Project ${run}`, projectManagerId: gone.id,
+    billingType: "FIXED", projectType: "INTERNAL", status: "ACTIVE", updatedAt: now(),
+  }), "Project of a former manager");
+  pass("A project managed by one person, another person to hand it to, and a project whose manager's login is switched off");
 
   browser = await chromium.launch({ headless: true });
   const page = await (await browser.newContext({ viewport: { width: 1400, height: 1000 } })).newPage();
@@ -84,6 +90,13 @@ try {
   await until(async () => (await db.from("project").select("projectManagerId").eq("id", ids.project).single()).data?.projectManagerId === other.id, "saved");
   pass("Saving stores the new project manager");
 
+  // A project whose manager has been switched off can still be edited.
+  await page.goto(`${base}/projects/${ids.goneProject}/edit`, { waitUntil: "networkidle" });
+  await page.locator('input[name="name"]').fill(`QA Former Manager Project renamed ${run}`);
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await until(async () => (await db.from("project").select("name").eq("id", ids.goneProject).single()).data?.name === `QA Former Manager Project renamed ${run}`, "renamed");
+  pass("A project whose manager's login is switched off can still be edited and saved");
+
   assert.equal(errors.length, 0, `Browser errors:\n${errors.map((e) => `  ${e.url}: ${e.message.slice(0, 200)}`).join("\n")}`);
   pass("No browser runtime errors");
   console.log(`\n${passed.length} checks passed.\n`);
@@ -100,8 +113,9 @@ try {
   };
   await clean("audit", () => db.from("audit_history").delete().eq("entityId", ids.project));
   await clean("project members", () => db.from("project_member").delete().eq("projectId", ids.project));
-  await clean("project", () => db.from("project").delete().eq("id", ids.project));
-  for (const user of [ids.admin, ids.other].filter(Boolean)) {
+  await clean("projects", () => db.from("project").delete().in("id", [ids.project, ids.goneProject]));
+  await clean("audit (former)", () => db.from("audit_history").delete().eq("entityId", ids.goneProject));
+  for (const user of [ids.admin, ids.other, ids.gone].filter(Boolean)) {
     for (const t of ["notification", "record_follow", "recent_record", "login_event", "favorite_record"]) await clean(t, () => db.from(t).delete().eq("userId", user));
     await clean("audit by user", () => db.from("audit_history").delete().eq("changedById", user));
     await clean("user", () => db.from("app_user").delete().eq("id", user));

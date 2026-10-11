@@ -234,6 +234,21 @@ export async function updateProject(
   try {
     const db = await supabaseServer();
 
+    // A newly chosen manager must be an active login; the database refuses
+    // anyone else with a bare row-security message, so say it here first. A
+    // manager left as it was is fine even if since switched off.
+    const { data: current } = await db.from("project").select("projectManagerId").eq("id", id).maybeSingle();
+    if (current && data.projectManagerId !== current.projectManagerId) {
+      const { data: manager } = await supabaseAdmin().from("app_user").select("fullName, status, deletedAt, partnerId").eq("id", data.projectManagerId).maybeSingle();
+      if (!manager || manager.status !== "ACTIVE" || manager.deletedAt || manager.partnerId) {
+        return {
+          ok: false,
+          error: `${manager?.fullName ?? "That person"} cannot manage projects: their login is switched off. Choose an active colleague.`,
+          fieldErrors: { projectManagerId: ["Choose an active colleague."] },
+        };
+      }
+    }
+
     // Closing a project with work still open would leave those tasks stranded
     // on a completed project, so the check comes before the write.
     if (data.status === "COMPLETED") {
