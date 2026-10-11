@@ -49,70 +49,44 @@ const ALLOWED_ATTR = ["href", "title"];
 const SAFE_SCHEMES = /^(https?:|mailto:|tel:)/i;
 
 /**
- * DOMPurify is loaded on first use, not at module load.
+ * The cleaner is sanitize-html, which parses with htmlparser2 and needs no DOM.
  *
- * It pulls in jsdom, which in turn requires html-encoding-sniffer — a CommonJS
- * module that `require()`s an ESM-only package. Node's serverless runtime
- * refuses that combination with ERR_REQUIRE_ESM, so merely importing this file
- * crashed every route that touched it, including /projects, which only ever
- * reads. `next dev` tolerates the same require, which is why this only ever
- * failed once deployed.
- *
- * Sanitising happens on write and nowhere else, so the read paths have no
- * reason to pay for jsdom at all. Requiring it here keeps the dependency on the
- * one code path that genuinely needs it, and leaves list and detail pages free
- * of it entirely.
- *
- * `require` rather than `await import` deliberately: sanitizeRichText is called
- * from synchronous code in several places, and making it async would ripple
- * through every caller for no gain.
+ * It replaced isomorphic-dompurify on 11 October 2026. That pulled in jsdom,
+ * whose html-encoding-sniffer `require()`s an ESM-only package; Vercel's Node
+ * runtime refuses that with ERR_REQUIRE_ESM, so every save that cleaned a
+ * description (a product, a project, a portal case) crashed in production while
+ * working on a developer's newer Node. Loading it lazily had only moved the
+ * crash from page load to save.
  */
-/** Only the surface this module uses; the hook sees a DOM element. */
-interface HookNode {
-  tagName?: string;
-  getAttribute(name: string): string | null;
-  setAttribute(name: string, value: string): void;
-  removeAttribute(name: string): void;
-}
+import sanitizeHtml from "sanitize-html";
 
-interface Purifier {
-  sanitize(dirty: string, cfg: object): string;
-  addHook(entryPoint: string, cb: (node: HookNode) => void): void;
-}
-
-let purifier: Purifier | null = null;
-
-function getPurifier(): Purifier {
-  if (!purifier) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require("isomorphic-dompurify");
-    purifier = (mod.default ?? mod) as Purifier;
-  }
-  return purifier;
-}
-
-let hooked = false;
-
-/**
- * Every surviving link is forced to open in a new tab with `rel="noopener
- * noreferrer"`, and any link whose scheme is not on the safe list loses its
- * href entirely rather than the whole element being dropped — the text a person
- * wrote is still worth keeping even when the destination is not.
- */
-function ensureHooks() {
-  if (hooked) return;
-  getPurifier().addHook("afterSanitizeAttributes", (node) => {
-    if (node.tagName !== "A") return;
-    const href = node.getAttribute("href") ?? "";
-    if (!SAFE_SCHEMES.test(href)) {
-      node.removeAttribute("href");
-      return;
-    }
-    node.setAttribute("target", "_blank");
-    node.setAttribute("rel", "noopener noreferrer nofollow");
-  });
-  hooked = true;
-}
+const CLEAN_OPTIONS: sanitizeHtml.IOptions = {
+  allowedTags: ALLOWED_TAGS,
+  // target and rel are written by the link transform below, never taken from
+  // input: the transform drops whatever a pasted link brought with it.
+  allowedAttributes: { "*": ALLOWED_ATTR.filter((a) => a !== "href"), a: [...ALLOWED_ATTR, "target", "rel"] },
+  // Keep the text of a disallowed element rather than discarding it: someone
+  // pasting from a page wrapped in a <div> should not lose their words. The
+  // text inside script, style and the like is still dropped.
+  disallowedTagsMode: "discard",
+  allowedSchemes: ["http", "https", "mailto", "tel"],
+  allowedSchemesAppliedToAttributes: ["href"],
+  allowProtocolRelative: false,
+  /**
+   * Every surviving link opens in a new tab with `rel="noopener noreferrer"`,
+   * and a link whose scheme is not on the safe list loses its href rather than
+   * the whole element being dropped: the text a person wrote is still worth
+   * keeping even when the destination is not.
+   */
+  transformTags: {
+    a: (tagName, attribs) => {
+      const href = attribs.href ?? "";
+      const kept: Record<string, string> = attribs.title ? { title: attribs.title } : {};
+      if (!SAFE_SCHEMES.test(href)) return { tagName, attribs: kept };
+      return { tagName, attribs: { ...kept, href, target: "_blank", rel: "noopener noreferrer nofollow" } };
+    },
+  },
+};
 
 /**
  * Clean a rich-text value for storage.
@@ -126,20 +100,7 @@ export function sanitizeRichText(value: unknown): string | null {
   if (typeof value !== "string") return null;
   if (value.trim() === "") return null;
 
-  ensureHooks();
-
-  const clean = getPurifier().sanitize(value, {
-    ALLOWED_TAGS,
-    ALLOWED_ATTR,
-    // Keep the text of a disallowed element rather than discarding it: someone
-    // pasting from a page wrapped in a <div> should not lose their words.
-    KEEP_CONTENT: true,
-    // Belt and braces alongside the allowlist above.
-    FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form", "input", "link", "meta"],
-    FORBID_ATTR: ["style", "srcset", "formaction", "onerror", "onload", "onclick"],
-    ALLOW_DATA_ATTR: false,
-    USE_PROFILES: { html: true },
-  });
+  const clean = sanitizeHtml(value, CLEAN_OPTIONS);
 
   return richTextToPlain(clean).trim() === "" ? null : clean;
 }
