@@ -3,8 +3,8 @@
   publish = ".next"
 
 [build.environment]
-  # AUTH_URL / app URL are public site URLs, not secrets
-  SECRETS_SCAN_OMIT_KEYS = "AUTH_URL,NEXT_PUBLIC_APP_URL,NEXT_PUBLIC_SUPABASE_URL"
+  # Public URLs and sender/reply-to emails, not secrets
+  SECRETS_SCAN_OMIT_KEYS = "AUTH_URL,NEXT_PUBLIC_APP_URL,NEXT_PUBLIC_SUPABASE_URL,EMAIL_REPLY_TO,EMAIL_FROM"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
