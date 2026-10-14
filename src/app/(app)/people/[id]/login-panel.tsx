@@ -20,6 +20,7 @@ export function LoginPanel({ staffId, user, canCreateLogins, hasContract, report
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [created, setCreated] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
   function submit(form: FormData) {
@@ -30,8 +31,23 @@ export function LoginPanel({ staffId, user, canCreateLogins, hasContract, report
         reportsToUserId: String(form.get("reportsToUserId") ?? ""),
       });
       if (!result.ok) { setError(result.error); return; }
-      window.location.reload();
+      const { emailedTo, emailError } = result.data.welcome;
+      setCreated(emailedTo
+        ? `Login created. ${emailedTo} has been emailed a link to choose their own password.`
+        : `Login created, but the welcome email was not sent (${emailError}). Give them the temporary password, or send a link from their user page.`);
     });
+  }
+
+  if (created) {
+    return (
+      <Card>
+        <CardHeader><CardTitle>CRM login</CardTitle></CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <Alert tone="success">{created}</Alert>
+          <Button type="button" onClick={() => window.location.reload()}>Done</Button>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
@@ -60,7 +76,7 @@ export function LoginPanel({ staffId, user, canCreateLogins, hasContract, report
           <form action={submit} className="space-y-3">
             {error && <Alert tone="danger">{error}</Alert>}
             <Field label="Work email" required hint="What they sign in with."><Input name="loginEmail" type="email" required /></Field>
-            <Field label="Temporary password" required hint="At least 10 characters, upper and lower case and a number. They change it under My account.">
+            <Field label="Temporary password" required hint="At least 10 characters, upper and lower case and a number. They are also emailed a link to choose their own.">
               <PasswordInput name="loginPassword" autoComplete="new-password" required />
             </Field>
             <Field label="Reports to" hint={reportingLine?.current && !reportingLine.current.active ? `Their contract names ${reportingLine.current.fullName}, whose login is switched off. Choose who they report to now.` : "Their manager. A Lead role sees the records of everyone who reports to them."}>

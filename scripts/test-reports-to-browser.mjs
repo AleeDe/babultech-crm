@@ -89,6 +89,7 @@ try {
   await page.locator('input[name="loginPassword"]').fill(`Pw-${randomBytes(9).toString("base64url")}7Q`);
   await page.locator('select[name="reportsToUserId"]').selectOption(lead.id);
   await page.getByRole("button", { name: "Create login" }).click();
+  await page.getByText(/Login created/).waitFor({ timeout: 60000 });
   const hire = await until(async () => (await db.from("app_user").select("id, managerUserId").eq("email", `rto-hire-${lower}@example.com`).maybeSingle()).data, "login");
   ids.hire = hire.id;
   ids.users.push(hire.id);

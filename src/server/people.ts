@@ -871,7 +871,7 @@ async function contractForLogin(staffId: string) {
  * title, department, who they report to, teams, and an hourly cost for
  * project costing when it can be worked out in the base currency.
  */
-export async function createLoginForPerson(staffId: string, input: { email: string; password: string; roleId?: string | null; reportsToUserId?: string | null }): Promise<ActionResult<{ userId: string }>> {
+export async function createLoginForPerson(staffId: string, input: { email: string; password: string; roleId?: string | null; reportsToUserId?: string | null }): Promise<ActionResult<{ userId: string; welcome: { emailedTo: string | null; emailError: string | null } }>> {
   const auth = await authorize(PERMISSIONS.ADMIN);
   if (!auth.ok) return auth;
   const { data: staff } = await db().from("staff_profile").select("*").eq("id", staffId).maybeSingle();
@@ -914,7 +914,7 @@ export async function createLoginForPerson(staffId: string, input: { email: stri
   }
   refresh(staffId);
   revalidatePath("/users");
-  return { ok: true, data: { userId } };
+  return { ok: true, data: { userId, welcome: created.data.welcome } };
 }
 
 /** Gives someone already working here, with a login, their profile. */

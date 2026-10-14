@@ -9,6 +9,7 @@ import { one, toDecimal, type Decimal } from "@/lib/decimal";
 import { MEMBER_PUBLIC_COLUMNS } from "@/lib/rate-snapshots";
 import { PERMISSIONS, authorize, requirePermission, requireUser, can } from "@/lib/authz";
 import { writeAudit } from "@/lib/audit";
+import { issuePasswordLink, passwordRules } from "@/lib/password-links";
 import type { ActionResult } from "./partners";
 
 /**
@@ -48,12 +49,6 @@ async function isSuperAdminLogin(userId: string): Promise<boolean> {
   return Boolean(role?.permissions?.includes("*"));
 }
 const BCRYPT_ROUNDS = 10;
-
-const passwordRules = z
-  .string()
-  .min(10, "Use at least 10 characters.")
-  .refine((v) => /[a-z]/.test(v) && /[A-Z]/.test(v), "Mix upper and lower case.")
-  .refine((v) => /[0-9]/.test(v), "Include a number.");
 
 const userSchema = z.object({
   fullName: z.string().min(1).max(150),
@@ -156,7 +151,7 @@ async function validateAgainstRole(
 
 export async function createUser(
   input: z.infer<typeof createSchema>,
-): Promise<ActionResult<{ id: string }>> {
+): Promise<ActionResult<{ id: string; welcome: { emailedTo: string | null; emailError: string | null } }>> {
   const _auth = await authorize(PERMISSIONS.ADMIN);
   if (!_auth.ok) return { ok: false, error: _auth.error };
 
@@ -238,8 +233,14 @@ export async function createUser(
       }).select("id").single();
       if (profileError) throw new Error(profileError.message);
 
+      // A link to choose their own password, so nobody has to pass the
+      // temporary one on. Best effort: a failed email never undoes the login.
+      const welcome = await issuePasswordLink({ userId: user.id, purpose: "WELCOME", createdBy: _auth.user })
+        .then((l) => ({ emailedTo: l.emailedTo, emailError: l.emailError }))
+        .catch((e: unknown) => ({ emailedTo: null, emailError: e instanceof Error ? e.message : "Could not send the welcome email." }));
+
       revalidatePath("/users");
-      return { ok: true, data: { id: user.id } };
+      return { ok: true, data: { id: user.id, welcome } };
     } catch (profileError) {
       // The profile insert failed after the auth user was created. Leaving it
       // behind would block the email forever with an account nobody can see or

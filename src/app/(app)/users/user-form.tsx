@@ -224,7 +224,7 @@ export function UserForm({
               required
               error={fieldErrors.password?.[0]}
               hint="At least 10 characters, mixed case, with a number."
-            help="Their initial sign-in password. Ask them to change it once they are in."
+            help="A temporary password. They are also emailed a link to choose their own."
             >
               <Input name="password" type="password" required autoComplete="new-password" />
             </Field>

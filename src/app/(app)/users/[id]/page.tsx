@@ -13,6 +13,7 @@ import { PasswordPanel } from "./password-panel";
 import { ViewAsButton } from "./view-as-button";
 import { viewAsRefusal } from "@/server/view-as";
 import { listLoginEvents } from "@/server/security";
+import { getLatestPasswordLink } from "@/server/password-links";
 import { LoginHistory } from "@/components/login-history";
 import { RecordTabs } from "@/components/record-tabs";
 import {
@@ -50,10 +51,11 @@ export default async function UserDetailPage({
   // cases of its own, so the delivery half does not merely come back empty for
   // them — it does not apply. Skipping it keeps the page honest and saves three
   // selects.
-  const [audit, workload, signIns] = await Promise.all([
+  const [audit, workload, signIns, latestLink] = await Promise.all([
     getAuditTrail("User", id, 15),
     isPartner ? Promise.resolve(null) : getUserWorkload(id),
     listLoginEvents({ userId: id, limit: 15 }),
+    getLatestPasswordLink(id),
   ]);
   const canViewAs = can(me, "user:view_as");
   const viewAsBlocked = canViewAs
@@ -300,7 +302,7 @@ export default async function UserDetailPage({
         </div>
 
         <div className="space-y-6">
-          <PasswordPanel userId={user.id} fullName={user.fullName} />
+          <PasswordPanel userId={user.id} fullName={user.fullName} email={user.email} latestLink={latestLink} />
 
           <Card>
             <CardHeader>
