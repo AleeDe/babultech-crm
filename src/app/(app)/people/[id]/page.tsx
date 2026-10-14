@@ -8,7 +8,7 @@ import {
 } from "@/components/ui";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { listDocuments } from "@/server/documents";
-import { getPerson } from "@/server/people";
+import { getPerson, getReportingLine } from "@/server/people";
 import { CONTRACT_TYPE_LABELS, CONTRACT_STATUS_LABELS, contractTone, payLabel, daysUntil, isCofounder, percentLabel, type ContractStatus, type ContractType } from "@/lib/people";
 import { formatDate, humanize } from "@/lib/utils";
 import { LoginPanel } from "./login-panel";
@@ -19,7 +19,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
   const data = await getPerson(id);
   if (!data) notFound();
   const { staff, contracts, canWrite, canCreateLogins } = data;
-  const documents = await listDocuments("StaffProfile", id);
+  const [documents, reportingLine] = await Promise.all([listDocuments("StaffProfile", id), getReportingLine(id)]);
   const canDeleteContracts = can(me, PERMISSIONS.RECORD_DELETE);
 
   const running = contracts.find((c) => c.status === "ACTIVE");
@@ -128,11 +128,14 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
         </div>
 
         <div className="space-y-6">
-          <LoginPanel staffId={id} user={staff.user} canCreateLogins={canCreateLogins} hasContract={contracts.some((c) => c.status !== "CANCELLED")} />
+          <LoginPanel staffId={id} user={staff.user} canCreateLogins={canCreateLogins} hasContract={contracts.some((c) => c.status !== "CANCELLED")} reportingLine={reportingLine} />
 
           <Card>
             <CardHeader><CardTitle>Personal</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">
+              <DetailRow label="Reports to">
+                {reportingLine?.current ? `${reportingLine.current.fullName}${reportingLine.current.active ? "" : " (login switched off)"}` : "Nobody"}
+              </DetailRow>
               <DetailRow label="Father's name">{s("fatherName")}</DetailRow>
               <DetailRow label="CNIC">{s("nationalId")}</DetailRow>
               <DetailRow label="Date of birth">{staff.dateOfBirth ? formatDate(String(staff.dateOfBirth)) : "—"}</DetailRow>

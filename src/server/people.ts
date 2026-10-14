@@ -871,7 +871,7 @@ async function contractForLogin(staffId: string) {
  * title, department, who they report to, teams, and an hourly cost for
  * project costing when it can be worked out in the base currency.
  */
-export async function createLoginForPerson(staffId: string, input: { email: string; password: string; roleId?: string | null }): Promise<ActionResult<{ userId: string }>> {
+export async function createLoginForPerson(staffId: string, input: { email: string; password: string; roleId?: string | null; reportsToUserId?: string | null }): Promise<ActionResult<{ userId: string }>> {
   const auth = await authorize(PERMISSIONS.ADMIN);
   if (!auth.ok) return auth;
   const { data: staff } = await db().from("staff_profile").select("*").eq("id", staffId).maybeSingle();
@@ -882,6 +882,13 @@ export async function createLoginForPerson(staffId: string, input: { email: stri
   const roleId = input.roleId || contract.roleId;
   if (!roleId) return { ok: false, error: "Choose the role their login gets.", fieldErrors: { roleId: ["Choose a role."] } };
 
+  // Who they report to: as chosen on the form, else the contract's person if
+  // they are still active. A manager switched off since the contract was made
+  // no longer holds the login back.
+  const chosen = input.reportsToUserId === undefined ? contract.reportsToUserId : input.reportsToUserId || null;
+  const reportsTo = chosen && (await activeColleague(chosen)) ? chosen : null;
+  if (input.reportsToUserId && !reportsTo) return { ok: false, error: "Choose an active colleague for them to report to.", fieldErrors: { reportsToUserId: ["Choose an active colleague."] } };
+
   const { data: base } = await db().from("currency").select("code").eq("isBase", true).maybeSingle();
   const cost = contract.currencyCode && base && String(base.code).trim() === String(contract.currencyCode).trim()
     ? hourlyCost({ payBasis: contract.payBasis, payAmount: contract.payAmount == null ? null : Number(contract.payAmount), hoursPerWeek: contract.hoursPerWeek == null ? null : Number(contract.hoursPerWeek), tenureMonths: contract.tenureMonths })
@@ -890,7 +897,7 @@ export async function createLoginForPerson(staffId: string, input: { email: stri
   const created = await createUser({
     fullName: staff.fullName, email: input.email, password: input.password, roleId,
     notificationEmail: "", employeeNumber: staff.profileNumber, jobTitle: contract.jobTitle,
-    phone: staff.phone ?? null, departmentId: contract.departmentId ?? null, managerUserId: contract.reportsToUserId ?? null,
+    phone: staff.phone ?? null, departmentId: contract.departmentId ?? null, managerUserId: reportsTo,
     partnerId: null, status: "ACTIVE", costRate: cost, defaultBillingRate: null,
   });
   if (!created.ok) return created;
@@ -971,4 +978,82 @@ export async function contractDeleteBlocker(id: string): Promise<string | null> 
   if (!auth.ok) return "Only the Super Admin can delete a contract.";
   const { data } = await db().rpc("recycle_hard_blocker", { p_entity_type: "EmploymentContract", p_id: id });
   return (data as string | null) ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Who someone reports to
+// ---------------------------------------------------------------------------
+
+async function activeColleague(userId: string): Promise<boolean> {
+  const { data } = await db().from("app_user").select("id").eq("id", userId).eq("status", "ACTIVE")
+    .is("partnerId", null).is("deletedAt", null).or("userType.is.null,userType.eq.INTERNAL").maybeSingle();
+  return Boolean(data);
+}
+
+/**
+ * Who a person reports to now, and who they could report to. Their login's
+ * manager when they have one, else their current contract's.
+ */
+export async function getReportingLine(staffId: string) {
+  const me = await requireUser();
+  if (!canReadPeople(me)) return null;
+  const { data: staff } = await db().from("staff_profile").select("id, userId").eq("id", staffId).is("deletedAt", null).maybeSingle();
+  if (!staff) return null;
+  let currentId: string | null = null;
+  if (staff.userId) {
+    currentId = ((await db().from("app_user").select("managerUserId").eq("id", staff.userId).maybeSingle()).data?.managerUserId as string | null) ?? null;
+  }
+  if (!currentId) {
+    const contract = await contractForLogin(staffId);
+    currentId = (contract?.reportsToUserId as string | null) ?? null;
+  }
+  const [current, options] = await Promise.all([
+    currentId ? db().from("app_user").select("id, fullName, email, status").eq("id", currentId).maybeSingle() : Promise.resolve({ data: null }),
+    db().from("app_user").select("id, fullName, jobTitle").eq("status", "ACTIVE").is("partnerId", null).is("deletedAt", null)
+      .or("userType.is.null,userType.eq.INTERNAL").order("fullName"),
+  ]);
+  const cur = current.data as { id: string; fullName: string; email: string; status: string } | null;
+  return {
+    current: cur ? { id: cur.id, fullName: cur.fullName, email: cur.email, active: cur.status === "ACTIVE" } : null,
+    options: ((options.data ?? []) as { id: string; fullName: string; jobTitle: string | null }[]).filter((u) => u.id !== staff.userId),
+  };
+}
+
+/**
+ * Changes who someone reports to: on their login (which is what a Lead role's
+ * view of the team follows) and on their current contracts. The wording of a
+ * contract already sent or signed is not changed; it records who it was then.
+ */
+export async function setReportsTo(staffId: string, reportsToUserId: string | null): Promise<ActionResult> {
+  const auth = await authorize(PERMISSIONS.PEOPLE_WRITE);
+  if (!auth.ok) return auth;
+  const { data: staff } = await db().from("staff_profile").select("id, userId").eq("id", staffId).is("deletedAt", null).maybeSingle();
+  if (!staff) return { ok: false, error: "That profile no longer exists." };
+  const target = reportsToUserId || null;
+  if (target) {
+    if (target === staff.userId) return { ok: false, error: "Someone cannot report to themselves." };
+    if (!(await activeColleague(target))) return { ok: false, error: "Choose an active colleague for them to report to." };
+    // No loops: the new manager must not, however far up, report to this person.
+    if (staff.userId) {
+      let current: string | null = target;
+      for (let depth = 0; current && depth < 100; depth++) {
+        if (current === staff.userId) return { ok: false, error: "That would make a loop: they already manage that person, directly or further down." };
+        current = ((await db().from("app_user").select("managerUserId").eq("id", current).maybeSingle()).data?.managerUserId as string | null) ?? null;
+      }
+    }
+  }
+  const at = now();
+  const { error } = await db().from("employment_contract").update({ reportsToUserId: target, updatedAt: at })
+    .eq("staffId", staffId).is("deletedAt", null).in("status", ["DRAFT", "SENT", "EMPLOYEE_SIGNED", "SIGNED", "ACTIVE"]);
+  if (error) return { ok: false, error: error.message };
+  if (staff.userId) {
+    const { data: before } = await db().from("app_user").select("managerUserId").eq("id", staff.userId).maybeSingle();
+    const { error: userError } = await db().from("app_user").update({ managerUserId: target, updatedAt: at }).eq("id", staff.userId);
+    if (userError) return { ok: false, error: userError.message };
+    await audit("User", staff.userId, "managerUserId", (before?.managerUserId as string | null) ?? null, target, auth.user.id);
+  }
+  await audit("StaffProfile", staffId, "reportsTo", null, target, auth.user.id);
+  refresh(staffId);
+  revalidatePath("/users");
+  return { ok: true, data: undefined };
 }
