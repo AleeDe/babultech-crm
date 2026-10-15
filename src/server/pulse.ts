@@ -3,6 +3,7 @@
 import { supabaseServer } from "@/lib/supabase";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { toDecimal } from "@/lib/decimal";
+import { labelAuditRows } from "@/lib/audit-labels";
 
 /**
  * Movement, as opposed to position.
@@ -161,6 +162,8 @@ export interface FeedItem {
   at: string;
   entityType: string;
   entityId: string;
+  /** Which record: "Acme Ltd", "INV-2026-0012". Null when unknown. */
+  recordName: string | null;
   fieldName: string;
   oldValue: string | null;
   newValue: string | null;
@@ -218,7 +221,7 @@ export async function getVisibleAuditTypes(): Promise<string[]> {
     .map(([entityType]) => entityType);
 }
 
-export async function getRecentChanges(limit = 25): Promise<FeedItem[]> {
+export async function getRecentChanges(limit = 25, onlyId?: string): Promise<FeedItem[]> {
   const me = await requireUser();
   const db = await supabaseServer();
 
@@ -228,10 +231,12 @@ export async function getRecentChanges(limit = 25): Promise<FeedItem[]> {
   // early also avoids an `in ()` with an empty list, which PostgREST rejects.
   if (visibleTypes.length === 0) return [];
 
-  const { data } = await db
+  let query = db
     .from("audit_history")
     .select("id, changedAt, entityType, entityId, fieldName, oldValue, newValue, changedBy:app_user ( fullName )")
-    .in("entityType", visibleTypes)
+    .in("entityType", visibleTypes);
+  if (onlyId) query = query.eq("id", onlyId);
+  const { data } = await query
     .order("changedAt", { ascending: false })
     // Over-fetched because the ownership pass below removes rows: asking for
     // exactly `limit` would return a short list whenever any of them belong to
@@ -263,25 +268,39 @@ export async function getRecentChanges(limit = 25): Promise<FeedItem[]> {
     visibleExpenseIds = new Set((mine ?? []).map((e) => String(e.id)));
   }
 
-  return rows
+  const shown = rows
     .filter(
       (r) =>
         r.entityType !== "Expense" ||
         visibleExpenseIds === null ||
         visibleExpenseIds.has(String(r.entityId)),
     )
-    .slice(0, limit)
-    .map((r) => ({
-      id: String(r.id),
-      at: String(r.changedAt),
-      entityType: String(r.entityType),
-      entityId: String(r.entityId),
-      fieldName: String(r.fieldName),
-      oldValue: r.oldValue ?? null,
-      newValue: r.newValue ?? null,
-      // PostgREST returns an embedded to-one as an object or a one-element
-      // array depending on how it inferred the relationship.
-      actor:
-        (Array.isArray(r.changedBy) ? r.changedBy[0]?.fullName : r.changedBy?.fullName) ?? null,
-    }));
+    .slice(0, limit);
+
+  // Names rather than ids: the record each row is about, and any person or
+  // record a value points at.
+  const labelled = await labelAuditRows(shown, { recordNames: true });
+
+  return labelled.map((r) => ({
+    id: String(r.id),
+    at: String(r.changedAt),
+    entityType: String(r.entityType),
+    entityId: String(r.entityId),
+    recordName: r.recordName,
+    fieldName: String(r.fieldName),
+    oldValue: r.oldValue,
+    newValue: r.newValue,
+    // PostgREST returns an embedded to-one as an object or a one-element
+    // array depending on how it inferred the relationship.
+    actor:
+      (Array.isArray(r.changedBy) ? r.changedBy[0]?.fullName : r.changedBy?.fullName) ?? null,
+  }));
+}
+
+/**
+ * One row that just arrived over the socket, with names filled in. Read
+ * again through RLS, so a row the reader may not see comes back null.
+ */
+export async function describeChange(id: string): Promise<FeedItem | null> {
+  return (await getRecentChanges(1, id))[0] ?? null;
 }

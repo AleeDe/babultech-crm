@@ -4,6 +4,7 @@ import { ShieldCheck, Handshake } from "lucide-react";
 import { getUser, getUserWorkload } from "@/server/users";
 import { requireUser, can, PERMISSIONS } from "@/lib/authz";
 import { getAuditTrail } from "@/lib/audit";
+import { auditFieldLabel } from "@/lib/audit-format";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   StatTile, Button, DetailRow, Alert, Forbidden,
@@ -284,7 +285,7 @@ export default async function UserDetailPage({
                 audit.map((a: Record<string, any>) => (
                   <div key={a.id}>
                     <p>
-                      <span className="font-medium">{humanize(a.fieldName)}</span>{" "}
+                      <span className="font-medium">{auditFieldLabel(a.fieldName)}</span>{" "}
                       <span className="text-muted-foreground">
                         {a.fieldName === "passwordHash"
                           ? "was reset"

@@ -1,6 +1,7 @@
 import { History } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui";
 import { formatDateTime, humanize } from "@/lib/utils";
+import { auditFieldLabel } from "@/lib/audit-format";
 
 interface AuditRow {
   id: string;
@@ -53,7 +54,7 @@ export function AuditPanel({
               <li key={entry.id} className="border-b pb-3 last:border-0 last:pb-0">
                 <p>
                   <span className="font-medium">
-                    {entry.fieldName ? humanize(entry.fieldName) : "Record"}
+                    {auditFieldLabel(entry.fieldName)}
                   </span>{" "}
                   <span className="text-muted-foreground">changed from</span>{" "}
                   <span className="font-medium">{display(entry.oldValue)}</span>{" "}

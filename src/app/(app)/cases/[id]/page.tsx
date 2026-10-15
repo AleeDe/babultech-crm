@@ -11,6 +11,7 @@ import { NotesSection } from "@/components/notes-section";
 import { DocumentsPanel } from "@/components/documents-panel";
 import { getCase } from "@/server/cases";
 import { getAuditTrail } from "@/lib/audit";
+import { auditFieldLabel } from "@/lib/audit-format";
 import { getCaseThread } from "@/server/case-thread";
 import { CaseThread } from "./case-thread";
 import {
@@ -138,7 +139,7 @@ export default async function CaseDetailPage({
                 audit.map((a) => (
                   <div key={a.id}>
                     <p>
-                      <span className="font-medium">{humanize(a.fieldName)}</span>{" "}
+                      <span className="font-medium">{auditFieldLabel(a.fieldName)}</span>{" "}
                       <span className="text-muted-foreground">
                         {a.oldValue ?? "empty"} → {a.newValue ?? "empty"}
                       </span>

@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Terminal } from "lucide-react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { entityHref, humanize } from "@/lib/utils";
+import { entityHref } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import type { FeedItem } from "@/server/pulse";
+import { describeChange, type FeedItem } from "@/server/pulse";
+import { auditFieldLabel } from "@/lib/audit-format";
 
 /**
  * The write log, as it happens.
@@ -70,25 +71,17 @@ export function ActivityStream({
 
           const r = payload.new as Record<string, any>;
           if (!allowed.current.has(String(r.entityType))) return;
-          const row: StreamRow = {
-            id: String(r.id),
-            at: String(r.changedAt),
-            entityType: String(r.entityType),
-            entityId: String(r.entityId),
-            fieldName: String(r.fieldName),
-            oldValue: r.oldValue ?? null,
-            newValue: r.newValue ?? null,
-            // The realtime payload is the raw row, with no joins — the actor's
-            // name is not in it. Showing the id would be noise, so the row
-            // reads "someone" until the next full page load resolves it.
-            actor: null,
-            fresh: true,
-          };
-
-          setRows((prev) => {
-            if (prev.some((p) => p.id === row.id)) return prev;
-            return [row, ...prev].slice(0, MAX_ROWS);
-          });
+          // The realtime payload is the raw row: ids, no names. The server
+          // fills in who did it, which record, and names for any ids.
+          describeChange(String(r.id))
+            .then((item) => {
+              if (!item) return;
+              setRows((prev) => {
+                if (prev.some((p) => p.id === item.id)) return prev;
+                return [{ ...item, fresh: true }, ...prev].slice(0, MAX_ROWS);
+              });
+            })
+            .catch(() => {});
         },
       )
       .subscribe();
@@ -159,14 +152,15 @@ function StreamLine({ row }: { row: StreamRow }) {
         </span>
         <span className="text-cyan-400">{row.actor ?? "someone"}</span>
         <span className="text-slate-600">→</span>
+        <span className="text-slate-500">{auditFieldLabel(row.entityType)}</span>
         {href ? (
           <Link href={href} className="text-slate-200 underline-offset-2 hover:underline">
-            {humanize(row.entityType)}
+            {row.recordName ?? "record"}
           </Link>
         ) : (
-          <span className="text-slate-200">{humanize(row.entityType)}</span>
+          <span className="text-slate-200">{row.recordName ?? "record"}</span>
         )}
-        <span className="text-amber-400/90">{row.fieldName}</span>
+        <span className="text-amber-400/90">{auditFieldLabel(row.fieldName)}</span>
       </div>
 
       <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 pl-1 text-slate-500">

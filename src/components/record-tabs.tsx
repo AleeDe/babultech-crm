@@ -1,6 +1,7 @@
 "use client";
 
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent, TabCount } from "@/components/ui/tabs";
 
 export interface RecordTab {
@@ -38,7 +39,6 @@ export function RecordTabs({
   /** Query parameter name — override when two tab strips share one page. */
   param?: string;
 }) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -46,19 +46,26 @@ export function RecordTabs({
   // An unknown value in the URL falls back to the first tab rather than
   // rendering an empty page: the parameter is user-editable, and a typo in a
   // shared link should not produce a blank screen.
-  const active = tabs.some((t) => t.value === requested)
+  const fromUrl = tabs.some((t) => t.value === requested)
     ? (requested as string)
     : tabs[0]?.value;
+  const [active, setActive] = useState(fromUrl);
+  // Back/forward or a link to another tab of the same page.
+  useEffect(() => setActive(fromUrl), [fromUrl]);
 
   function select(value: string) {
-    const next = new URLSearchParams(searchParams.toString());
+    // Switched here, at once: every tab's content is already on the page.
+    // router.replace() did not take effect in the production build, so the
+    // tabs did not switch at all.
+    setActive(value);
+    const next = new URLSearchParams(window.location.search);
     // The first tab is the default, so it is left out of the URL — a clean
     // address for the common case.
     if (value === tabs[0]?.value) next.delete(param);
     else next.set(param, value);
 
     const query = next.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    window.history.replaceState(window.history.state, "", query ? `${pathname}?${query}` : pathname);
   }
 
   return (

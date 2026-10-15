@@ -16,6 +16,7 @@ import { PartnerThread } from "@/components/partner-thread";
 import { getPartnerThread } from "@/server/partner-activities";
 import { DEFAULT_PARTNER_EMAIL_TO } from "@/lib/partner-policy";
 import { getAuditTrail } from "@/lib/audit";
+import { auditFieldLabel } from "@/lib/audit-format";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   Table, THead, TBody, TR, TH, TD, StatTile, EmptyState, Button, Alert, Forbidden
@@ -341,7 +342,7 @@ export default async function PartnerDetailPage({
                 {audit.map((a: Record<string, any>) => (
                   <li key={a.id} className="px-5 py-2.5">
                     <p>
-                      <span className="font-medium">{humanize(a.fieldName)}</span>{" "}
+                      <span className="font-medium">{auditFieldLabel(a.fieldName)}</span>{" "}
                       <span className="text-muted-foreground">
                         {a.oldValue ?? "empty"} → {a.newValue ?? "empty"}
                       </span>

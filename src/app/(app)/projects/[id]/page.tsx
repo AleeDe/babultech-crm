@@ -13,6 +13,7 @@ import { DocumentsPanel } from "@/components/documents-panel";
 import { getProject, getProjectBurn, getProjectWorkLog } from "@/server/projects";
 import { getProjectPeople } from "@/server/project-directory";
 import { getAuditTrail } from "@/lib/audit";
+import { auditFieldLabel } from "@/lib/audit-format";
 import {
   PageHeader, Card, CardHeader, CardTitle, CardContent, Badge, statusTone,
   StatTile, Button, Alert, Forbidden
@@ -419,7 +420,7 @@ export default async function ProjectWorkspacePage({
                         audit.map((a: Record<string, any>) => (
                           <div key={a.id}>
                             <p>
-                              <span className="font-medium">{humanize(a.fieldName)}</span>{" "}
+                              <span className="font-medium">{auditFieldLabel(a.fieldName)}</span>{" "}
                               <span className="text-muted-foreground">
                                 {a.oldValue ?? "empty"} → {a.newValue ?? "empty"}
                               </span>

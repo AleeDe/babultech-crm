@@ -1,5 +1,6 @@
 import Decimal from "decimal.js";
 import { supabaseServer } from "./supabase";
+import { labelAuditRows } from "./audit-labels";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -64,7 +65,13 @@ export async function getAuditTrail(
 
   if (error) throw new Error(`Could not load history: ${error.message}`);
 
-  return (data ?? []).map((row) => ({
+  // Ids in the values (a new owner, manager, role…) are shown as names.
+  type HistoryRow = {
+    id: string; entityType: string; entityId: string; fieldName: string;
+    oldValue: string | null; newValue: string | null; changedAt: string; source: string | null;
+    changedById: string | null; changedBy: { fullName: string } | { fullName: string }[] | null;
+  };
+  return (await labelAuditRows((data ?? []) as HistoryRow[])).map((row) => ({
     ...row,
     changedBy: Array.isArray(row.changedBy) ? row.changedBy[0] : row.changedBy,
   }));
