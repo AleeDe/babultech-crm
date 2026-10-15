@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import {
   Card, CardHeader, CardTitle, CardContent, Button, Alert, Field,
   Input, Select, Textarea, Badge, statusTone, StatTile, EmptyState,
@@ -11,6 +10,47 @@ import {
 import { Sparkline } from "@/components/sparkline";
 import { logProjectDay } from "@/server/timesheets";
 import { formatDate, formatNumber, humanize, cn } from "@/lib/utils";
+
+/** Entries listed before "Show all". */
+const ENTRIES_SHOWN = 10;
+
+/**
+ * A card whose body folds away. Open by default; the reader's choice is
+ * remembered in this browser, per section.
+ */
+function Section({ id, title, subtitle, children }: { id: string; title: string; subtitle?: string; children: React.ReactNode }) {
+  const key = `worklog.section.${id}`;
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(key) === "closed") setOpen(false);
+    } catch {
+      /* Storage unavailable: stays open. */
+    }
+  }, [key]);
+  function toggle() {
+    setOpen((was) => {
+      try {
+        localStorage.setItem(key, was ? "closed" : "open");
+      } catch {
+        /* Not remembered, which is fine. */
+      }
+      return !was;
+    });
+  }
+  return (
+    <Card>
+      <button type="button" onClick={toggle} aria-expanded={open} className="flex w-full items-start justify-between gap-3 p-5 text-left">
+        <span>
+          <span className="block text-base font-semibold">{title}</span>
+          {subtitle && <span className="mt-1 block text-sm text-muted-foreground">{subtitle}</span>}
+        </span>
+        <ChevronDown className={cn("mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} aria-hidden />
+      </button>
+      {open && <div className="pb-5">{children}</div>}
+    </Card>
+  );
+}
 
 /** Client-only counter for line keys; never persisted. */
 let lineSeq = 0;
@@ -83,11 +123,11 @@ export interface WorkLog {
  * displayed them, so "what did anyone actually do on this project?" could not
  * be answered from the project.
  *
- * Layout follows how the page is read rather than how the data is shaped:
- * the four figures answer "are we on track?" at a glance, the trend answers
- * "is work still moving?", the people table answers "who is carrying this?",
- * and the entries answer "what specifically happened?" — in that order,
- * because that is the order the questions get asked in.
+ * Logging comes first, because that is what most people open this tab to do:
+ * "Log work" opens the form at the top, with the latest entries right under
+ * it so what is already recorded can be checked while adding more. The
+ * figures, the 30-day trend and the hours by person follow in a Summary.
+ * Entries and Summary each fold away, open by default.
  *
  * Logging happens here rather than only on the Timesheets screen. Someone who
  * has the project open and wants to record an hour against it should not have
@@ -110,8 +150,8 @@ export function WorkLogPanel({
   approvedHours: number | null;
   canLog: boolean;
 }) {
-  const router = useRouter();
   const [adding, setAdding] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [lines, setLines] = useState<Line[]>(() => [blankLine()]);
@@ -159,88 +199,36 @@ export function WorkLogPanel({
         return;
       }
 
-      setAdding(false);
-      setLines([blankLine()]);
-      router.refresh();
+      // A full reload rather than router.refresh(), which did not take effect
+      // on the live build, so a saved entry did not appear. The tab is kept in
+      // the address, so the reload lands back here.
+      window.location.reload();
     });
   }
 
+  const shownEntries = showAll ? log.entries : log.entries.slice(0, ENTRIES_SHOWN);
+
   return (
     <div className="space-y-6">
-      {/* ---------------------------------------------------- the four figures */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile
-          label="Hours logged"
-          help="Every approved and pending entry on this project. Rejected time is excluded - it was disputed and thrown out, so counting it would overstate the effort."
-          value={formatNumber(total, 1)}
-          sublabel={`${formatNumber(Number(log.thisWeekHours), 1)} this week`}
-        />
-        <StatTile
-          label="Billable"
-          help="Hours you can invoice, against hours you cannot. This ratio is the project's margin before any cost is counted."
-          value={`${formatNumber(billablePercent, 0)}%`}
-          sublabel={`${formatNumber(billable, 1)} billable · ${formatNumber(nonBillable, 1)} not`}
-          tone={billablePercent >= 70 ? "success" : billablePercent >= 40 ? "warning" : "danger"}
-        />
-        <StatTile
-          label="Budget used"
-          help="Logged hours against the approved budget. Over 100% means the engagement is running past what was agreed - raise a change request rather than absorbing it."
-          value={burnPercent === null ? "—" : `${formatNumber(burnPercent, 0)}%`}
-          sublabel={
-            approvedHours
-              ? `${formatNumber(total, 1)} of ${formatNumber(approvedHours, 1)}`
-              : "No budget set"
-          }
-          tone={overBudget ? "danger" : burnPercent !== null && burnPercent > 80 ? "warning" : "neutral"}
-        />
-        <StatTile
-          label="Awaiting approval"
-          help="Entries submitted but not yet approved. Unapproved time cannot be invoiced, so a growing number here is revenue sitting still."
-          value={String(log.pendingApproval)}
-          sublabel={log.pendingApproval > 0 ? "Not yet invoiceable" : "Nothing pending"}
-          tone={log.pendingApproval > 0 ? "warning" : "neutral"}
-        />
+      {/* ------------------------------------------------------- log work, first */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {formatNumber(total, 1)}h logged · {formatNumber(Number(log.thisWeekHours), 1)}h this week
+        </p>
+        {canLog && (
+          <Button type="button" onClick={() => { setAdding(!adding); setError(null); }}>
+            {adding ? "Cancel" : <><Plus className="h-4 w-4" /> Log work</>}
+          </Button>
+        )}
       </div>
 
-      {/* --------------------------------------------------------- daily trend */}
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <div>
-            <CardTitle>Daily hours</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              The last 30 days. Every day is plotted, so a gap in the work shows
-              as a gap in the line rather than being closed up.
-            </p>
-          </div>
-          {canLog && (
-            <Button type="button" onClick={() => setAdding(!adding)}>
-              <Plus className="h-4 w-4" /> Log work
-            </Button>
-          )}
-        </CardHeader>
-        <CardContent>
-          {log.daily.every((d) => d.hours === 0) ? (
-            <EmptyState
-              title="No time logged yet"
-              description="Once someone records a day's work it appears here, and the figures above start to mean something."
-            />
-          ) : (
-            <>
-              <Sparkline
-                values={log.daily.map((d) => d.hours)}
-                height={64}
-                tone={overBudget ? "danger" : "primary"}
-                className="w-full"
-              />
-              <div className="mt-1 flex justify-between text-xs text-muted-foreground">
-                <span>{formatDate(log.daily[0]?.date)}</span>
-                <span>{formatDate(log.daily[log.daily.length - 1]?.date)}</span>
-              </div>
-            </>
-          )}
-
-          {adding && (
-            <form action={submit} className="mt-4 space-y-4 rounded-lg border border-dashed p-4">
+      {adding && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Log work</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form action={submit} className="space-y-4">
               {error && <Alert tone="danger">{error}</Alert>}
 
               <div className="flex flex-wrap items-end gap-4">
@@ -250,6 +238,7 @@ export function WorkLogPanel({
                     name="workDate"
                     type="date"
                     required
+                    autoFocus
                     className="w-44"
                     // Today by default, because that is the answer nine times
                     // out of ten. Future dates are refused.
@@ -400,69 +389,27 @@ export function WorkLogPanel({
                 )}
               </div>
             </form>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* -------------------------------------------------------- who did what */}
-      {log.byPerson.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Hours by person</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Who is carrying this project, and when they last touched it.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {log.byPerson.map((p) => {
-              const share = total > 0 ? (Number(p.hours) / total) * 100 : 0;
-              return (
-                <div key={p.userId} className="space-y-1">
-                  <div className="flex items-baseline justify-between gap-3 text-sm">
-                    <span className="min-w-0 truncate font-medium">{p.fullName}</span>
-                    <span className="shrink-0 tabular-nums text-muted-foreground">
-                      {formatNumber(Number(p.hours), 1)}h
-                      <span className="ml-2 text-xs">
-                        {p.lastEntry ? `last ${formatDate(p.lastEntry)}` : ""}
-                      </span>
-                    </span>
-                  </div>
-                  {/* A bar rather than a number alone: relative contribution is
-                      the thing being read, and a bar answers it without
-                      arithmetic. */}
-                  <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-primary/70"
-                      style={{ width: `${Math.max(2, share)}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
           </CardContent>
         </Card>
       )}
 
-      {/* ------------------------------------------------------------ the log */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Entries</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Newest first. Rejected entries stay visible so whoever logged them
-            can see what happened.
-          </p>
-        </CardHeader>
-        <CardContent className="px-0">
-          {log.entries.length === 0 ? (
-            <div className="px-5">
-              <EmptyState
-                title="Nothing logged yet"
-                description="Use “Log work” above to record the first day."
-              />
-            </div>
-          ) : (
+      {/* ------------------------------------- the log, right under the form */}
+      <Section
+        id="entries"
+        title={`Entries (${log.entries.length})`}
+        subtitle="Newest first. Rejected entries stay visible so whoever logged them can see what happened."
+      >
+        {log.entries.length === 0 ? (
+          <div className="px-5">
+            <EmptyState
+              title="Nothing logged yet"
+              description="Use “Log work” above to record the first day."
+            />
+          </div>
+        ) : (
+          <>
             <ul className="divide-y border-t">
-              {log.entries.map((e) => (
+              {shownEntries.map((e) => (
                 <li
                   key={e.id}
                   className={cn(
@@ -511,9 +458,130 @@ export function WorkLogPanel({
                 </li>
               ))}
             </ul>
+            {log.entries.length > ENTRIES_SHOWN && (
+              <div className="border-t px-5 pt-3">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(!showAll)}>
+                  {showAll ? "Show the latest only" : `Show all ${log.entries.length}`}
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </Section>
+
+      {/* ------------------------------------------------------------- summary */}
+      <Section id="summary" title="Summary" subtitle="Totals, the last 30 days, and who is carrying the work.">
+        <div className="space-y-6 px-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile
+          label="Hours logged"
+          help="Every approved and pending entry on this project. Rejected time is excluded - it was disputed and thrown out, so counting it would overstate the effort."
+          value={formatNumber(total, 1)}
+          sublabel={`${formatNumber(Number(log.thisWeekHours), 1)} this week`}
+        />
+        <StatTile
+          label="Billable"
+          help="Hours you can invoice, against hours you cannot. This ratio is the project's margin before any cost is counted."
+          value={`${formatNumber(billablePercent, 0)}%`}
+          sublabel={`${formatNumber(billable, 1)} billable · ${formatNumber(nonBillable, 1)} not`}
+          tone={billablePercent >= 70 ? "success" : billablePercent >= 40 ? "warning" : "danger"}
+        />
+        <StatTile
+          label="Budget used"
+          help="Logged hours against the approved budget. Over 100% means the engagement is running past what was agreed - raise a change request rather than absorbing it."
+          value={burnPercent === null ? "—" : `${formatNumber(burnPercent, 0)}%`}
+          sublabel={
+            approvedHours
+              ? `${formatNumber(total, 1)} of ${formatNumber(approvedHours, 1)}`
+              : "No budget set"
+          }
+          tone={overBudget ? "danger" : burnPercent !== null && burnPercent > 80 ? "warning" : "neutral"}
+        />
+        <StatTile
+          label="Awaiting approval"
+          help="Entries submitted but not yet approved. Unapproved time cannot be invoiced, so a growing number here is revenue sitting still."
+          value={String(log.pendingApproval)}
+          sublabel={log.pendingApproval > 0 ? "Not yet invoiceable" : "Nothing pending"}
+          tone={log.pendingApproval > 0 ? "warning" : "neutral"}
+        />
+      </div>
+
+      {/* --------------------------------------------------------- daily trend */}
+      <Card>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle>Daily hours</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              The last 30 days. Every day is plotted, so a gap in the work shows
+              as a gap in the line rather than being closed up.
+            </p>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {log.daily.every((d) => d.hours === 0) ? (
+            <EmptyState
+              title="No time logged yet"
+              description="Once someone records a day's work it appears here, and the figures above start to mean something."
+            />
+          ) : (
+            <>
+              <Sparkline
+                values={log.daily.map((d) => d.hours)}
+                height={64}
+                tone={overBudget ? "danger" : "primary"}
+                className="w-full"
+              />
+              <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+                <span>{formatDate(log.daily[0]?.date)}</span>
+                <span>{formatDate(log.daily[log.daily.length - 1]?.date)}</span>
+              </div>
+            </>
           )}
+
         </CardContent>
       </Card>
+
+      {/* -------------------------------------------------------- who did what */}
+      {log.byPerson.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Hours by person</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Who is carrying this project, and when they last touched it.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {log.byPerson.map((p) => {
+              const share = total > 0 ? (Number(p.hours) / total) * 100 : 0;
+              return (
+                <div key={p.userId} className="space-y-1">
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="min-w-0 truncate font-medium">{p.fullName}</span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground">
+                      {formatNumber(Number(p.hours), 1)}h
+                      <span className="ml-2 text-xs">
+                        {p.lastEntry ? `last ${formatDate(p.lastEntry)}` : ""}
+                      </span>
+                    </span>
+                  </div>
+                  {/* A bar rather than a number alone: relative contribution is
+                      the thing being read, and a bar answers it without
+                      arithmetic. */}
+                  <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-primary/70"
+                      style={{ width: `${Math.max(2, share)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+        </div>
+      </Section>
     </div>
   );
 }
